@@ -7,6 +7,9 @@ public class PricingSettings
     public decimal DefaultFixedMarkup { get; set; }
     public bool UseMarginPercent { get; set; } = true;
 
+    /// <summary>Round sell prices to the nearest N rands (e.g. 10 = R10). 0 = no rounding.</summary>
+    public decimal RoundSellToNearest { get; set; }
+
     /// <summary>Unused: invoices are VAT-free. Column retained for existing databases.</summary>
     public decimal DefaultTaxRate { get; set; }
     public bool HideCostForSalesRole { get; set; } = true;

@@ -21,6 +21,7 @@ public static class DbSeeder
 
         await db.Database.EnsureCreatedAsync(ct);
         await EnsureMailSettingsTableAsync(db, ct);
+        await EnsurePricingColumnsAsync(db, ct);
 
         foreach (var r in Roles.All)
         {
@@ -84,6 +85,18 @@ public static class DbSeeder
                     string.Join("; ", result.Errors.Select(e => e.Description)));
             }
         }
+    }
+
+    /// <summary>Add RoundSellToNearest column to PricingSettings if missing (older DBs).</summary>
+    private static async Task EnsurePricingColumnsAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                """ALTER TABLE "PricingSettings" ADD COLUMN "RoundSellToNearest" TEXT NOT NULL DEFAULT '0';""", ct);
+        }
+        catch { /* column already exists */ }
     }
 
     /// <summary>Upgrades SQLite DBs created before MailSettings existed (EnsureCreated does not alter schema).</summary>

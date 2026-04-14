@@ -370,7 +370,7 @@ public class ImportService
         var sellRaw = get("sell");
         decimal sellPrice;
         if (!string.IsNullOrWhiteSpace(sellRaw))
-            sellPrice = ParseDecimal(sellRaw, 0);
+            sellPrice = PricingCalculator.ApplyRounding(ParseDecimal(sellRaw, 0), settings);
         else
             sellPrice = PricingCalculator.ComputeSellPrice(cost, settings);
 
@@ -684,7 +684,7 @@ public class ImportService
         var sellStr = get(map.Sell);
         decimal sellPrice = string.IsNullOrWhiteSpace(sellStr)
             ? PricingCalculator.ComputeSellPrice(cost, settings)
-            : ParseDecimal(sellStr, 0);
+            : PricingCalculator.ApplyRounding(ParseDecimal(sellStr, 0), settings);
         var qty = (int)ParseDecimal(get(map.Qty), 0);
         var barcode = get(map.Barcode);
         var category = get(map.Category);

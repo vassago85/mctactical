@@ -54,6 +54,7 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
             e.Property(p => p.DefaultMarginPercent).HasPrecision(18, 4);
             e.Property(p => p.DefaultFixedMarkup).HasPrecision(18, 2);
             e.Property(p => p.DefaultTaxRate).HasPrecision(18, 4);
+            e.Property(p => p.RoundSellToNearest).HasPrecision(18, 2);
         });
 
         modelBuilder.Entity<MailSettings>(e =>

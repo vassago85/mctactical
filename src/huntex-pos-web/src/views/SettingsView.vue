@@ -6,6 +6,7 @@ const dto = ref({
   defaultMarginPercent: 50,
   defaultFixedMarkup: 0,
   useMarginPercent: true,
+  roundSellToNearest: 0,
   hideCostForSalesRole: true
 })
 const err = ref<string | null>(null)
@@ -43,6 +44,18 @@ async function save() {
     <div class="field">
       <label>Default fixed markup</label>
       <input type="number" v-model.number="dto.defaultFixedMarkup" step="0.01" />
+    </div>
+    <div class="field">
+      <label>Round sell prices to nearest (R)</label>
+      <select v-model.number="dto.roundSellToNearest">
+        <option :value="0">No rounding (normal pricing)</option>
+        <option :value="10">R10 (Huntex pricing)</option>
+        <option :value="5">R5</option>
+        <option :value="1">R1</option>
+      </select>
+      <p style="color: var(--mc-muted); font-size: 0.85rem; margin: 0.35rem 0 0">
+        Huntex pricing rounds all sell prices up to the nearest R10. Applied on import and when computing from margin.
+      </p>
     </div>
     <p style="color: var(--mc-muted); font-size: 0.88rem; margin: 0">
       Invoices do not add VAT — MC Tactical is not VAT registered.

@@ -55,6 +55,7 @@ public class SettingsController : ControllerBase
             DefaultMarginPercent = s.DefaultMarginPercent,
             DefaultFixedMarkup = s.DefaultFixedMarkup,
             UseMarginPercent = s.UseMarginPercent,
+            RoundSellToNearest = s.RoundSellToNearest,
             HideCostForSalesRole = s.HideCostForSalesRole
         };
     }
@@ -72,6 +73,7 @@ public class SettingsController : ControllerBase
         s.DefaultMarginPercent = dto.DefaultMarginPercent;
         s.DefaultFixedMarkup = dto.DefaultFixedMarkup;
         s.UseMarginPercent = dto.UseMarginPercent;
+        s.RoundSellToNearest = dto.RoundSellToNearest >= 0 ? dto.RoundSellToNearest : 0;
         s.DefaultTaxRate = 0m;
         s.HideCostForSalesRole = dto.HideCostForSalesRole;
         s.UpdatedAt = DateTimeOffset.UtcNow;

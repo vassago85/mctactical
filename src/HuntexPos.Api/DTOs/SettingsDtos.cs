@@ -14,6 +14,8 @@ public class PricingSettingsDto
     public decimal DefaultMarginPercent { get; set; }
     public decimal DefaultFixedMarkup { get; set; }
     public bool UseMarginPercent { get; set; }
+    /// <summary>Round sell prices up to the nearest N rands (e.g. 10). 0 = no rounding.</summary>
+    public decimal RoundSellToNearest { get; set; }
     public bool HideCostForSalesRole { get; set; }
 }
 
