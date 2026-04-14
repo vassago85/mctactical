@@ -3,6 +3,9 @@ import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { http } from '@/api/http'
 import { logoLight } from '@/branding'
+import McButton from '@/components/ui/McButton.vue'
+import McField from '@/components/ui/McField.vue'
+import McAlert from '@/components/ui/McAlert.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -39,8 +42,8 @@ async function submit() {
       token: token.value,
       newPassword: password.value
     })
-    ok.value = data.message || 'Password set! Redirecting to login…'
-    setTimeout(() => router.replace('/login'), 2500)
+    ok.value = data.message || 'Password set successfully. Redirecting to sign in…'
+    setTimeout(() => router.replace('/login'), 2800)
   } catch (e: unknown) {
     const ax = e as { response?: { data?: { error?: string; errors?: string[] } } }
     const list = ax.response?.data?.errors
@@ -52,31 +55,89 @@ async function submit() {
 </script>
 
 <template>
-  <div class="card" style="max-width: 420px; margin: 2rem auto">
-    <div class="login-logo-wrap">
-      <img class="login-logo" :src="logoLight" alt="MC Tactical" />
-    </div>
-    <h1 style="text-align: center; font-size: 1.25rem; margin-bottom: 0.5rem">Set your password</h1>
-    <p style="text-align: center; color: var(--mc-muted); font-size: 0.9rem; margin-bottom: 1rem">
-      Choose a secure password for <strong>{{ email }}</strong>
-    </p>
-
-    <p class="err" v-if="err">{{ err }}</p>
-    <p v-if="ok" style="color: #a5d6a7; text-align: center">{{ ok }}</p>
-
-    <form @submit.prevent="submit" v-if="!ok && token">
-      <div class="field">
-        <label>New password</label>
-        <input v-model="password" type="password" autocomplete="new-password" required minlength="10" />
+  <div class="auth-layout">
+    <div class="auth-panel">
+      <div class="auth-panel__brand">
+        <img class="auth-panel__logo" :src="logoLight" alt="MC Tactical" />
       </div>
-      <p style="font-size: 0.8rem; color: var(--mc-muted); margin-top: -0.5rem">
-        At least 10 characters with upper, lower, digit, and a symbol.
+      <p class="auth-panel__title">Set your password</p>
+      <p class="auth-panel__sub">
+        Secure account for <strong>{{ email || '…' }}</strong>
       </p>
-      <div class="field">
-        <label>Confirm password</label>
-        <input v-model="confirm" type="password" autocomplete="new-password" required minlength="10" />
-      </div>
-      <button class="btn" type="submit" :disabled="busy" style="width: 100%">Set password &amp; continue</button>
-    </form>
+
+      <McAlert v-if="err" variant="error">{{ err }}</McAlert>
+      <McAlert v-if="ok" variant="success">{{ ok }}</McAlert>
+
+      <form v-if="!ok && token" class="auth-form" @submit.prevent="submit">
+        <McField label="New password" for-id="sp-pw">
+          <input id="sp-pw" v-model="password" type="password" autocomplete="new-password" required minlength="10" />
+        </McField>
+        <p class="auth-hint">At least 10 characters with upper, lower, digit, and a symbol.</p>
+        <McField label="Confirm password" for-id="sp-pw2">
+          <input id="sp-pw2" v-model="confirm" type="password" autocomplete="new-password" required minlength="10" />
+        </McField>
+        <McButton variant="primary" type="submit" block :disabled="busy">
+          {{ busy ? 'Saving…' : 'Set password & continue' }}
+        </McButton>
+      </form>
+    </div>
   </div>
 </template>
+
+<style scoped>
+.auth-layout {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background:
+    radial-gradient(ellipse 100% 80% at 50% -30%, rgba(244, 122, 32, 0.22), transparent),
+    linear-gradient(165deg, #121214 0%, #0a0a0b 45%, #151518 100%);
+}
+
+.auth-panel {
+  width: 100%;
+  max-width: 440px;
+  padding: 2rem 1.75rem;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.auth-panel__brand {
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.auth-panel__logo {
+  max-width: min(240px, 70vw);
+  height: auto;
+}
+
+.auth-panel__title {
+  margin: 0 0 0.5rem;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: center;
+  color: #1a1a1c;
+}
+
+.auth-panel__sub {
+  margin: 0 0 1.25rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: #5c5a56;
+  line-height: 1.45;
+}
+
+.auth-hint {
+  margin: -0.5rem 0 1rem;
+  font-size: 0.8rem;
+  color: #7a7874;
+}
+</style>

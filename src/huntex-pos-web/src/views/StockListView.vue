@@ -2,6 +2,16 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
+import { useToast } from '@/composables/useToast'
+import { formatZAR } from '@/utils/format'
+import McPageHeader from '@/components/ui/McPageHeader.vue'
+import McCard from '@/components/ui/McCard.vue'
+import McButton from '@/components/ui/McButton.vue'
+import McField from '@/components/ui/McField.vue'
+import McAlert from '@/components/ui/McAlert.vue'
+import McBadge from '@/components/ui/McBadge.vue'
+import McSpinner from '@/components/ui/McSpinner.vue'
+import McEmptyState from '@/components/ui/McEmptyState.vue'
 
 type Product = {
   id: string
@@ -22,6 +32,7 @@ type Product = {
 type Page = { total: number; skip: number; take: number; items: Product[] }
 
 const auth = useAuthStore()
+const toast = useToast()
 const q = ref('')
 const includeInactive = ref(false)
 const skip = ref(0)
@@ -32,7 +43,6 @@ const err = ref<string | null>(null)
 
 const canManage = computed(() => auth.hasRole('Admin', 'Owner', 'Dev'))
 const canExport = canManage
-const totalPages = computed(() => (page.value ? Math.ceil(page.value.total / page.value.take) : 0))
 const pageLabel = computed(() => {
   if (!page.value) return ''
   const from = page.value.total === 0 ? 0 : page.value.skip + 1
@@ -83,15 +93,20 @@ function prevPage() {
 }
 
 async function exportCsv() {
-  const params: Record<string, string | boolean> = { includeInactive: includeInactive.value }
-  if (q.value.trim()) params.q = q.value.trim()
-  const res = await http.get('/api/products/stocklist/export', { params, responseType: 'blob' })
-  const url = URL.createObjectURL(res.data)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = 'stocklist.csv'
-  a.click()
-  URL.revokeObjectURL(url)
+  try {
+    const params: Record<string, string | boolean> = { includeInactive: includeInactive.value }
+    if (q.value.trim()) params.q = q.value.trim()
+    const res = await http.get('/api/products/stocklist/export', { params, responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'stocklist.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success('CSV downloaded')
+  } catch {
+    toast.error('Export failed')
+  }
 }
 
 const showForm = ref(false)
@@ -109,13 +124,15 @@ const form = ref({
 })
 const formBusy = ref(false)
 const formErr = ref<string | null>(null)
-const formOk = ref<string | null>(null)
+
+function closeDrawer() {
+  showForm.value = false
+}
 
 function openAdd() {
   editId.value = null
   form.value = { sku: '', barcode: '', name: '', category: '', manufacturer: '', itemType: '', cost: 0, sellPrice: 0, qtyOnHand: 0 }
   formErr.value = null
-  formOk.value = null
   showForm.value = true
 }
 
@@ -133,13 +150,11 @@ function openEdit(p: Product) {
     qtyOnHand: p.qtyOnHand
   }
   formErr.value = null
-  formOk.value = null
   showForm.value = true
 }
 
 async function saveProduct() {
   formErr.value = null
-  formOk.value = null
   formBusy.value = true
   try {
     if (editId.value) {
@@ -154,7 +169,7 @@ async function saveProduct() {
         sellPrice: form.value.sellPrice,
         qtyOnHand: form.value.qtyOnHand
       })
-      formOk.value = 'Product updated'
+      toast.success('Product updated')
     } else {
       await http.post('/api/products', {
         sku: form.value.sku,
@@ -167,7 +182,7 @@ async function saveProduct() {
         sellPrice: form.value.sellPrice,
         qtyOnHand: form.value.qtyOnHand
       })
-      formOk.value = 'Product created'
+      toast.success('Product created')
     }
     showForm.value = false
     await load()
@@ -183,9 +198,11 @@ async function toggleActive(p: Product) {
   err.value = null
   try {
     await http.put(`/api/products/${p.id}`, { active: !p.active })
+    toast.success(p.active ? 'Product deactivated' : 'Product activated')
     await load()
   } catch {
     err.value = 'Update failed'
+    toast.error('Update failed')
   }
 }
 
@@ -193,142 +210,382 @@ onMounted(() => void load())
 </script>
 
 <template>
-  <h1>Stock list</h1>
-  <p style="color: var(--mc-muted); font-size: 0.9rem">
-    Full inventory from the database. Import your Excel under <strong>Import</strong> (Huntex workbook) to load items first.
-  </p>
-  <p class="err" v-if="err">{{ err }}</p>
+  <div class="stock-page">
+    <McPageHeader title="Stock list" description="Full inventory. Use Import to load items from your Huntex workbook or CSV.">
+      <template v-if="canManage" #actions>
+        <McButton variant="primary" type="button" @click="openAdd">Add product</McButton>
+        <McButton v-if="canExport" variant="secondary" type="button" @click="exportCsv">Export CSV</McButton>
+      </template>
+    </McPageHeader>
 
-  <div class="card">
-    <div class="row" style="margin-bottom: 0.75rem">
-      <div class="field" style="flex: 1; min-width: 200px; margin-bottom: 0">
-        <label>Search SKU, barcode, name, category</label>
-        <input v-model="q" placeholder="Filter…" />
-      </div>
-      <label style="display: flex; align-items: center; gap: 0.35rem; margin-top: 1.5rem">
-        <input type="checkbox" v-model="includeInactive" />
-        Include inactive
-      </label>
-    </div>
-    <div class="row">
-      <label style="display: flex; align-items: center; gap: 0.35rem">
-        Rows per page
-        <select v-model.number="pageSize" style="width: 6rem">
-          <option :value="100">100</option>
-          <option :value="250">250</option>
-          <option :value="500">500</option>
-          <option :value="1000">1000</option>
-          <option :value="5000">5000</option>
-        </select>
-      </label>
-      <button type="button" class="btn secondary" :disabled="busy || skip <= 0" @click="prevPage">Previous</button>
-      <button
-        type="button"
-        class="btn secondary"
-        :disabled="busy || !page || skip + page.take >= page.total"
-        @click="nextPage"
-      >
-        Next
-      </button>
-      <span style="color: var(--mc-muted)">{{ pageLabel }}</span>
-      <button v-if="canManage" type="button" class="btn" style="margin-left: auto" @click="openAdd">Add product</button>
-      <button v-if="canExport" type="button" class="btn secondary" @click="exportCsv">CSV</button>
-    </div>
-  </div>
+    <McAlert v-if="err" variant="error">{{ err }}</McAlert>
 
-  <div v-if="showForm" class="card">
-    <h2>{{ editId ? 'Edit product' : 'Add product' }}</h2>
-    <p class="err" v-if="formErr">{{ formErr }}</p>
-    <p v-if="formOk" style="color: #a5d6a7">{{ formOk }}</p>
-    <div class="row" style="flex-wrap: wrap; gap: 0.75rem">
-      <div class="field" style="flex: 1; min-width: 120px">
-        <label>SKU</label>
-        <input v-model="form.sku" required />
+    <McCard :padded="false" title="Filters">
+      <div class="stock-toolbar">
+        <div class="stock-toolbar__search">
+          <McField label="Search" for-id="stock-q">
+            <input id="stock-q" v-model="q" type="search" placeholder="SKU, barcode, name, category…" />
+          </McField>
+        </div>
+        <label class="stock-toolbar__check">
+          <input v-model="includeInactive" type="checkbox" />
+          Include inactive
+        </label>
+        <div class="stock-toolbar__page">
+          <span class="stock-toolbar__label">Rows</span>
+          <select v-model.number="pageSize" class="stock-toolbar__select">
+            <option :value="100">100</option>
+            <option :value="250">250</option>
+            <option :value="500">500</option>
+            <option :value="1000">1000</option>
+            <option :value="5000">5000</option>
+          </select>
+        </div>
+        <div class="stock-toolbar__nav">
+          <McButton variant="secondary" type="button" :disabled="busy || skip <= 0" @click="prevPage">Previous</McButton>
+          <McButton
+            variant="secondary"
+            type="button"
+            :disabled="busy || !page || skip + page.take >= page.total"
+            @click="nextPage"
+          >
+            Next
+          </McButton>
+          <span class="stock-toolbar__meta">{{ pageLabel }}</span>
+          <McSpinner v-if="busy" />
+        </div>
       </div>
-      <div class="field" style="flex: 1; min-width: 120px">
-        <label>Barcode</label>
-        <input v-model="form.barcode" />
-      </div>
-      <div class="field" style="flex: 2; min-width: 200px">
-        <label>Name</label>
-        <input v-model="form.name" required />
-      </div>
-      <div class="field" style="flex: 1; min-width: 120px">
-        <label>Category</label>
-        <input v-model="form.category" />
-      </div>
-      <div class="field" style="flex: 1; min-width: 120px">
-        <label>Manufacturer</label>
-        <input v-model="form.manufacturer" placeholder="e.g. Hornady" />
-      </div>
-      <div class="field" style="flex: 1; min-width: 120px">
-        <label>Item type</label>
-        <input v-model="form.itemType" placeholder="e.g. Bullet, Cap, Brass" />
-      </div>
-    </div>
-    <div class="row" style="flex-wrap: wrap; gap: 0.75rem">
-      <div class="field" style="flex: 1; min-width: 100px">
-        <label>Cost (R)</label>
-        <input type="number" v-model.number="form.cost" step="0.01" min="0" />
-      </div>
-      <div class="field" style="flex: 1; min-width: 100px">
-        <label>Sell price (R)</label>
-        <input type="number" v-model.number="form.sellPrice" step="0.01" min="0" />
-      </div>
-      <div class="field" style="flex: 1; min-width: 100px">
-        <label>Qty on hand</label>
-        <input type="number" v-model.number="form.qtyOnHand" step="1" min="0" />
-      </div>
-    </div>
-    <div class="row" style="gap: 0.5rem; margin-top: 0.5rem">
-      <button type="button" class="btn" :disabled="formBusy" @click="saveProduct">
-        {{ editId ? 'Update' : 'Create' }}
-      </button>
-      <button type="button" class="btn secondary" @click="showForm = false">Cancel</button>
-    </div>
-  </div>
+    </McCard>
 
-  <div class="card" style="overflow-x: auto">
-    <table>
-      <thead>
-        <tr>
-          <th>SKU</th>
-          <th>Barcode</th>
-          <th>Name</th>
-          <th>Manufacturer</th>
-          <th>Type</th>
-          <th>Category</th>
-          <th>Supplier</th>
-          <th>Cost</th>
-          <th>Sell</th>
-          <th>Qty</th>
-          <th>Active</th>
-          <th v-if="canManage"></th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="p in page?.items ?? []" :key="p.id">
-          <td>{{ p.sku }}</td>
-          <td>{{ p.barcode }}</td>
-          <td>{{ p.name }}</td>
-          <td>{{ p.manufacturer }}</td>
-          <td>{{ p.itemType }}</td>
-          <td>{{ p.category }}</td>
-          <td>{{ p.supplierName }}</td>
-          <td>{{ p.cost != null ? p.cost.toFixed(2) : '—' }}</td>
-          <td :style="p.warning ? 'color: #ef5350; font-weight: 600' : ''">
-            {{ p.sellPrice.toFixed(2) }}
-            <span v-if="p.warning" :title="p.warning" style="cursor: help"> ⚠</span>
-          </td>
-          <td>{{ p.qtyOnHand }}</td>
-          <td>{{ p.active ? 'Yes' : 'No' }}</td>
-          <td v-if="canManage" class="row" style="gap: 0.25rem">
-            <button type="button" class="btn secondary" style="padding: 0.2rem 0.5rem; font-size: 0.8rem" @click="openEdit(p)">Edit</button>
-            <button type="button" class="btn secondary" style="padding: 0.2rem 0.5rem; font-size: 0.8rem" @click="toggleActive(p)">{{ p.active ? 'Deactivate' : 'Activate' }}</button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    <p v-if="page && !page.items.length" style="color: var(--mc-muted)">No products yet — use Import to load your stock list.</p>
+    <McCard :padded="false" title="Products">
+      <div class="stock-table-wrap">
+        <table v-if="page?.items.length" class="stock-table">
+          <thead>
+            <tr>
+              <th>SKU</th>
+              <th>Barcode</th>
+              <th>Name</th>
+              <th>Mfr</th>
+              <th>Type</th>
+              <th>Category</th>
+              <th>Supplier</th>
+              <th>Cost</th>
+              <th>Sell</th>
+              <th>Qty</th>
+              <th>Status</th>
+              <th v-if="canManage"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="p in page.items" :key="p.id">
+              <td class="stock-mono">{{ p.sku }}</td>
+              <td class="stock-mono">{{ p.barcode ?? '—' }}</td>
+              <td class="stock-name">{{ p.name }}</td>
+              <td>{{ p.manufacturer ?? '—' }}</td>
+              <td>{{ p.itemType ?? '—' }}</td>
+              <td>{{ p.category ?? '—' }}</td>
+              <td>{{ p.supplierName ?? '—' }}</td>
+              <td>{{ p.cost != null ? formatZAR(p.cost) : '—' }}</td>
+              <td :class="{ 'stock-warn': !!p.warning }">
+                {{ formatZAR(p.sellPrice) }}
+                <span v-if="p.warning" :title="p.warning" class="stock-warn-icon">⚠</span>
+              </td>
+              <td>
+                <strong :class="{ 'stock-qty--low': p.qtyOnHand <= 3 }">{{ p.qtyOnHand }}</strong>
+              </td>
+              <td>
+                <McBadge :variant="p.active ? 'success' : 'neutral'">{{ p.active ? 'Active' : 'Inactive' }}</McBadge>
+              </td>
+              <td v-if="canManage" class="stock-actions">
+                <McButton variant="secondary" type="button" @click="openEdit(p)">Edit</McButton>
+                <McButton variant="ghost" type="button" @click="toggleActive(p)">
+                  {{ p.active ? 'Deactivate' : 'Activate' }}
+                </McButton>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <McEmptyState
+          v-else-if="page && !busy"
+          title="No products in this view"
+          hint="Try clearing the search filter or import stock from the Import page."
+        />
+        <div v-else-if="busy" class="stock-loading">
+          <McSpinner />
+          <span>Loading…</span>
+        </div>
+      </div>
+    </McCard>
+
+    <Teleport to="body">
+      <Transition name="stock-drawer-fade">
+        <div v-if="showForm" class="stock-drawer-overlay" aria-hidden="true" @click.self="closeDrawer" />
+      </Transition>
+      <Transition name="stock-drawer-slide">
+        <aside v-if="showForm" class="stock-drawer" role="dialog" aria-labelledby="stock-drawer-title">
+          <header class="stock-drawer__head">
+            <h2 id="stock-drawer-title" class="stock-drawer__title">{{ editId ? 'Edit product' : 'Add product' }}</h2>
+            <button type="button" class="stock-drawer__close" aria-label="Close" @click="closeDrawer">×</button>
+          </header>
+          <div class="stock-drawer__body">
+            <McAlert v-if="formErr" variant="error">{{ formErr }}</McAlert>
+            <McField label="SKU" for-id="f-sku">
+              <input id="f-sku" v-model="form.sku" required />
+            </McField>
+            <McField label="Barcode" for-id="f-bc">
+              <input id="f-bc" v-model="form.barcode" />
+            </McField>
+            <McField label="Name" for-id="f-name">
+              <input id="f-name" v-model="form.name" required />
+            </McField>
+            <div class="stock-drawer__grid">
+              <McField label="Category" for-id="f-cat">
+                <input id="f-cat" v-model="form.category" />
+              </McField>
+              <McField label="Manufacturer" for-id="f-mfr">
+                <input id="f-mfr" v-model="form.manufacturer" placeholder="e.g. Hornady" />
+              </McField>
+              <McField label="Item type" for-id="f-type">
+                <input id="f-type" v-model="form.itemType" placeholder="e.g. Bullet, Cap" />
+              </McField>
+            </div>
+            <div class="stock-drawer__grid">
+              <McField label="Cost (R)" for-id="f-cost">
+                <input id="f-cost" v-model.number="form.cost" type="number" step="0.01" min="0" />
+              </McField>
+              <McField label="Sell price (R)" for-id="f-sell">
+                <input id="f-sell" v-model.number="form.sellPrice" type="number" step="0.01" min="0" />
+              </McField>
+              <McField label="Qty on hand" for-id="f-qty">
+                <input id="f-qty" v-model.number="form.qtyOnHand" type="number" step="1" min="0" />
+              </McField>
+            </div>
+          </div>
+          <footer class="stock-drawer__foot">
+            <McButton variant="secondary" type="button" @click="closeDrawer">Cancel</McButton>
+            <McButton variant="primary" type="button" :disabled="formBusy" @click="saveProduct">
+              {{ editId ? 'Save changes' : 'Create' }}
+            </McButton>
+          </footer>
+        </aside>
+      </Transition>
+    </Teleport>
   </div>
 </template>
+
+<style scoped>
+.stock-page {
+  min-height: 100%;
+}
+
+.stock-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem;
+  padding: 1rem 1.15rem;
+}
+
+.stock-toolbar__search {
+  flex: 1 1 220px;
+}
+
+.stock-toolbar__search :deep(.mc-field) {
+  margin-bottom: 0;
+}
+
+.stock-toolbar__check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+  padding-bottom: 0.35rem;
+  cursor: pointer;
+}
+
+.stock-toolbar__page {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stock-toolbar__label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #5c5a56;
+}
+
+.stock-toolbar__select {
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border-radius: 8px;
+  border: 1px solid #d4d2cd;
+}
+
+.stock-toolbar__nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.stock-toolbar__meta {
+  font-size: 0.85rem;
+  color: #7a7874;
+}
+
+.stock-table-wrap {
+  overflow-x: auto;
+}
+
+.stock-table {
+  width: 100%;
+  min-width: 900px;
+  font-size: 0.88rem;
+}
+
+.stock-table th,
+.stock-table td {
+  padding: 0.7rem 0.65rem;
+}
+
+.stock-mono {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.stock-name {
+  max-width: 200px;
+  font-weight: 500;
+}
+
+.stock-warn {
+  color: #b71c1c;
+  font-weight: 600;
+}
+
+.stock-warn-icon {
+  cursor: help;
+  margin-left: 0.2rem;
+}
+
+.stock-qty--low {
+  color: #e65100;
+}
+
+.stock-actions {
+  white-space: nowrap;
+}
+
+.stock-actions :deep(.mc-btn) {
+  min-height: 38px;
+  padding: 0 0.65rem;
+  font-size: 0.75rem;
+}
+
+.stock-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 3rem;
+  color: #7a7874;
+}
+
+.stock-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10030;
+  background: rgba(10, 10, 11, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.stock-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10031;
+  width: min(480px, 100vw);
+  background: #fff;
+  box-shadow: -8px 0 40px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid #e2e0db;
+}
+
+.stock-drawer__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.15rem;
+  border-bottom: 1px solid #eceae6;
+  background: #fafaf8;
+}
+
+.stock-drawer__title {
+  margin: 0;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1.15rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.stock-drawer__close {
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: #eceae6;
+  border-radius: 8px;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.stock-drawer__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.15rem;
+}
+
+.stock-drawer__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+}
+
+@media (min-width: 400px) {
+  .stock-drawer__grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.stock-drawer__foot {
+  padding: 1rem 1.15rem;
+  border-top: 1px solid #eceae6;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  background: #fff;
+}
+
+.stock-drawer-fade-enter-active,
+.stock-drawer-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+.stock-drawer-fade-enter-from,
+.stock-drawer-fade-leave-to {
+  opacity: 0;
+}
+
+.stock-drawer-slide-enter-active,
+.stock-drawer-slide-leave-active {
+  transition: transform 0.25s ease;
+}
+.stock-drawer-slide-enter-from,
+.stock-drawer-slide-leave-to {
+  transform: translateX(100%);
+}
+</style>

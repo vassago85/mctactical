@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { http } from '@/api/http'
+import { useToast } from '@/composables/useToast'
+import { formatZAR } from '@/utils/format'
+import McPageHeader from '@/components/ui/McPageHeader.vue'
+import McCard from '@/components/ui/McCard.vue'
+import McButton from '@/components/ui/McButton.vue'
+import McAlert from '@/components/ui/McAlert.vue'
 
 type Row = {
   id: string
@@ -12,14 +18,19 @@ type Row = {
 }
 type Daily = { date: string; invoiceCount: number; grandTotal: number }
 
+const toast = useToast()
 const invoices = ref<Row[]>([])
 const daily = ref<Daily[]>([])
 const err = ref<string | null>(null)
 
 async function openPdf(id: string) {
-  const res = await http.get(`/api/invoices/${id}/pdf`, { responseType: 'blob' })
-  const url = URL.createObjectURL(res.data)
-  window.open(url, '_blank', 'noopener')
+  try {
+    const res = await http.get(`/api/invoices/${id}/pdf`, { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    window.open(url, '_blank', 'noopener')
+  } catch {
+    toast.error('Could not open PDF')
+  }
 }
 
 async function load() {
@@ -39,67 +50,100 @@ async function load() {
 onMounted(() => void load())
 
 async function exportCsv() {
-  const res = await http.get('/api/reports/invoices/export', { responseType: 'blob' })
-  const url = URL.createObjectURL(res.data)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = 'invoices.csv'
-  a.click()
-  URL.revokeObjectURL(url)
+  try {
+    const res = await http.get('/api/reports/invoices/export', { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'invoices.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success('Invoices exported')
+  } catch {
+    toast.error('Export failed')
+  }
 }
 </script>
 
 <template>
-  <h1>Reports</h1>
-  <p class="err" v-if="err">{{ err }}</p>
-  <div class="row" style="margin-bottom: 1rem">
-    <button type="button" class="btn secondary" @click="load">Refresh</button>
-    <button type="button" class="btn" @click="exportCsv">Export invoices CSV</button>
-  </div>
+  <div class="rep-page">
+    <McPageHeader title="Reports">
+      <template #actions>
+        <McButton variant="secondary" type="button" @click="load">Refresh</McButton>
+        <McButton variant="primary" type="button" @click="exportCsv">Export invoices CSV</McButton>
+      </template>
+    </McPageHeader>
 
-  <h2>Daily totals (final invoices)</h2>
-  <div class="card">
-    <table>
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Count</th>
-          <th>Total</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="d in daily" :key="d.date">
-          <td>{{ d.date }}</td>
-          <td>{{ d.invoiceCount }}</td>
-          <td>{{ d.grandTotal.toFixed(2) }}</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
+    <McAlert v-if="err" variant="error">{{ err }}</McAlert>
 
-  <h2>Recent invoices</h2>
-  <div class="card">
-    <table>
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>When</th>
-          <th>Customer</th>
-          <th>Total</th>
-          <th>Status</th>
-          <th>PDF</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="r in invoices" :key="r.id">
-          <td>{{ r.invoiceNumber }}</td>
-          <td>{{ new Date(r.createdAt).toLocaleString() }}</td>
-          <td>{{ r.customerName }}</td>
-          <td>{{ r.grandTotal.toFixed(2) }}</td>
-          <td>{{ r.status }}</td>
-          <td><button type="button" class="btn secondary" @click="openPdf(r.id)">PDF</button></td>
-        </tr>
-      </tbody>
-    </table>
+    <McCard title="Daily totals (final invoices)">
+      <div class="rep-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th class="rep-num">Count</th>
+              <th class="rep-num">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="d in daily" :key="d.date">
+              <td>{{ d.date }}</td>
+              <td class="rep-num">{{ d.invoiceCount }}</td>
+              <td class="rep-num">{{ formatZAR(d.grandTotal) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </McCard>
+
+    <McCard title="Recent invoices">
+      <div class="rep-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Invoice</th>
+              <th>When</th>
+              <th>Customer</th>
+              <th class="rep-num">Total</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="r in invoices" :key="r.id">
+              <td class="rep-mono">{{ r.invoiceNumber }}</td>
+              <td>{{ new Date(r.createdAt).toLocaleString() }}</td>
+              <td>{{ r.customerName ?? '—' }}</td>
+              <td class="rep-num">{{ formatZAR(r.grandTotal) }}</td>
+              <td>{{ r.status }}</td>
+              <td>
+                <McButton variant="secondary" type="button" @click="openPdf(r.id)">PDF</McButton>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </McCard>
   </div>
 </template>
+
+<style scoped>
+.rep-page {
+  min-height: 100%;
+}
+
+.rep-table-wrap {
+  overflow-x: auto;
+}
+
+.rep-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.rep-mono {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+</style>

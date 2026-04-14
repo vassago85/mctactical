@@ -1,11 +1,24 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { logoLight } from '@/branding'
+import McToastHost from '@/components/ui/McToastHost.vue'
+import AppShell from '@/components/layout/AppShell.vue'
+import PwaInstallBanner from '@/components/layout/PwaInstallBanner.vue'
 
 const auth = useAuthStore()
 const route = useRoute()
+
+const isPublicLayout = computed(() => route.meta.layout === 'public')
+
+watch(
+  [isPublicLayout, () => auth.isAuthenticated],
+  () => {
+    const useAppChrome = !isPublicLayout.value && auth.isAuthenticated
+    document.body.classList.toggle('mc-body-app', useAppChrome)
+  },
+  { immediate: true }
+)
 
 onMounted(() => {
   void auth.loadMe()
@@ -13,29 +26,12 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page">
-    <div class="brand-strip">
-      <div class="brand-strip__left">
-        <img class="brand-logo" :src="logoLight" alt="MC Tactical" />
-        <span class="tagline">Point of sale</span>
-      </div>
-      <span class="tagline">mctactical.co.za</span>
-    </div>
-    <header v-if="auth.isAuthenticated && !route.path.startsWith('/invoice')" class="nav">
-      <template v-if="auth.isAuthenticated">
-        <RouterLink to="/pos">POS</RouterLink>
-        <RouterLink to="/stock">Stock list</RouterLink>
-        <RouterLink to="/stocktake">Stocktake</RouterLink>
-        <RouterLink v-if="auth.hasRole('Admin', 'Owner', 'Dev')" to="/admin/team">Team</RouterLink>
-        <RouterLink v-if="auth.hasRole('Admin', 'Owner', 'Dev')" to="/import">Import</RouterLink>
-        <RouterLink v-if="auth.hasRole('Admin', 'Owner', 'Dev')" to="/reports">Reports</RouterLink>
-        <RouterLink v-if="auth.hasRole('Admin', 'Owner', 'Dev')" to="/settings">Pricing</RouterLink>
-        <RouterLink v-if="auth.hasRole('Admin', 'Owner', 'Dev')" to="/setup">Email setup</RouterLink>
-        <button type="button" class="btn secondary" style="margin-left: auto" @click="auth.clear()">
-          Log out
-        </button>
-      </template>
-    </header>
+  <McToastHost />
+  <PwaInstallBanner />
+  <AppShell v-if="!isPublicLayout && auth.isAuthenticated">
+    <RouterView />
+  </AppShell>
+  <div v-else class="layout-public">
     <RouterView />
   </div>
 </template>

@@ -5,17 +5,29 @@ const router = createRouter({
   history: createWebHashHistory(),
   routes: [
     { path: '/', redirect: '/pos' },
-    { path: '/login', component: () => import('@/views/LoginView.vue'), meta: { public: true } },
-    { path: '/pos', component: () => import('@/views/PosView.vue') },
-    { path: '/stock', component: () => import('@/views/StockListView.vue') },
-    { path: '/stocktake', component: () => import('@/views/StocktakeView.vue') },
-    { path: '/import', component: () => import('@/views/ImportView.vue') },
-    { path: '/reports', component: () => import('@/views/ReportsView.vue') },
-    { path: '/settings', component: () => import('@/views/SettingsView.vue') },
-    { path: '/setup', component: () => import('@/views/SetupView.vue') },
-    { path: '/admin/team', component: () => import('@/views/AdminTeamView.vue') },
-    { path: '/setup-password', component: () => import('@/views/SetupPasswordView.vue'), meta: { public: true } },
-    { path: '/invoice/:token', component: () => import('@/views/InvoicePublicView.vue'), meta: { public: true } }
+    {
+      path: '/login',
+      component: () => import('@/views/LoginView.vue'),
+      meta: { public: true, layout: 'public' }
+    },
+    { path: '/pos', component: () => import('@/views/PosView.vue'), meta: { layout: 'app' } },
+    { path: '/stock', component: () => import('@/views/StockListView.vue'), meta: { layout: 'app' } },
+    { path: '/stocktake', component: () => import('@/views/StocktakeView.vue'), meta: { layout: 'app' } },
+    { path: '/import', component: () => import('@/views/ImportView.vue'), meta: { layout: 'app' } },
+    { path: '/reports', component: () => import('@/views/ReportsView.vue'), meta: { layout: 'app' } },
+    { path: '/settings', component: () => import('@/views/SettingsView.vue'), meta: { layout: 'app' } },
+    { path: '/setup', component: () => import('@/views/SetupView.vue'), meta: { layout: 'app' } },
+    { path: '/admin/team', component: () => import('@/views/AdminTeamView.vue'), meta: { layout: 'app' } },
+    {
+      path: '/setup-password',
+      component: () => import('@/views/SetupPasswordView.vue'),
+      meta: { public: true, layout: 'public' }
+    },
+    {
+      path: '/invoice/:token',
+      component: () => import('@/views/InvoicePublicView.vue'),
+      meta: { public: true, layout: 'public' }
+    }
   ]
 })
 

@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { http } from '@/api/http'
+import { useToast } from '@/composables/useToast'
+import McPageHeader from '@/components/ui/McPageHeader.vue'
+import McCard from '@/components/ui/McCard.vue'
+import McButton from '@/components/ui/McButton.vue'
+import McField from '@/components/ui/McField.vue'
+import McAlert from '@/components/ui/McAlert.vue'
+import McBadge from '@/components/ui/McBadge.vue'
+import McModal from '@/components/ui/McModal.vue'
 
 type Supplier = { id: string; name: string }
 type Preset = { id: string; supplierId: string; name: string; mapping: Record<string, string | undefined> }
@@ -17,6 +25,7 @@ type PreviewRow = {
   warning?: string | null
 }
 
+const toast = useToast()
 const suppliers = ref<Supplier[]>([])
 const supplierId = ref('')
 const sheetName = ref('huntex 2026')
@@ -36,6 +45,11 @@ const err = ref<string | null>(null)
 const busy = ref(false)
 const presets = ref<Preset[]>([])
 
+const showSupplierModal = ref(false)
+const newSupplierName = ref('')
+const showPresetModal = ref(false)
+const newPresetName = ref('')
+
 async function loadPresets() {
   if (!supplierId.value) return
   const { data } = await http.get<Preset[]>('/api/imports/presets', { params: { supplierId: supplierId.value } })
@@ -51,20 +65,53 @@ onMounted(async () => {
 
 async function applyPreset(p: Preset) {
   mappingJson.value = JSON.stringify(p.mapping, null, 2)
+  toast.success(`Applied preset “${p.name}”`)
 }
 
-async function savePreset() {
-  const name = prompt('Preset name?')
+function openPresetModal() {
+  newPresetName.value = ''
+  showPresetModal.value = true
+}
+
+async function confirmSavePreset() {
+  const name = newPresetName.value.trim()
   if (!name || !supplierId.value) return
   let mapping: Record<string, string | undefined>
   try {
     mapping = JSON.parse(mappingJson.value) as Record<string, string | undefined>
   } catch {
     err.value = 'Mapping JSON is invalid'
+    toast.error('Mapping JSON is invalid')
     return
   }
-  await http.post('/api/imports/presets', { supplierId: supplierId.value, name, mapping })
-  await loadPresets()
+  try {
+    await http.post('/api/imports/presets', { supplierId: supplierId.value, name, mapping })
+    await loadPresets()
+    showPresetModal.value = false
+    toast.success('Preset saved')
+  } catch {
+    toast.error('Could not save preset')
+  }
+}
+
+function openSupplierModal() {
+  newSupplierName.value = ''
+  showSupplierModal.value = true
+}
+
+async function confirmAddSupplier() {
+  const name = newSupplierName.value.trim()
+  if (!name) return
+  try {
+    const { data } = await http.post<Supplier>('/api/suppliers', { name })
+    suppliers.value.push(data)
+    supplierId.value = data.id
+    showSupplierModal.value = false
+    await loadPresets()
+    toast.success(`Supplier “${name}” added`)
+  } catch {
+    toast.error('Could not add supplier')
+  }
 }
 
 async function previewHuntex() {
@@ -80,8 +127,10 @@ async function previewHuntex() {
     const { data } = await http.post<{ preview: PreviewRow[]; warnings: string[] }>('/api/imports/huntex', fd)
     huntexPreview.value = data.preview
     huntexWarnings.value = data.warnings ?? []
+    toast.success('Preview ready — review rows, then commit.')
   } catch {
     err.value = 'Huntex preview failed'
+    toast.error('Huntex preview failed')
   } finally {
     busy.value = false
   }
@@ -97,11 +146,12 @@ async function commitHuntex() {
     fd.append('sheetName', sheetName.value)
     if (supplierId.value) fd.append('supplierId', supplierId.value)
     fd.append('commit', 'true')
-    const { data } = await http.post('/api/imports/huntex', fd)
-    alert(`Imported ${data.imported} rows`)
+    const { data } = await http.post<{ imported: number }>('/api/imports/huntex', fd)
+    toast.success(`Imported ${data.imported} rows`)
     huntexPreview.value = []
   } catch {
     err.value = 'Huntex import failed'
+    toast.error('Huntex import failed')
   } finally {
     busy.value = false
   }
@@ -119,8 +169,10 @@ async function previewWholesaler() {
     fd.append('commit', 'false')
     const { data } = await http.post<{ preview: PreviewRow[] }>('/api/imports/wholesaler', fd)
     wholesalerPreview.value = data.preview
+    toast.success('Wholesaler preview ready')
   } catch {
     err.value = 'Wholesaler preview failed (check mapping JSON matches CSV headers or use column letters A,B,…)'
+    toast.error('Wholesaler preview failed')
   } finally {
     busy.value = false
   }
@@ -136,141 +188,293 @@ async function commitWholesaler() {
     fd.append('supplierId', supplierId.value)
     fd.append('mappingJson', mappingJson.value)
     fd.append('commit', 'true')
-    const { data } = await http.post('/api/imports/wholesaler', fd)
-    alert(`Imported ${data.imported} rows`)
+    const { data } = await http.post<{ imported: number }>('/api/imports/wholesaler', fd)
+    toast.success(`Imported ${data.imported} rows`)
     wholesalerPreview.value = []
   } catch {
     err.value = 'Wholesaler import failed'
+    toast.error('Wholesaler import failed')
   } finally {
     busy.value = false
   }
 }
-
-async function addSupplier() {
-  const name = prompt('Supplier name?')
-  if (!name) return
-  const { data } = await http.post<Supplier>('/api/suppliers', { name })
-  suppliers.value.push(data)
-  supplierId.value = data.id
-}
 </script>
 
 <template>
-  <h1>Stock import</h1>
-  <p style="color: var(--mc-muted); font-size: 0.9rem">
-    After importing, open <RouterLink to="/stock">Stock list</RouterLink> to review everything in the database.
-  </p>
-  <p class="err" v-if="err">{{ err }}</p>
+  <div class="imp-page">
+    <McPageHeader title="Stock import">
+      <template #default>
+        After importing, open <RouterLink to="/stock">Stock list</RouterLink> to verify. Use <strong>Preview</strong> before
+        <strong>Commit</strong> so you can catch mapping issues.
+      </template>
+    </McPageHeader>
 
-  <div class="card">
-    <h2>Supplier</h2>
-    <div class="row">
-      <select v-model="supplierId" @change="loadPresets">
-        <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
-      </select>
-      <button type="button" class="btn secondary" @click="addSupplier">New supplier</button>
-    </div>
-    <div v-if="presets.length" class="row" style="margin-top: 0.5rem; flex-wrap: wrap">
-      <span style="width: 100%; font-size: 0.9rem">Mapping presets:</span>
-      <button v-for="p in presets" :key="p.id" type="button" class="btn secondary" @click="applyPreset(p)">
-        {{ p.name }}
-      </button>
-      <button type="button" class="btn secondary" @click="savePreset">Save current mapping…</button>
-    </div>
-  </div>
+    <McAlert v-if="err" variant="error">{{ err }}</McAlert>
 
-  <div class="card">
-    <h2>Huntex workbook or CSV</h2>
-    <p>
-      Upload <strong>.xlsx</strong> / <strong>.xlsm</strong> (sheet name defaults to <code>huntex 2026</code>) or
-      <strong>.csv</strong> with the same headers (first row).
-      <a href="/api/imports/example-csv" download>Download example CSV</a> to see the expected format.
-    </p>
-    <div class="field">
-      <label>Sheet name (Excel only)</label>
-      <input v-model="sheetName" />
+    <div class="imp-steps" aria-hidden="true">
+      <McBadge variant="accent">1</McBadge>
+      <span class="imp-steps__txt">Supplier &amp; presets</span>
+      <span class="imp-steps__sep">→</span>
+      <McBadge variant="neutral">2</McBadge>
+      <span class="imp-steps__txt">File + preview</span>
+      <span class="imp-steps__sep">→</span>
+      <McBadge variant="neutral">3</McBadge>
+      <span class="imp-steps__txt">Commit</span>
     </div>
-    <input type="file" accept=".xlsx,.xlsm,.csv" @change="huntexFile = ($event.target as HTMLInputElement).files?.[0] ?? null" />
-    <div class="row" style="margin-top: 0.75rem">
-      <button type="button" class="btn secondary" :disabled="busy" @click="previewHuntex">Preview</button>
-      <button type="button" class="btn" :disabled="busy" @click="commitHuntex">Commit import</button>
-    </div>
-    <p v-for="w in huntexWarnings" :key="w" class="err">{{ w }}</p>
-    <table v-if="huntexPreview.length">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>SKU</th>
-          <th>Name</th>
-          <th>Manufacturer</th>
-          <th>Type</th>
-          <th>Cost</th>
-          <th>Sell</th>
-          <th>Qty</th>
-          <th>Err</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="r in huntexPreview.slice(0, 80)" :key="r.rowIndex">
-          <td>{{ r.rowIndex }}</td>
-          <td>{{ r.sku }}</td>
-          <td>{{ r.name }}</td>
-          <td>{{ r.manufacturer }}</td>
-          <td>{{ r.itemType }}</td>
-          <td>{{ r.cost }}</td>
-          <td :style="r.warning ? 'color: #ef5350; font-weight: 600' : ''">
-            {{ r.sellPrice }}
-            <span v-if="r.warning" :title="r.warning" style="cursor: help"> ⚠</span>
-          </td>
-          <td>{{ r.qtyOnHand }}</td>
-          <td>{{ r.error }}</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
 
-  <div class="card">
-    <h2>Wholesaler CSV / Excel</h2>
-    <p>
-      Provide column mapping JSON: header names or Excel columns (<code>A</code>, <code>B</code>, …). Example uses
-      typical header names — adjust to your file.
-    </p>
-    <textarea v-model="mappingJson" rows="8" style="width: 100%; font-family: monospace" />
-    <input type="file" accept=".csv,.xlsx,.xlsm" @change="wholesalerFile = ($event.target as HTMLInputElement).files?.[0] ?? null" />
-    <div class="row" style="margin-top: 0.75rem">
-      <button type="button" class="btn secondary" :disabled="busy" @click="previewWholesaler">Preview</button>
-      <button type="button" class="btn" :disabled="busy" @click="commitWholesaler">Commit import</button>
-    </div>
-    <table v-if="wholesalerPreview.length">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>SKU</th>
-          <th>Name</th>
-          <th>Manufacturer</th>
-          <th>Type</th>
-          <th>Cost</th>
-          <th>Sell</th>
-          <th>Qty</th>
-          <th>Err</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="r in wholesalerPreview.slice(0, 80)" :key="r.rowIndex">
-          <td>{{ r.rowIndex }}</td>
-          <td>{{ r.sku }}</td>
-          <td>{{ r.name }}</td>
-          <td>{{ r.manufacturer }}</td>
-          <td>{{ r.itemType }}</td>
-          <td>{{ r.cost }}</td>
-          <td :style="r.warning ? 'color: #ef5350; font-weight: 600' : ''">
-            {{ r.sellPrice }}
-            <span v-if="r.warning" :title="r.warning" style="cursor: help"> ⚠</span>
-          </td>
-          <td>{{ r.qtyOnHand }}</td>
-          <td>{{ r.error }}</td>
-        </tr>
-      </tbody>
-    </table>
+    <McCard title="Supplier & mapping presets">
+      <div class="imp-row">
+        <div class="imp-grow">
+          <McField label="Supplier" for-id="imp-supplier">
+            <select id="imp-supplier" v-model="supplierId" @change="loadPresets">
+              <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+            </select>
+          </McField>
+        </div>
+        <McButton variant="secondary" type="button" @click="openSupplierModal">New supplier</McButton>
+      </div>
+      <div v-if="presets.length" class="imp-presets">
+        <p class="imp-presets__label">Presets</p>
+        <div class="imp-presets__btns">
+          <McButton v-for="p in presets" :key="p.id" variant="secondary" type="button" @click="applyPreset(p)">
+            {{ p.name }}
+          </McButton>
+          <McButton variant="secondary" type="button" @click="openPresetModal">Save mapping as preset…</McButton>
+        </div>
+      </div>
+    </McCard>
+
+    <McCard title="Huntex workbook or CSV">
+      <p class="imp-lead">
+        Upload <strong>.xlsx</strong> / <strong>.xlsm</strong> (sheet defaults to <code>huntex 2026</code>) or
+        <strong>.csv</strong> with headers in row 1.
+        <a class="imp-link" href="/api/imports/example-csv" download>Download example CSV</a>
+      </p>
+      <McField label="Sheet name (Excel only)" for-id="imp-sheet">
+        <input id="imp-sheet" v-model="sheetName" />
+      </McField>
+      <input
+        type="file"
+        accept=".xlsx,.xlsm,.csv"
+        class="imp-file"
+        @change="huntexFile = ($event.target as HTMLInputElement).files?.[0] ?? null"
+      />
+      <div class="imp-actions">
+        <McButton variant="secondary" type="button" :disabled="busy" @click="previewHuntex">Preview</McButton>
+        <McButton variant="primary" type="button" :disabled="busy" @click="commitHuntex">Commit import</McButton>
+      </div>
+      <McAlert v-for="w in huntexWarnings" :key="w" variant="warning">{{ w }}</McAlert>
+      <div v-if="huntexPreview.length" class="imp-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>SKU</th>
+              <th>Name</th>
+              <th>Mfr</th>
+              <th>Type</th>
+              <th>Cost</th>
+              <th>Sell</th>
+              <th>Qty</th>
+              <th>Err</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="r in huntexPreview.slice(0, 80)" :key="r.rowIndex">
+              <td>{{ r.rowIndex }}</td>
+              <td>{{ r.sku }}</td>
+              <td>{{ r.name }}</td>
+              <td>{{ r.manufacturer }}</td>
+              <td>{{ r.itemType }}</td>
+              <td>{{ r.cost }}</td>
+              <td :class="{ 'imp-warn': !!r.warning }">
+                {{ r.sellPrice }}
+                <span v-if="r.warning" :title="r.warning ?? ''" class="imp-warn-ic">⚠</span>
+              </td>
+              <td>{{ r.qtyOnHand }}</td>
+              <td>{{ r.error }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </McCard>
+
+    <McCard title="Wholesaler CSV / Excel">
+      <p class="imp-lead">
+        Column mapping JSON: CSV header names or Excel columns (<code>A</code>, <code>B</code>, …). Adjust to match your
+        file.
+      </p>
+      <textarea v-model="mappingJson" class="imp-json" rows="8" spellcheck="false" />
+      <input
+        type="file"
+        accept=".csv,.xlsx,.xlsm"
+        class="imp-file"
+        @change="wholesalerFile = ($event.target as HTMLInputElement).files?.[0] ?? null"
+      />
+      <div class="imp-actions">
+        <McButton variant="secondary" type="button" :disabled="busy" @click="previewWholesaler">Preview</McButton>
+        <McButton variant="primary" type="button" :disabled="busy" @click="commitWholesaler">Commit import</McButton>
+      </div>
+      <div v-if="wholesalerPreview.length" class="imp-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>SKU</th>
+              <th>Name</th>
+              <th>Mfr</th>
+              <th>Type</th>
+              <th>Cost</th>
+              <th>Sell</th>
+              <th>Qty</th>
+              <th>Err</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="r in wholesalerPreview.slice(0, 80)" :key="r.rowIndex">
+              <td>{{ r.rowIndex }}</td>
+              <td>{{ r.sku }}</td>
+              <td>{{ r.name }}</td>
+              <td>{{ r.manufacturer }}</td>
+              <td>{{ r.itemType }}</td>
+              <td>{{ r.cost }}</td>
+              <td :class="{ 'imp-warn': !!r.warning }">
+                {{ r.sellPrice }}
+                <span v-if="r.warning" :title="r.warning ?? ''" class="imp-warn-ic">⚠</span>
+              </td>
+              <td>{{ r.qtyOnHand }}</td>
+              <td>{{ r.error }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </McCard>
+
+    <McModal v-model="showSupplierModal" title="New supplier">
+      <McField label="Supplier name" for-id="imp-new-sup">
+        <input id="imp-new-sup" v-model="newSupplierName" type="text" autocomplete="off" @keyup.enter="confirmAddSupplier" />
+      </McField>
+      <template #footer>
+        <McButton variant="secondary" type="button" @click="showSupplierModal = false">Cancel</McButton>
+        <McButton variant="primary" type="button" :disabled="!newSupplierName.trim()" @click="confirmAddSupplier">
+          Add
+        </McButton>
+      </template>
+    </McModal>
+
+    <McModal v-model="showPresetModal" title="Save mapping preset">
+      <McField label="Preset name" for-id="imp-preset-name">
+        <input id="imp-preset-name" v-model="newPresetName" type="text" autocomplete="off" @keyup.enter="confirmSavePreset" />
+      </McField>
+      <template #footer>
+        <McButton variant="secondary" type="button" @click="showPresetModal = false">Cancel</McButton>
+        <McButton variant="primary" type="button" :disabled="!newPresetName.trim()" @click="confirmSavePreset">
+          Save
+        </McButton>
+      </template>
+    </McModal>
   </div>
 </template>
+
+<style scoped>
+.imp-page {
+  min-height: 100%;
+}
+
+.imp-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.65rem;
+  margin-bottom: 1.25rem;
+  font-size: 0.85rem;
+  color: #5c5a56;
+}
+
+.imp-steps__sep {
+  color: #d4d2cd;
+}
+
+.imp-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+
+.imp-grow {
+  flex: 1 1 220px;
+}
+
+.imp-grow :deep(.mc-field) {
+  margin-bottom: 0;
+}
+
+.imp-presets {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #eceae6;
+}
+
+.imp-presets__label {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #7a7874;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.imp-presets__btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.imp-lead {
+  margin: 0 0 1rem;
+  color: #5c5a56;
+  line-height: 1.5;
+}
+
+.imp-link {
+  font-weight: 600;
+}
+
+.imp-file {
+  display: block;
+  margin: 0.75rem 0;
+  font-size: 0.9rem;
+}
+
+.imp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.imp-json {
+  width: 100%;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  border: 1px solid #d4d2cd;
+}
+
+.imp-table-wrap {
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+
+.imp-warn {
+  color: #b71c1c;
+  font-weight: 600;
+}
+
+.imp-warn-ic {
+  cursor: help;
+  margin-left: 0.2rem;
+}
+</style>

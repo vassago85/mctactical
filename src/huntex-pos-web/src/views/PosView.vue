@@ -2,7 +2,18 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
+import { useToast } from '@/composables/useToast'
+import { formatZAR } from '@/utils/format'
 import BarcodeScanner from '@/components/BarcodeScanner.vue'
+import McPageHeader from '@/components/ui/McPageHeader.vue'
+import McCard from '@/components/ui/McCard.vue'
+import McButton from '@/components/ui/McButton.vue'
+import McField from '@/components/ui/McField.vue'
+import McAlert from '@/components/ui/McAlert.vue'
+import McEmptyState from '@/components/ui/McEmptyState.vue'
+import McSkeleton from '@/components/ui/McSkeleton.vue'
+import McModal from '@/components/ui/McModal.vue'
+import McSpinner from '@/components/ui/McSpinner.vue'
 
 type Product = {
   id: string
@@ -28,7 +39,9 @@ const discountTotal = ref(0)
 const sendEmail = ref(false)
 const busy = ref(false)
 const err = ref<string | null>(null)
+const searchLoading = ref(false)
 const auth = useAuthStore()
+const toast = useToast()
 const isManager = ref(false)
 const posRules = ref<{
   maxCartDiscountPercent: number
@@ -37,6 +50,8 @@ const posRules = ref<{
   maxPriceIncreasePercentFromList: number
   isManager: boolean
 } | null>(null)
+
+const showBelowCostModal = ref(false)
 
 onMounted(async () => {
   try {
@@ -59,8 +74,10 @@ async function runSearch() {
   const s = q.value.trim()
   if (!s) {
     results.value = []
+    searchLoading.value = false
     return
   }
+  searchLoading.value = true
   try {
     const { data } = await http.get<Product[]>('/api/products', {
       params: { q: s, take: 40 }
@@ -68,6 +85,8 @@ async function runSearch() {
     results.value = data
   } catch {
     results.value = []
+  } finally {
+    searchLoading.value = false
   }
 }
 
@@ -93,6 +112,17 @@ function onScan(code: string) {
   })()
 }
 
+function bumpQty(l: Line, delta: number) {
+  const next = l.qty + delta
+  if (next < 1) return
+  if (next > l.product.qtyOnHand) return
+  l.qty = next
+}
+
+function removeLine(l: Line) {
+  cart.value = cart.value.filter((x) => x.product.id !== l.product.id)
+}
+
 const subTotal = computed(() =>
   cart.value.reduce((s, l) => s + Math.max(0, l.unitPrice * l.qty - l.lineDiscount), 0)
 )
@@ -106,14 +136,12 @@ const totalCost = computed(() =>
 const belowCostWarning = computed(() => {
   if (!isManager.value || cart.value.length === 0) return null
   if (grandPreview.value < totalCost.value && totalCost.value > 0)
-    return `Sale total R${grandPreview.value.toFixed(2)} is below total cost R${totalCost.value.toFixed(2)}`
+    return `Sale total ${formatZAR(grandPreview.value)} is below total cost ${formatZAR(totalCost.value)}`
   return null
 })
 
-async function checkout() {
+async function doCheckout() {
   err.value = null
-  if (!cart.value.length) return
-  if (belowCostWarning.value && !confirm(`${belowCostWarning.value}. Proceed anyway?`)) return
   busy.value = true
   try {
     const { data } = await http.post('/api/invoices', {
@@ -132,130 +160,447 @@ async function checkout() {
     })
     cart.value = []
     discountTotal.value = 0
-    let msg = `Invoice ${data.invoiceNumber} — total R${data.grandTotal?.toFixed?.(2) ?? data.grandTotal}`
-    if (data.belowCostWarning) msg += `\n\n⚠ ${data.belowCostWarning}`
-    alert(msg)
+    let msg = `Invoice ${data.invoiceNumber} — total ${formatZAR(data.grandTotal)}`
+    if (data.belowCostWarning) msg += `\n${data.belowCostWarning}`
+    toast.success(msg)
   } catch (e: unknown) {
     const ax = e as { response?: { data?: { error?: string } } }
     err.value = ax.response?.data?.error ?? 'Checkout failed'
+    toast.error(err.value)
   } finally {
     busy.value = false
+    showBelowCostModal.value = false
   }
 }
+
+function requestCheckout() {
+  if (!cart.value.length) return
+  if (belowCostWarning.value) {
+    showBelowCostModal.value = true
+    return
+  }
+  void doCheckout()
+}
+
+const searchEmpty = computed(() => !q.value.trim())
+const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !results.value.length)
 </script>
 
 <template>
-  <h1>Point of sale</h1>
-  <div v-if="posRules" class="card" style="font-size: 0.82rem; color: var(--mc-muted)">
-    <strong style="color: var(--mc-text)">POS rules</strong>
-    <span v-if="isManager"> — Manager mode: discounts and price edits enabled. Below-cost sales will show a warning.</span>
-    <span v-else> — Sales staff: sell at listed price only. No discounts or price changes. Ask a manager to override.</span>
-  </div>
-  <p class="err" v-if="err">{{ err }}</p>
+  <div class="pos-page">
+    <McPageHeader title="Point of sale">
+      <template #default>
+        <span v-if="posRules && isManager">Manager mode — discounts and price overrides allowed. Below-cost sales are flagged.</span>
+        <span v-else-if="posRules">Sales mode — list price only. Ask a manager for overrides.</span>
+      </template>
+    </McPageHeader>
 
-  <div class="row" style="margin-bottom: 1rem">
-    <button type="button" class="btn secondary" @click="scanOpen = !scanOpen">
-      {{ scanOpen ? 'Hide scanner' : 'Scan barcode' }}
-    </button>
-  </div>
-  <div v-if="scanOpen" class="card">
-    <BarcodeScanner :active="scanOpen" @decode="onScan" />
-  </div>
+    <McAlert v-if="err" variant="error">{{ err }}</McAlert>
 
-  <div class="field">
-    <label>Search products</label>
-    <input v-model="q" placeholder="SKU, barcode, name…" />
-  </div>
-  <div class="card">
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>SKU</th>
-          <th>Price</th>
-          <th>Stock</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="p in results" :key="p.id">
-          <td>{{ p.name }}</td>
-          <td>{{ p.sku }}</td>
-          <td>{{ p.sellPrice.toFixed(2) }}</td>
-          <td>{{ p.qtyOnHand }}</td>
-          <td><button type="button" class="btn secondary" @click="addToCart(p)">Add</button></td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
+    <div class="pos-grid">
+      <div class="pos-col pos-col--search">
+        <McCard title="Find products">
+          <div class="pos-scan-row">
+            <McButton variant="secondary" type="button" @click="scanOpen = !scanOpen">
+              {{ scanOpen ? 'Hide scanner' : 'Scan barcode' }}
+            </McButton>
+          </div>
+          <div v-if="scanOpen" class="pos-scanner-wrap">
+            <BarcodeScanner :active="scanOpen" @decode="onScan" />
+          </div>
+          <McField label="Search" for-id="pos-search">
+            <input
+              id="pos-search"
+              v-model="q"
+              type="search"
+              autocomplete="off"
+              placeholder="SKU, barcode, or name…"
+              class="pos-search-input"
+            />
+          </McField>
 
-  <h2>Cart</h2>
-  <div class="card">
-    <table>
-      <thead>
-        <tr>
-          <th>Item</th>
-          <th>Qty</th>
-          <th v-if="isManager">Price</th>
-          <th v-else>Price</th>
-          <th v-if="isManager">Line disc</th>
-          <th>Line total</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="l in cart" :key="l.product.id">
-          <td>{{ l.product.name }}</td>
-          <td>
-            <input type="number" v-model.number="l.qty" min="1" :max="l.product.qtyOnHand" style="width: 4rem" />
-          </td>
-          <td v-if="isManager">
-            <input type="number" v-model.number="l.unitPrice" step="0.01" style="width: 5rem" />
-          </td>
-          <td v-else>{{ l.unitPrice.toFixed(2) }}</td>
-          <td v-if="isManager">
-            <input type="number" v-model.number="l.lineDiscount" step="0.01" min="0" style="width: 5rem" />
-          </td>
-          <td>{{ Math.max(0, l.unitPrice * l.qty - l.lineDiscount).toFixed(2) }}</td>
-        </tr>
-      </tbody>
-    </table>
-    <p>
-      Subtotal: <strong>R{{ subTotal.toFixed(2) }}</strong>
-      <template v-if="isManager && discountTotal > 0"> — after order discount: <strong>R{{ grandPreview.toFixed(2) }}</strong></template>
-    </p>
-    <p v-if="belowCostWarning" style="color: #ef5350; font-weight: 600">
-      ⚠ {{ belowCostWarning }}
-    </p>
-  </div>
+          <McSkeleton v-if="searchLoading" :lines="4" />
 
-  <div class="card">
-    <div class="field">
-      <label>Customer name</label>
-      <input v-model="customerName" />
+          <McEmptyState
+            v-else-if="searchEmpty"
+            title="Search to add items"
+            hint="Type a SKU, barcode, or part of the product name. Use the scanner for faster entry at the counter."
+          />
+
+          <McEmptyState v-else-if="searchNoHits" title="No matches" hint="Try another keyword or check the barcode." />
+
+          <ul v-else class="pos-results">
+            <li v-for="p in results" :key="p.id" class="pos-result">
+              <div class="pos-result__main">
+                <p class="pos-result__name">{{ p.name }}</p>
+                <p class="pos-result__meta">
+                  <span>{{ p.sku }}</span>
+                  <span v-if="p.barcode">· {{ p.barcode }}</span>
+                </p>
+              </div>
+              <div class="pos-result__side">
+                <span class="pos-result__price">{{ formatZAR(p.sellPrice) }}</span>
+                <span class="pos-result__stock" :class="{ 'pos-result__stock--low': p.qtyOnHand <= 3 }">
+                  Stock {{ p.qtyOnHand }}
+                </span>
+                <McButton
+                  variant="primary"
+                  type="button"
+                  :disabled="p.qtyOnHand < 1"
+                  @click="addToCart(p)"
+                >
+                  Add
+                </McButton>
+              </div>
+            </li>
+          </ul>
+        </McCard>
+      </div>
+
+      <div class="pos-col pos-col--cart">
+        <McCard title="Cart">
+          <McEmptyState
+            v-if="!cart.length"
+            title="Cart is empty"
+            hint="Add products from the search results."
+          />
+          <div v-else class="pos-cart-table-wrap">
+            <table class="pos-cart-table">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Qty</th>
+                  <th>Price</th>
+                  <th v-if="isManager">Disc</th>
+                  <th>Total</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="l in cart" :key="l.product.id">
+                  <td class="pos-cart-name">{{ l.product.name }}</td>
+                  <td>
+                    <div class="pos-stepper">
+                      <button type="button" class="pos-stepper__btn" aria-label="Decrease" @click="bumpQty(l, -1)">
+                        −
+                      </button>
+                      <span class="pos-stepper__val">{{ l.qty }}</span>
+                      <button type="button" class="pos-stepper__btn" aria-label="Increase" @click="bumpQty(l, 1)">
+                        +
+                      </button>
+                    </div>
+                  </td>
+                  <td>
+                    <input
+                      v-if="isManager"
+                      v-model.number="l.unitPrice"
+                      type="number"
+                      class="pos-cart-input"
+                      step="0.01"
+                      min="0"
+                    />
+                    <span v-else>{{ formatZAR(l.unitPrice) }}</span>
+                  </td>
+                  <td v-if="isManager">
+                    <input v-model.number="l.lineDiscount" type="number" class="pos-cart-input" step="0.01" min="0" />
+                  </td>
+                  <td class="pos-cart-line-total">{{ formatZAR(Math.max(0, l.unitPrice * l.qty - l.lineDiscount)) }}</td>
+                  <td>
+                    <McButton variant="ghost" type="button" @click="removeLine(l)">Remove</McButton>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </McCard>
+
+        <McCard title="Customer &amp; payment">
+          <div class="pos-customer-grid">
+            <McField label="Customer name" for-id="cust-name">
+              <input id="cust-name" v-model="customerName" type="text" autocomplete="name" />
+            </McField>
+            <McField label="Email (receipt link)" for-id="cust-email">
+              <input id="cust-email" v-model="customerEmail" type="email" autocomplete="email" />
+            </McField>
+            <McField label="Customer type" for-id="cust-type" hint="Optional">
+              <input id="cust-type" v-model="customerType" placeholder="e.g. ENT" />
+            </McField>
+            <McField label="Payment" for-id="pay-meth">
+              <select id="pay-meth" v-model="paymentMethod">
+                <option>Cash</option>
+                <option>Card</option>
+                <option>Bank</option>
+              </select>
+            </McField>
+            <McField v-if="isManager" label="Order discount (R)" for-id="order-disc">
+              <input id="order-disc" v-model.number="discountTotal" type="number" step="0.01" min="0" />
+            </McField>
+          </div>
+          <label class="pos-check">
+            <input v-model="sendEmail" type="checkbox" />
+            Email invoice link
+          </label>
+        </McCard>
+
+        <div class="pos-sticky-foot">
+          <div class="pos-totals">
+            <div class="pos-totals__row">
+              <span>Subtotal</span>
+              <strong>{{ formatZAR(subTotal) }}</strong>
+            </div>
+            <div v-if="isManager && discountTotal > 0" class="pos-totals__row pos-totals__row--muted">
+              <span>After order discount</span>
+              <strong>{{ formatZAR(grandPreview) }}</strong>
+            </div>
+            <div class="pos-totals__row pos-totals__grand">
+              <span>Total due</span>
+              <strong>{{ formatZAR(grandPreview) }}</strong>
+            </div>
+          </div>
+          <McAlert v-if="belowCostWarning" variant="warning">{{ belowCostWarning }}</McAlert>
+          <McButton
+            variant="primary"
+            type="button"
+            block
+            :disabled="busy || !cart.length"
+            class="pos-checkout-btn"
+            @click="requestCheckout"
+          >
+            <McSpinner v-if="busy" />
+            <span v-else>Complete sale</span>
+          </McButton>
+        </div>
+      </div>
     </div>
-    <div class="field">
-      <label>Customer email (for receipt link)</label>
-      <input v-model="customerEmail" type="email" />
-    </div>
-    <div class="field">
-      <label>Customer type (optional)</label>
-      <input v-model="customerType" placeholder="e.g. ENT" />
-    </div>
-    <div class="field">
-      <label>Payment</label>
-      <select v-model="paymentMethod">
-        <option>Cash</option>
-        <option>Card</option>
-        <option>Bank</option>
-      </select>
-    </div>
-    <div v-if="isManager" class="field">
-      <label>Order discount (R)</label>
-      <input type="number" v-model.number="discountTotal" step="0.01" min="0" />
-    </div>
-    <label><input type="checkbox" v-model="sendEmail" /> Email invoice link</label>
-    <div style="margin-top: 1rem">
-      <button type="button" class="btn" :disabled="busy || !cart.length" @click="checkout">Complete sale</button>
-    </div>
+
+    <McModal v-model="showBelowCostModal" title="Below cost">
+      <p>{{ belowCostWarning }}</p>
+      <p style="margin-bottom: 0; color: #5c5a56; font-size: 0.9rem">Continue only if you intend to approve this sale.</p>
+      <template #footer>
+        <McButton variant="secondary" type="button" @click="showBelowCostModal = false">Cancel</McButton>
+        <McButton variant="primary" type="button" :disabled="busy" @click="doCheckout">Proceed</McButton>
+      </template>
+    </McModal>
   </div>
 </template>
+
+<style scoped>
+.pos-page {
+  /* wrapper for scoped table overrides inside cards */
+}
+
+.pos-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (min-width: 960px) {
+  .pos-grid {
+    grid-template-columns: 1fr min(420px, 38vw);
+  }
+}
+
+.pos-scan-row {
+  margin-bottom: 1rem;
+}
+
+.pos-scanner-wrap {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: #fafaf8;
+  border-radius: 10px;
+  border: 1px solid #eceae6;
+}
+
+.pos-search-input {
+  width: 100%;
+  min-height: 48px;
+  font-size: 1.05rem;
+}
+
+.pos-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pos-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid #eceae6;
+}
+
+.pos-result:last-child {
+  border-bottom: none;
+}
+
+.pos-result__name {
+  margin: 0 0 0.2rem;
+  font-weight: 600;
+  color: #1a1a1c;
+  font-size: 1rem;
+}
+
+.pos-result__meta {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #7a7874;
+}
+
+.pos-result__side {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.pos-result__price {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: #1a1a1c;
+}
+
+.pos-result__stock {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #2e7d32;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pos-result__stock--low {
+  color: #e65100;
+}
+
+.pos-cart-table-wrap {
+  overflow-x: auto;
+}
+
+.pos-cart-table {
+  width: 100%;
+  font-size: 0.9rem;
+}
+
+.pos-cart-table th,
+.pos-cart-table td {
+  padding: 0.65rem 0.5rem;
+  vertical-align: middle;
+}
+
+.pos-cart-name {
+  max-width: 12rem;
+  font-weight: 500;
+}
+
+.pos-stepper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #d4d2cd;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.pos-stepper__btn {
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  background: #f4f3f0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #2a2a2d;
+  cursor: pointer;
+}
+
+.pos-stepper__btn:hover {
+  background: #eceae6;
+}
+
+.pos-stepper__val {
+  min-width: 2rem;
+  text-align: center;
+  font-weight: 700;
+}
+
+.pos-cart-input {
+  width: 5.5rem;
+  min-height: 44px;
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid #d4d2cd;
+}
+
+.pos-cart-line-total {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pos-customer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0 1rem;
+}
+
+.pos-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.pos-check input {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.pos-sticky-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin-top: 0.5rem;
+  padding: 1rem 0 0.25rem;
+  background: linear-gradient(180deg, transparent 0%, #e8e6e1 18%);
+}
+
+.pos-totals {
+  background: #fff;
+  border: 1px solid #e2e0db;
+  border-radius: 12px;
+  padding: 1rem 1.15rem;
+  margin-bottom: 0.75rem;
+  box-shadow: 0 4px 20px rgba(26, 26, 28, 0.08);
+}
+
+.pos-totals__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.25rem 0;
+  font-size: 0.95rem;
+}
+
+.pos-totals__row--muted {
+  color: #7a7874;
+  font-size: 0.88rem;
+}
+
+.pos-totals__grand {
+  margin-top: 0.5rem;
+  padding-top: 0.65rem;
+  border-top: 2px solid #f47a20;
+  font-size: 1.15rem;
+}
+
+.pos-checkout-btn {
+  min-height: 52px;
+  font-size: 0.95rem;
+}
+</style>
