@@ -27,7 +27,8 @@ const page = ref<Page | null>(null)
 const busy = ref(false)
 const err = ref<string | null>(null)
 
-const canExport = computed(() => auth.hasRole('Admin', 'Owner', 'Dev'))
+const canManage = computed(() => auth.hasRole('Admin', 'Owner', 'Dev'))
+const canExport = canManage
 const totalPages = computed(() => (page.value ? Math.ceil(page.value.total / page.value.take) : 0))
 const pageLabel = computed(() => {
   if (!page.value) return ''
@@ -90,6 +91,93 @@ async function exportCsv() {
   URL.revokeObjectURL(url)
 }
 
+const showForm = ref(false)
+const editId = ref<string | null>(null)
+const form = ref({
+  sku: '',
+  barcode: '',
+  name: '',
+  category: '',
+  cost: 0,
+  sellPrice: 0,
+  qtyOnHand: 0
+})
+const formBusy = ref(false)
+const formErr = ref<string | null>(null)
+const formOk = ref<string | null>(null)
+
+function openAdd() {
+  editId.value = null
+  form.value = { sku: '', barcode: '', name: '', category: '', cost: 0, sellPrice: 0, qtyOnHand: 0 }
+  formErr.value = null
+  formOk.value = null
+  showForm.value = true
+}
+
+function openEdit(p: Product) {
+  editId.value = p.id
+  form.value = {
+    sku: p.sku,
+    barcode: p.barcode ?? '',
+    name: p.name,
+    category: p.category ?? '',
+    cost: p.cost ?? 0,
+    sellPrice: p.sellPrice,
+    qtyOnHand: p.qtyOnHand
+  }
+  formErr.value = null
+  formOk.value = null
+  showForm.value = true
+}
+
+async function saveProduct() {
+  formErr.value = null
+  formOk.value = null
+  formBusy.value = true
+  try {
+    if (editId.value) {
+      await http.put(`/api/products/${editId.value}`, {
+        sku: form.value.sku,
+        barcode: form.value.barcode || null,
+        name: form.value.name,
+        category: form.value.category || null,
+        cost: form.value.cost,
+        sellPrice: form.value.sellPrice,
+        qtyOnHand: form.value.qtyOnHand
+      })
+      formOk.value = 'Product updated'
+    } else {
+      await http.post('/api/products', {
+        sku: form.value.sku,
+        barcode: form.value.barcode || null,
+        name: form.value.name,
+        category: form.value.category || null,
+        cost: form.value.cost,
+        sellPrice: form.value.sellPrice,
+        qtyOnHand: form.value.qtyOnHand
+      })
+      formOk.value = 'Product created'
+    }
+    showForm.value = false
+    await load()
+  } catch (e: unknown) {
+    const ax = e as { response?: { data?: { error?: string } } }
+    formErr.value = ax.response?.data?.error ?? 'Save failed'
+  } finally {
+    formBusy.value = false
+  }
+}
+
+async function toggleActive(p: Product) {
+  err.value = null
+  try {
+    await http.put(`/api/products/${p.id}`, { active: !p.active })
+    await load()
+  } catch {
+    err.value = 'Update failed'
+  }
+}
+
 onMounted(() => void load())
 </script>
 
@@ -132,7 +220,52 @@ onMounted(() => void load())
         Next
       </button>
       <span style="color: var(--mc-muted)">{{ pageLabel }}</span>
-      <button v-if="canExport" type="button" class="btn" style="margin-left: auto" @click="exportCsv">Download CSV (all matching)</button>
+      <button v-if="canManage" type="button" class="btn" style="margin-left: auto" @click="openAdd">Add product</button>
+      <button v-if="canExport" type="button" class="btn secondary" @click="exportCsv">CSV</button>
+    </div>
+  </div>
+
+  <div v-if="showForm" class="card">
+    <h2>{{ editId ? 'Edit product' : 'Add product' }}</h2>
+    <p class="err" v-if="formErr">{{ formErr }}</p>
+    <p v-if="formOk" style="color: #a5d6a7">{{ formOk }}</p>
+    <div class="row" style="flex-wrap: wrap; gap: 0.75rem">
+      <div class="field" style="flex: 1; min-width: 120px">
+        <label>SKU</label>
+        <input v-model="form.sku" required />
+      </div>
+      <div class="field" style="flex: 1; min-width: 120px">
+        <label>Barcode</label>
+        <input v-model="form.barcode" />
+      </div>
+      <div class="field" style="flex: 2; min-width: 200px">
+        <label>Name</label>
+        <input v-model="form.name" required />
+      </div>
+      <div class="field" style="flex: 1; min-width: 120px">
+        <label>Category</label>
+        <input v-model="form.category" />
+      </div>
+    </div>
+    <div class="row" style="flex-wrap: wrap; gap: 0.75rem">
+      <div class="field" style="flex: 1; min-width: 100px">
+        <label>Cost (R)</label>
+        <input type="number" v-model.number="form.cost" step="0.01" min="0" />
+      </div>
+      <div class="field" style="flex: 1; min-width: 100px">
+        <label>Sell price (R)</label>
+        <input type="number" v-model.number="form.sellPrice" step="0.01" min="0" />
+      </div>
+      <div class="field" style="flex: 1; min-width: 100px">
+        <label>Qty on hand</label>
+        <input type="number" v-model.number="form.qtyOnHand" step="1" min="0" />
+      </div>
+    </div>
+    <div class="row" style="gap: 0.5rem; margin-top: 0.5rem">
+      <button type="button" class="btn" :disabled="formBusy" @click="saveProduct">
+        {{ editId ? 'Update' : 'Create' }}
+      </button>
+      <button type="button" class="btn secondary" @click="showForm = false">Cancel</button>
     </div>
   </div>
 
@@ -149,6 +282,7 @@ onMounted(() => void load())
           <th>Sell</th>
           <th>Qty</th>
           <th>Active</th>
+          <th v-if="canManage"></th>
         </tr>
       </thead>
       <tbody>
@@ -162,6 +296,10 @@ onMounted(() => void load())
           <td>{{ p.sellPrice.toFixed(2) }}</td>
           <td>{{ p.qtyOnHand }}</td>
           <td>{{ p.active ? 'Yes' : 'No' }}</td>
+          <td v-if="canManage" class="row" style="gap: 0.25rem">
+            <button type="button" class="btn secondary" style="padding: 0.2rem 0.5rem; font-size: 0.8rem" @click="openEdit(p)">Edit</button>
+            <button type="button" class="btn secondary" style="padding: 0.2rem 0.5rem; font-size: 0.8rem" @click="toggleActive(p)">{{ p.active ? 'Deactivate' : 'Activate' }}</button>
+          </td>
         </tr>
       </tbody>
     </table>

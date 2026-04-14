@@ -143,6 +143,74 @@ public class ProductsController : ControllerBase
         return p == null ? NotFound() : Map(p, hideCost);
     }
 
+    [HttpPost]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Owner},{Roles.Dev}")]
+    public async Task<ActionResult<ProductDto>> Create([FromBody] CreateProductRequest req, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(req.Sku))
+            return BadRequest(new { error = "SKU is required." });
+        if (string.IsNullOrWhiteSpace(req.Name))
+            return BadRequest(new { error = "Name is required." });
+        if (await _db.Products.AnyAsync(p => p.Sku == req.Sku.Trim(), ct))
+            return BadRequest(new { error = $"SKU \"{req.Sku.Trim()}\" already exists." });
+
+        var product = new Product
+        {
+            Id = Guid.NewGuid(),
+            Sku = req.Sku.Trim(),
+            Barcode = string.IsNullOrWhiteSpace(req.Barcode) ? null : req.Barcode.Trim(),
+            Name = req.Name.Trim(),
+            Description = string.IsNullOrWhiteSpace(req.Description) ? null : req.Description.Trim(),
+            Category = string.IsNullOrWhiteSpace(req.Category) ? null : req.Category.Trim(),
+            SupplierId = req.SupplierId,
+            Cost = req.Cost,
+            SellPrice = req.SellPrice,
+            QtyOnHand = req.QtyOnHand,
+            Active = true
+        };
+        _db.Products.Add(product);
+        await _db.SaveChangesAsync(ct);
+        return Map(product, false);
+    }
+
+    [HttpPut("{id:guid}")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Owner},{Roles.Dev}")]
+    public async Task<ActionResult<ProductDto>> Update(Guid id, [FromBody] UpdateProductRequest req, CancellationToken ct)
+    {
+        var p = await _db.Products.FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (p == null) return NotFound();
+
+        if (req.Sku != null)
+        {
+            var trimmed = req.Sku.Trim();
+            if (string.IsNullOrWhiteSpace(trimmed))
+                return BadRequest(new { error = "SKU cannot be empty." });
+            if (trimmed != p.Sku && await _db.Products.AnyAsync(x => x.Sku == trimmed && x.Id != id, ct))
+                return BadRequest(new { error = $"SKU \"{trimmed}\" already exists." });
+            p.Sku = trimmed;
+        }
+
+        if (req.Name != null)
+        {
+            if (string.IsNullOrWhiteSpace(req.Name))
+                return BadRequest(new { error = "Name cannot be empty." });
+            p.Name = req.Name.Trim();
+        }
+
+        if (req.Barcode != null) p.Barcode = string.IsNullOrWhiteSpace(req.Barcode) ? null : req.Barcode.Trim();
+        if (req.Description != null) p.Description = string.IsNullOrWhiteSpace(req.Description) ? null : req.Description.Trim();
+        if (req.Category != null) p.Category = string.IsNullOrWhiteSpace(req.Category) ? null : req.Category.Trim();
+        if (req.SupplierId.HasValue) p.SupplierId = req.SupplierId;
+        if (req.Cost.HasValue) p.Cost = req.Cost.Value;
+        if (req.SellPrice.HasValue) p.SellPrice = req.SellPrice.Value;
+        if (req.QtyOnHand.HasValue) p.QtyOnHand = req.QtyOnHand.Value;
+        if (req.Active.HasValue) p.Active = req.Active.Value;
+        p.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await _db.SaveChangesAsync(ct);
+        return Map(p, false);
+    }
+
     private async Task<bool> ShouldHideCostAsync(CancellationToken ct)
     {
         if (!User.IsInRole(Roles.Sales)) return false;
