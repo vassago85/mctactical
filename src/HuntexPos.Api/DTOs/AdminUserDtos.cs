@@ -18,14 +18,23 @@ public class CreateStaffUserRequest
     [Required, EmailAddress]
     public string Email { get; set; } = string.Empty;
 
-    [Required, MinLength(10)]
-    public string Password { get; set; } = string.Empty;
-
     public string? DisplayName { get; set; }
 
     /// <summary>Sales (cashiers), Admin (back office), or Owner (full access). Only Dev can assign Owner.</summary>
     [Required, AllowedValues("Sales", "Admin", "Owner")]
     public string Role { get; set; } = "Sales";
+}
+
+public class SetupPasswordRequest
+{
+    [Required, EmailAddress]
+    public string Email { get; set; } = string.Empty;
+
+    [Required]
+    public string Token { get; set; } = string.Empty;
+
+    [Required, MinLength(10)]
+    public string NewPassword { get; set; } = string.Empty;
 }
 
 public class SetUserLockoutRequest

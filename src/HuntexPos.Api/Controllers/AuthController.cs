@@ -63,4 +63,23 @@ public class AuthController : ControllerBase
         var roles = await _users.GetRolesAsync(user);
         return new { user.Id, user.Email, user.DisplayName, Roles = roles };
     }
+
+    [AllowAnonymous]
+    [HttpPost("setup-password")]
+    public async Task<IActionResult> SetupPassword([FromBody] DTOs.SetupPasswordRequest req, CancellationToken ct)
+    {
+        var user = await _users.FindByEmailAsync(req.Email);
+        if (user == null)
+            return BadRequest(new { error = "Invalid or expired setup link." });
+
+        var result = await _users.ResetPasswordAsync(user, req.Token, req.NewPassword);
+        if (!result.Succeeded)
+        {
+            var errors = result.Errors.Select(e => e.Description).ToList();
+            if (errors.Any(e => e.Contains("Invalid token", StringComparison.OrdinalIgnoreCase)))
+                return BadRequest(new { error = "This setup link has expired or was already used. Ask your admin to resend the invite." });
+            return BadRequest(new { errors });
+        }
+        return Ok(new { message = "Password set successfully. You can now log in." });
+    }
 }

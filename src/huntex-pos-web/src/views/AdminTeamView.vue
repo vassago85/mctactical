@@ -18,7 +18,6 @@ const ok = ref<string | null>(null)
 const busy = ref(false)
 
 const email = ref('')
-const password = ref('')
 const displayName = ref('')
 const role = ref<'Sales' | 'Admin' | 'Owner'>('Sales')
 
@@ -51,13 +50,11 @@ async function createUser() {
   try {
     await http.post('/api/admin/users', {
       email: email.value.trim(),
-      password: password.value,
       displayName: displayName.value.trim() || null,
       role: role.value
     })
-    ok.value = 'User created'
+    ok.value = 'User created — setup email sent'
     email.value = ''
-    password.value = ''
     displayName.value = ''
     role.value = 'Sales'
     await load()
@@ -78,6 +75,18 @@ async function toggleLock(u: UserRow) {
   } catch (e: unknown) {
     const ax = e as { response?: { data?: { error?: string } } }
     err.value = ax.response?.data?.error ?? 'Update failed'
+  }
+}
+
+async function resendInvite(u: UserRow) {
+  err.value = null
+  ok.value = null
+  try {
+    const { data } = await http.post(`/api/admin/users/${u.id}/resend-invite`)
+    ok.value = data.message || 'Invite resent'
+  } catch (e: unknown) {
+    const ax = e as { response?: { data?: { error?: string } } }
+    err.value = ax.response?.data?.error ?? 'Could not send invite'
   }
 }
 
@@ -111,12 +120,8 @@ async function applyReset() {
       <label>Email (login)</label>
       <input v-model="email" type="email" autocomplete="off" required />
     </div>
-    <div class="field">
-      <label>Password</label>
-      <input v-model="password" type="password" autocomplete="new-password" required minlength="10" />
-    </div>
     <p style="font-size: 0.8rem; color: var(--mc-muted)">
-      At least 10 characters with upper, lower, digit, and a symbol (2026 baseline).
+      The user will receive an email to set their own password.
     </p>
     <div class="field">
       <label>Display name</label>
@@ -155,6 +160,7 @@ async function applyReset() {
             <button type="button" class="btn secondary" @click="toggleLock(u)">
               {{ u.lockedOut ? 'Unlock' : 'Lock' }}
             </button>
+            <button type="button" class="btn secondary" @click="resendInvite(u)">Resend invite</button>
             <button type="button" class="btn secondary" @click="resetUserId = u.id">Set password…</button>
           </td>
         </tr>
