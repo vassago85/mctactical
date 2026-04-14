@@ -249,7 +249,7 @@ async function applyReset() {
 }
 
 .team-table-panel {
-  margin: 0 calc(-1 * var(--mc-app-pad-card, 1.35rem)) calc(-1 * var(--mc-app-pad-card, 1.35rem));
+  margin: 0 calc(-1 * var(--mc-app-pad-card, 1.5rem)) calc(-1 * var(--mc-app-pad-card, 1.5rem));
   border-top: 1px solid var(--mc-app-border-faint, #e0ded8);
   background: var(--mc-app-surface-2, #f7f6f3);
   border-radius: 0 0 var(--mc-app-radius-card, 12px) var(--mc-app-radius-card, 12px);

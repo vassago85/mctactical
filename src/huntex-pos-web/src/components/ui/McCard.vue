@@ -32,7 +32,7 @@ defineProps<{
   padding: 0;
 }
 .mc-card__head {
-  padding: 0.85rem var(--mc-app-pad-card, 1.35rem);
+  padding: 1rem var(--mc-app-pad-card, 1.5rem);
   border-bottom: 1px solid var(--mc-app-border-faint, #e0ded8);
   background: var(--mc-app-surface-2, #f7f6f3);
   border-radius: var(--mc-app-radius-card, 12px) var(--mc-app-radius-card, 12px) 0 0;
@@ -47,7 +47,7 @@ defineProps<{
   color: var(--mc-app-heading, #0a0a0c);
 }
 .mc-card__body {
-  padding: var(--mc-app-pad-card, 1.35rem);
+  padding: var(--mc-app-pad-card, 1.5rem);
   min-width: 0;
   overflow-x: auto;
 }
