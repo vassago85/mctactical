@@ -16,6 +16,7 @@ type Product = {
   sellPrice: number
   qtyOnHand: number
   active: boolean
+  warning?: string | null
 }
 
 type Page = { total: number; skip: number; take: number; items: Product[] }
@@ -315,7 +316,10 @@ onMounted(() => void load())
           <td>{{ p.category }}</td>
           <td>{{ p.supplierName }}</td>
           <td>{{ p.cost != null ? p.cost.toFixed(2) : '—' }}</td>
-          <td>{{ p.sellPrice.toFixed(2) }}</td>
+          <td :style="p.warning ? 'color: #ef5350; font-weight: 600' : ''">
+            {{ p.sellPrice.toFixed(2) }}
+            <span v-if="p.warning" :title="p.warning" style="cursor: help"> ⚠</span>
+          </td>
           <td>{{ p.qtyOnHand }}</td>
           <td>{{ p.active ? 'Yes' : 'No' }}</td>
           <td v-if="canManage" class="row" style="gap: 0.25rem">

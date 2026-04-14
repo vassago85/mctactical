@@ -16,6 +16,8 @@ public class ProductDto
     public decimal SellPrice { get; set; }
     public int QtyOnHand { get; set; }
     public bool Active { get; set; }
+    /// <summary>Non-null if sell price is below distributor cost (ex-VAT + 15%).</summary>
+    public string? Warning { get; set; }
 }
 
 public class ProductSearchQuery

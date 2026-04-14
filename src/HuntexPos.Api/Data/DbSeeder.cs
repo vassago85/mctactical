@@ -37,6 +37,8 @@ public static class DbSeeder
                 DefaultMarginPercent = 50,
                 DefaultFixedMarkup = 0,
                 UseMarginPercent = true,
+                PricingMode = "normal",
+                RoundSellToNearest = 10,
                 DefaultTaxRate = 0,
                 HideCostForSalesRole = true
             });
@@ -88,16 +90,14 @@ public static class DbSeeder
         }
     }
 
-    /// <summary>Add RoundSellToNearest column to PricingSettings if missing (older DBs).</summary>
+    /// <summary>Add RoundSellToNearest and PricingMode columns to PricingSettings if missing (older DBs).</summary>
     private static async Task EnsurePricingColumnsAsync(HuntexDbContext db, CancellationToken ct)
     {
         if (!db.Database.IsSqlite()) return;
-        try
-        {
-            await db.Database.ExecuteSqlRawAsync(
-                """ALTER TABLE "PricingSettings" ADD COLUMN "RoundSellToNearest" TEXT NOT NULL DEFAULT '0';""", ct);
-        }
-        catch { /* column already exists */ }
+        try { await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "PricingSettings" ADD COLUMN "RoundSellToNearest" TEXT NOT NULL DEFAULT '10';""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "PricingSettings" ADD COLUMN "PricingMode" TEXT NOT NULL DEFAULT 'normal';""", ct); } catch { }
     }
 
     /// <summary>Add Manufacturer and ItemType columns to Products if missing (older DBs).</summary>

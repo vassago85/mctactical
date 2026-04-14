@@ -6,29 +6,39 @@ public static class PricingCalculator
 {
     public static decimal Round2(decimal v) => Math.Round(v, 2, MidpointRounding.AwayFromZero);
 
-    /// <summary>
-    /// Round <paramref name="price"/> to the nearest <paramref name="nearest"/> (e.g. 10 → R10).
-    /// Uses midpoint-away-from-zero (R115 → R120). Returns unchanged if nearest &lt;= 0.
-    /// </summary>
-    public static decimal RoundToNearest(decimal price, decimal nearest)
-    {
-        if (nearest <= 0) return price;
-        return Math.Ceiling(price / nearest) * nearest;
-    }
+    /// <summary>Round up to the nearest R10 (always).</summary>
+    public static decimal RoundToR10(decimal price) =>
+        price <= 0 ? 0 : Math.Ceiling(price / 10m) * 10m;
 
     /// <summary>
-    /// Default list price from wholesale <paramref name="cost"/>.
-    /// Margin mode: sell = cost × (1 + margin/100). Then rounded to nearest R<c>settings.RoundSellToNearest</c> if set.
+    /// Compute sell price from ex-VAT wholesale cost.
+    /// Normal:  cost × 1.5  → round up to nearest R10.
+    /// Huntex:  cost × 1.5 / 1.1  → round up to nearest R10.
     /// </summary>
     public static decimal ComputeSellPrice(decimal cost, PricingSettings settings)
     {
-        var raw = settings.UseMarginPercent
+        var normalSell = settings.UseMarginPercent
             ? Round2(cost * (1 + settings.DefaultMarginPercent / 100m))
             : Round2(cost + settings.DefaultFixedMarkup);
-        return RoundToNearest(raw, settings.RoundSellToNearest);
+
+        var sell = IsHuntex(settings)
+            ? Round2(normalSell / 1.1m)
+            : normalSell;
+
+        return RoundToR10(sell);
     }
 
-    /// <summary>Apply the configured rounding to an already-known sell price (e.g. from an import sheet).</summary>
+    /// <summary>Round an already-known sell price up to nearest R10.</summary>
     public static decimal ApplyRounding(decimal sellPrice, PricingSettings settings)
-        => RoundToNearest(sellPrice, settings.RoundSellToNearest);
+        => RoundToR10(sellPrice);
+
+    /// <summary>Distributor cost floor = ex-VAT cost × 1.15. Sell below this means selling at a loss.</summary>
+    public static decimal DistributorFloor(decimal cost) => Round2(cost * 1.15m);
+
+    /// <summary>True if sell price is below the distributor cost (cost + 15% VAT).</summary>
+    public static bool IsBelowDistributorCost(decimal sellPrice, decimal cost) =>
+        sellPrice > 0 && cost > 0 && sellPrice < DistributorFloor(cost);
+
+    public static bool IsHuntex(PricingSettings settings) =>
+        string.Equals(settings.PricingMode, "huntex", StringComparison.OrdinalIgnoreCase);
 }

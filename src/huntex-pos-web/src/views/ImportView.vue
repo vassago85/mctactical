@@ -14,6 +14,7 @@ type PreviewRow = {
   sellPrice: number
   qtyOnHand: number
   error?: string | null
+  warning?: string | null
 }
 
 const suppliers = ref<Supplier[]>([])
@@ -217,7 +218,10 @@ async function addSupplier() {
           <td>{{ r.manufacturer }}</td>
           <td>{{ r.itemType }}</td>
           <td>{{ r.cost }}</td>
-          <td>{{ r.sellPrice }}</td>
+          <td :style="r.warning ? 'color: #ef5350; font-weight: 600' : ''">
+            {{ r.sellPrice }}
+            <span v-if="r.warning" :title="r.warning" style="cursor: help"> ⚠</span>
+          </td>
           <td>{{ r.qtyOnHand }}</td>
           <td>{{ r.error }}</td>
         </tr>
@@ -259,7 +263,10 @@ async function addSupplier() {
           <td>{{ r.manufacturer }}</td>
           <td>{{ r.itemType }}</td>
           <td>{{ r.cost }}</td>
-          <td>{{ r.sellPrice }}</td>
+          <td :style="r.warning ? 'color: #ef5350; font-weight: 600' : ''">
+            {{ r.sellPrice }}
+            <span v-if="r.warning" :title="r.warning" style="cursor: help"> ⚠</span>
+          </td>
           <td>{{ r.qtyOnHand }}</td>
           <td>{{ r.error }}</td>
         </tr>

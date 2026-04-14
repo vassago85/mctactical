@@ -27,6 +27,8 @@ public class ImportPreviewRowDto
     public decimal SellPrice { get; set; }
     public int QtyOnHand { get; set; }
     public string? Error { get; set; }
+    /// <summary>Non-null if sell price is below distributor cost (ex-VAT + 15%).</summary>
+    public string? Warning { get; set; }
 }
 
 public class HuntexSheetImportRequest

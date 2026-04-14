@@ -1,25 +1,18 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { http } from '@/api/http'
 
 const dto = ref({
   defaultMarginPercent: 50,
   defaultFixedMarkup: 0,
   useMarginPercent: true,
-  roundSellToNearest: 0,
+  pricingMode: 'normal',
   hideCostForSalesRole: true
 })
 const err = ref<string | null>(null)
 const ok = ref<string | null>(null)
-const reroundBusy = ref(false)
-const reroundMsg = ref<string | null>(null)
-
-const pricingMode = computed({
-  get: () => (dto.value.roundSellToNearest >= 10 ? 'huntex' : 'normal'),
-  set: (v: string) => {
-    dto.value.roundSellToNearest = v === 'huntex' ? 10 : 0
-  }
-})
+const recalcBusy = ref(false)
+const recalcMsg = ref<string | null>(null)
 
 async function load() {
   const { data } = await http.get('/api/settings/pricing')
@@ -39,17 +32,22 @@ async function save() {
   }
 }
 
-async function reroundAll() {
-  reroundBusy.value = true
-  reroundMsg.value = null
+async function recalculateAll() {
+  if (!confirm('Recalculate ALL active product sell prices from cost using current settings? This cannot be undone.'))
+    return
+  recalcBusy.value = true
+  recalcMsg.value = null
   try {
-    const { data } = await http.post('/api/settings/pricing/reround')
-    reroundMsg.value = `Done — ${data.updated} of ${data.total} products re-rounded.`
+    const { data } = await http.post('/api/settings/pricing/recalculate')
+    let msg = `Done — ${data.updated} of ${data.total} products recalculated.`
+    if (data.belowDistributorCost > 0)
+      msg += ` ⚠ ${data.belowDistributorCost} products below distributor cost.`
+    recalcMsg.value = msg
   } catch (e: unknown) {
     const ax = e as { response?: { data?: { error?: string } } }
-    reroundMsg.value = ax.response?.data?.error ?? 'Re-round failed'
+    recalcMsg.value = ax.response?.data?.error ?? 'Recalculate failed'
   } finally {
-    reroundBusy.value = false
+    recalcBusy.value = false
   }
 }
 </script>
@@ -63,24 +61,17 @@ async function reroundAll() {
       <label style="font-weight: 600; font-size: 1rem">Pricing mode</label>
       <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.35rem">
         <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer">
-          <input type="radio" value="normal" v-model="pricingMode" />
-          <span><strong>Normal retail</strong> — sell prices as-is (no rounding)</span>
+          <input type="radio" value="normal" v-model="dto.pricingMode" />
+          <span><strong>Normal retail</strong> — cost × 1.5, rounded up to nearest R10</span>
         </label>
         <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer">
-          <input type="radio" value="huntex" v-model="pricingMode" />
-          <span><strong>Huntex pricing</strong> — round all sell prices up to the nearest R10</span>
+          <input type="radio" value="huntex" v-model="dto.pricingMode" />
+          <span><strong>Huntex pricing</strong> — normal sell ÷ 1.1, rounded up to nearest R10</span>
         </label>
       </div>
-      <p style="color: var(--mc-muted); font-size: 0.85rem; margin: 0.35rem 0 0">
-        Huntex pricing rounds sell prices on import, new products, and price edits.
-      </p>
-    </div>
-    <div v-if="pricingMode === 'huntex'" class="field" style="margin-top: 0.5rem">
-      <button type="button" class="btn secondary" :disabled="reroundBusy" @click="reroundAll">
-        Re-round all existing products to nearest R10
-      </button>
-      <p v-if="reroundMsg" style="color: var(--mc-muted); font-size: 0.85rem; margin: 0.35rem 0 0">
-        {{ reroundMsg }}
+      <p style="color: var(--mc-muted); font-size: 0.85rem; margin: 0.5rem 0 0">
+        All sell prices are always rounded up to the nearest R10.<br />
+        A warning appears if the sell price is below the distributor cost (ex-VAT + 15%).
       </p>
     </div>
     <hr style="border-color: var(--mc-border); margin: 1rem 0" />
@@ -90,15 +81,22 @@ async function reroundAll() {
       <input type="number" v-model.number="dto.defaultMarginPercent" step="0.01" />
     </div>
     <div class="field">
-      <label>Default fixed markup</label>
+      <label>Default fixed markup (R)</label>
       <input type="number" v-model.number="dto.defaultFixedMarkup" step="0.01" />
     </div>
+    <hr style="border-color: var(--mc-border); margin: 1rem 0" />
     <p style="color: var(--mc-muted); font-size: 0.88rem; margin: 0">
       Invoices do not add VAT — MC Tactical is not VAT registered.
     </p>
     <label><input type="checkbox" v-model="dto.hideCostForSalesRole" /> Hide cost for Sales role</label>
-    <div style="margin-top: 1rem">
+    <div style="margin-top: 1rem; display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap">
       <button type="button" class="btn" @click="save">Save</button>
+      <button type="button" class="btn secondary" :disabled="recalcBusy" @click="recalculateAll">
+        Recalculate all product prices
+      </button>
     </div>
+    <p v-if="recalcMsg" style="color: var(--mc-muted); font-size: 0.85rem; margin: 0.5rem 0 0">
+      {{ recalcMsg }}
+    </p>
   </div>
 </template>

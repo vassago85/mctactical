@@ -252,6 +252,9 @@ public class ProductsController : ControllerBase
         Cost = hideCost ? null : p.Cost,
         SellPrice = p.SellPrice,
         QtyOnHand = p.QtyOnHand,
-        Active = p.Active
+        Active = p.Active,
+        Warning = !hideCost && PricingCalculator.IsBelowDistributorCost(p.SellPrice, p.Cost)
+            ? $"Sell R{p.SellPrice:0} < distributor R{PricingCalculator.DistributorFloor(p.Cost):0.00}"
+            : null
     };
 }

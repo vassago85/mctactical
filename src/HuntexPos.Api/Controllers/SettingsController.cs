@@ -62,7 +62,7 @@ public class SettingsController : ControllerBase
             DefaultMarginPercent = s.DefaultMarginPercent,
             DefaultFixedMarkup = s.DefaultFixedMarkup,
             UseMarginPercent = s.UseMarginPercent,
-            RoundSellToNearest = s.RoundSellToNearest,
+            PricingMode = s.PricingMode ?? "normal",
             HideCostForSalesRole = s.HideCostForSalesRole
         };
     }
@@ -80,7 +80,9 @@ public class SettingsController : ControllerBase
         s.DefaultMarginPercent = dto.DefaultMarginPercent;
         s.DefaultFixedMarkup = dto.DefaultFixedMarkup;
         s.UseMarginPercent = dto.UseMarginPercent;
-        s.RoundSellToNearest = dto.RoundSellToNearest >= 0 ? dto.RoundSellToNearest : 0;
+        var mode = (dto.PricingMode ?? "normal").Trim().ToLowerInvariant();
+        s.PricingMode = mode == "huntex" ? "huntex" : "normal";
+        s.RoundSellToNearest = 10;
         s.DefaultTaxRate = 0m;
         s.HideCostForSalesRole = dto.HideCostForSalesRole;
         s.UpdatedAt = DateTimeOffset.UtcNow;
@@ -88,29 +90,29 @@ public class SettingsController : ControllerBase
         return dto;
     }
 
-    /// <summary>Re-round all existing product sell prices using current pricing settings.</summary>
-    [HttpPost("pricing/reround")]
+    /// <summary>Recalculate all active product sell prices from cost using current pricing settings.</summary>
+    [HttpPost("pricing/recalculate")]
     [Authorize(Roles = $"{Roles.Owner},{Roles.Admin},{Roles.Dev}")]
-    public async Task<IActionResult> ReroundAllProducts(CancellationToken ct)
+    public async Task<IActionResult> RecalculateAllProducts(CancellationToken ct)
     {
         var settings = await _db.PricingSettings.AsNoTracking().FirstOrDefaultAsync(ct) ?? new PricingSettings();
-        if (settings.RoundSellToNearest <= 0)
-            return BadRequest(new { error = "No rounding is configured." });
-
         var products = await _db.Products.Where(p => p.Active).ToListAsync(ct);
         var updated = 0;
+        var warnings = 0;
         foreach (var p in products)
         {
-            var rounded = PricingCalculator.ApplyRounding(p.SellPrice, settings);
-            if (rounded != p.SellPrice)
+            var newSell = PricingCalculator.ComputeSellPrice(p.Cost, settings);
+            if (newSell != p.SellPrice)
             {
-                p.SellPrice = rounded;
+                p.SellPrice = newSell;
                 p.UpdatedAt = DateTimeOffset.UtcNow;
                 updated++;
             }
+            if (PricingCalculator.IsBelowDistributorCost(p.SellPrice, p.Cost))
+                warnings++;
         }
         await _db.SaveChangesAsync(ct);
-        return Ok(new { updated, total = products.Count });
+        return Ok(new { updated, total = products.Count, belowDistributorCost = warnings });
     }
 
     [HttpGet("mail")]

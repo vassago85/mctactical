@@ -384,6 +384,10 @@ public class ImportService
 
         var qty = (int)ParseDecimal(get("qty"), 0);
 
+        string? warning = PricingCalculator.IsBelowDistributorCost(sellPrice, cost)
+            ? $"Sell R{sellPrice:0} < distributor R{PricingCalculator.DistributorFloor(cost):0.00}"
+            : null;
+
         return new ImportPreviewRowDto
         {
             RowIndex = rowIndex,
@@ -393,7 +397,8 @@ public class ImportService
             Category = string.IsNullOrWhiteSpace(category) ? null : category.Trim(),
             Cost = cost,
             SellPrice = sellPrice,
-            QtyOnHand = qty
+            QtyOnHand = qty,
+            Warning = warning
         };
     }
 
@@ -705,6 +710,10 @@ public class ImportService
         var manufacturer = get(map.Manufacturer);
         var itemTypeVal = get(map.ItemType);
 
+        string? warning = PricingCalculator.IsBelowDistributorCost(sellPrice, cost)
+            ? $"Sell R{sellPrice:0} < distributor R{PricingCalculator.DistributorFloor(cost):0.00}"
+            : null;
+
         return new ImportPreviewRowDto
         {
             RowIndex = rowIndex,
@@ -716,7 +725,8 @@ public class ImportService
             ItemType = string.IsNullOrWhiteSpace(itemTypeVal) ? null : itemTypeVal,
             Cost = cost,
             SellPrice = sellPrice,
-            QtyOnHand = qty
+            QtyOnHand = qty,
+            Warning = warning
         };
     }
 
