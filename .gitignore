@@ -10,5 +10,8 @@
 **/.env.local
 .env
 
+# Local commit message scratch file (do not commit)
+.commitmsg.tmp
+
 # Docker Compose local data (SQLite + PDFs)
 /data/
