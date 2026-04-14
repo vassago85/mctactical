@@ -224,7 +224,12 @@ onMounted(() => void load())
       <div class="stock-toolbar">
         <div class="stock-toolbar__search">
           <McField label="Search" for-id="stock-q">
-            <input id="stock-q" v-model="q" type="search" placeholder="SKU, barcode, name, category…" />
+            <input
+              id="stock-q"
+              v-model="q"
+              type="search"
+              placeholder="Any words, any order — matches name, SKU, barcode, category, supplier…"
+            />
           </McField>
         </div>
         <label class="stock-toolbar__check">

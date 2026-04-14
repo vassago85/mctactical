@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using HuntexPos.Api.Data;
 using HuntexPos.Api.Domain;
@@ -39,14 +40,7 @@ public class ProductsController : ControllerBase
             var b = q.Barcode.Trim();
             query = query.Where(p => p.Barcode == b || p.Sku == b);
         }
-        if (!string.IsNullOrWhiteSpace(q.Q))
-        {
-            var s = q.Q.Trim();
-            query = query.Where(p =>
-                EF.Functions.Like(p.Name, $"%{s}%") ||
-                EF.Functions.Like(p.Sku, $"%{s}%") ||
-                (p.Barcode != null && EF.Functions.Like(p.Barcode, $"%{s}%")));
-        }
+        query = ApplyPosSearchFilter(query, q.Q);
 
         var list = await query.OrderBy(p => p.Name).Take(Math.Clamp(q.Take, 1, 200)).ToListAsync(ct);
         return list.Select(p => Map(p, hideCost)).ToList();
@@ -62,17 +56,7 @@ public class ProductsController : ControllerBase
             query = query.Where(p => p.Active);
         if (q.SupplierId.HasValue)
             query = query.Where(p => p.SupplierId == q.SupplierId);
-        if (!string.IsNullOrWhiteSpace(q.Q))
-        {
-            var s = q.Q.Trim();
-            query = query.Where(p =>
-                EF.Functions.Like(p.Name, $"%{s}%") ||
-                EF.Functions.Like(p.Sku, $"%{s}%") ||
-                (p.Barcode != null && EF.Functions.Like(p.Barcode, $"%{s}%")) ||
-                (p.Category != null && EF.Functions.Like(p.Category, $"%{s}%")) ||
-                (p.Manufacturer != null && EF.Functions.Like(p.Manufacturer, $"%{s}%")) ||
-                (p.ItemType != null && EF.Functions.Like(p.ItemType, $"%{s}%")));
-        }
+        query = ApplyStocklistSearchFilter(query, q.Q);
 
         var take = Math.Clamp(q.Take, 1, 10_000);
         var skip = Math.Max(0, q.Skip);
@@ -101,17 +85,7 @@ public class ProductsController : ControllerBase
             query = query.Where(p => p.Active);
         if (supplierId.HasValue)
             query = query.Where(p => p.SupplierId == supplierId);
-        if (!string.IsNullOrWhiteSpace(q))
-        {
-            var s = q.Trim();
-            query = query.Where(p =>
-                EF.Functions.Like(p.Name, $"%{s}%") ||
-                EF.Functions.Like(p.Sku, $"%{s}%") ||
-                (p.Barcode != null && EF.Functions.Like(p.Barcode, $"%{s}%")) ||
-                (p.Category != null && EF.Functions.Like(p.Category, $"%{s}%")) ||
-                (p.Manufacturer != null && EF.Functions.Like(p.Manufacturer, $"%{s}%")) ||
-                (p.ItemType != null && EF.Functions.Like(p.ItemType, $"%{s}%")));
-        }
+        query = ApplyStocklistSearchFilter(query, q);
 
         var list = await query.OrderBy(p => p.Name).ToListAsync(ct);
         var sb = new StringBuilder();
@@ -140,6 +114,69 @@ public class ProductsController : ControllerBase
         if (s.Contains('"') || s.Contains(',') || s.Contains('\n'))
             return "\"" + s.Replace("\"", "\"\"") + "\"";
         return s;
+    }
+
+    private static readonly char[] SearchWhitespaceSeparators = { ' ', '\t', '\n', '\r', '\u00a0' };
+
+    /// <summary>
+    /// Split user search into terms (whitespace-separated). Each term must match as a substring (anywhere)
+    /// in at least one searchable field — order of words does not matter.
+    /// </summary>
+    private static List<string> SplitSearchTerms(string q) =>
+        q.Split(SearchWhitespaceSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(t => t.Length > 0)
+            .ToList();
+
+    private static string EscapeForLike(string s) =>
+        s.Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("%", "\\%", StringComparison.Ordinal)
+            .Replace("_", "\\_", StringComparison.Ordinal);
+
+    private const string LikeEscapeChar = "\\";
+
+    /// <summary>POS / stocktake product search: name, SKU, barcode, description, supplier.</summary>
+    private static IQueryable<Product> ApplyPosSearchFilter(IQueryable<Product> query, string? q)
+    {
+        var terms = string.IsNullOrWhiteSpace(q) ? null : SplitSearchTerms(q);
+        if (terms is not { Count: > 0 })
+            return query;
+
+        foreach (var term in terms)
+        {
+            var pattern = $"%{EscapeForLike(term)}%";
+            query = query.Where(p =>
+                EF.Functions.Like(p.Name, pattern, LikeEscapeChar) ||
+                EF.Functions.Like(p.Sku, pattern, LikeEscapeChar) ||
+                (p.Barcode != null && EF.Functions.Like(p.Barcode, pattern, LikeEscapeChar)) ||
+                (p.Description != null && EF.Functions.Like(p.Description, pattern, LikeEscapeChar)) ||
+                (p.Supplier != null && EF.Functions.Like(p.Supplier.Name, pattern, LikeEscapeChar)));
+        }
+
+        return query;
+    }
+
+    /// <summary>Stock list + CSV export: all POS fields plus category, manufacturer, item type.</summary>
+    private static IQueryable<Product> ApplyStocklistSearchFilter(IQueryable<Product> query, string? q)
+    {
+        var terms = string.IsNullOrWhiteSpace(q) ? null : SplitSearchTerms(q);
+        if (terms is not { Count: > 0 })
+            return query;
+
+        foreach (var term in terms)
+        {
+            var pattern = $"%{EscapeForLike(term)}%";
+            query = query.Where(p =>
+                EF.Functions.Like(p.Name, pattern, LikeEscapeChar) ||
+                EF.Functions.Like(p.Sku, pattern, LikeEscapeChar) ||
+                (p.Barcode != null && EF.Functions.Like(p.Barcode, pattern, LikeEscapeChar)) ||
+                (p.Category != null && EF.Functions.Like(p.Category, pattern, LikeEscapeChar)) ||
+                (p.Manufacturer != null && EF.Functions.Like(p.Manufacturer, pattern, LikeEscapeChar)) ||
+                (p.ItemType != null && EF.Functions.Like(p.ItemType, pattern, LikeEscapeChar)) ||
+                (p.Description != null && EF.Functions.Like(p.Description, pattern, LikeEscapeChar)) ||
+                (p.Supplier != null && EF.Functions.Like(p.Supplier.Name, pattern, LikeEscapeChar)));
+        }
+
+        return query;
     }
 
     [HttpGet("{id:guid}")]

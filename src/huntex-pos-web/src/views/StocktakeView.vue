@@ -191,7 +191,13 @@ async function confirmPost() {
           </div>
           <McField label="Search" for-id="st-q">
             <div class="st-search-row">
-              <input id="st-q" v-model="q" type="search" @keyup.enter="search" />
+              <input
+                id="st-q"
+                v-model="q"
+                type="search"
+                placeholder="Name, SKU, barcode — words in any order"
+                @keyup.enter="search"
+              />
               <McButton variant="secondary" type="button" @click="search">Search</McButton>
             </div>
           </McField>

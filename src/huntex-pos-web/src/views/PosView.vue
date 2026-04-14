@@ -227,7 +227,11 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
             hint="Type a SKU, barcode, or part of the product name. Use the scanner for faster entry at the counter."
           />
 
-          <McEmptyState v-else-if="searchNoHits" title="No matches" hint="Try another keyword or check the barcode." />
+          <McEmptyState
+            v-else-if="searchNoHits"
+            title="No matches"
+            hint="Try other words — search matches text anywhere in the name (e.g. hornady 6.5 aero). Words can be in any order."
+          />
 
           <ul v-else class="pos-results">
             <li v-for="p in results" :key="p.id" class="pos-result">
