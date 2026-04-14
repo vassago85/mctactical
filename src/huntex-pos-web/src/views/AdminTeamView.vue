@@ -159,42 +159,40 @@ async function applyReset() {
       </div>
     </McCard>
 
-    <McCard title="Users">
-      <div class="team-table-panel">
-        <div class="team-table-scroll">
-          <table class="mc-table team-table">
-            <thead>
-              <tr>
-                <th>Email</th>
-                <th>Name</th>
-                <th>Roles</th>
-                <th>Status</th>
-                <th class="team-th-actions">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="u in users" :key="u.id">
-                <td class="team-cell-strong">{{ u.email }}</td>
-                <td>{{ u.displayName ?? '—' }}</td>
-                <td class="team-roles">{{ u.roles.join(', ') }}</td>
-                <td>
-                  <McBadge :variant="u.lockedOut ? 'danger' : 'success'">
-                    {{ u.lockedOut ? 'Locked' : 'Active' }}
-                  </McBadge>
-                </td>
-                <td class="team-actions">
-                  <div class="team-actions__inner">
-                    <McButton variant="secondary" dense type="button" @click="toggleLock(u)">
-                      {{ u.lockedOut ? 'Unlock' : 'Lock' }}
-                    </McButton>
-                    <McButton variant="secondary" dense type="button" @click="resendInvite(u)">Resend invite</McButton>
-                    <McButton variant="ghost" dense type="button" @click="openReset(u)">Set password</McButton>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+    <McCard title="Users" :padded="false">
+      <div class="team-table-scroll">
+        <table class="mc-table team-table">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Name</th>
+              <th>Roles</th>
+              <th>Status</th>
+              <th class="team-th-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="u in users" :key="u.id">
+              <td class="team-cell-strong">{{ u.email }}</td>
+              <td>{{ u.displayName ?? '—' }}</td>
+              <td class="team-roles">{{ u.roles.join(', ') }}</td>
+              <td>
+                <McBadge :variant="u.lockedOut ? 'danger' : 'success'">
+                  {{ u.lockedOut ? 'Locked' : 'Active' }}
+                </McBadge>
+              </td>
+              <td class="team-actions">
+                <div class="team-actions__inner">
+                  <McButton variant="secondary" dense type="button" @click="toggleLock(u)">
+                    {{ u.lockedOut ? 'Unlock' : 'Lock' }}
+                  </McButton>
+                  <McButton variant="secondary" dense type="button" @click="resendInvite(u)">Resend invite</McButton>
+                  <McButton variant="ghost" dense type="button" @click="openReset(u)">Set password</McButton>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </McCard>
 
@@ -248,21 +246,14 @@ async function applyReset() {
   border-top: 1px solid var(--mc-app-border-faint, #e0ded8);
 }
 
-.team-table-panel {
-  margin: 0 calc(-1 * var(--mc-app-pad-card, 1.5rem)) calc(-1 * var(--mc-app-pad-card, 1.5rem));
-  border-top: 1px solid var(--mc-app-border-faint, #e0ded8);
-  background: var(--mc-app-surface-2, #f7f6f3);
-  border-radius: 0 0 var(--mc-app-radius-card, 12px) var(--mc-app-radius-card, 12px);
-  overflow: hidden;
-}
-
 .team-table-scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
 
 .team-table {
-  min-width: 720px;
+  width: 100%;
+  min-width: 600px;
 }
 
 .team-th-actions {

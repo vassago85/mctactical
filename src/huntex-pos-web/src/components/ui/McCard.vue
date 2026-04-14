@@ -30,6 +30,10 @@ defineProps<{
 }
 .mc-card--tight .mc-card__body {
   padding: 0;
+  overflow: hidden;
+}
+.mc-card--tight .mc-card__body > :last-child {
+  border-radius: 0 0 var(--mc-app-radius-card, 12px) var(--mc-app-radius-card, 12px);
 }
 .mc-card__head {
   padding: 1rem var(--mc-app-pad-card, 1.5rem);
