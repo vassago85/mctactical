@@ -14,6 +14,7 @@ import McEmptyState from '@/components/ui/McEmptyState.vue'
 import McSkeleton from '@/components/ui/McSkeleton.vue'
 import McModal from '@/components/ui/McModal.vue'
 import McSpinner from '@/components/ui/McSpinner.vue'
+import McCheckbox from '@/components/ui/McCheckbox.vue'
 
 type Product = {
   id: string
@@ -341,10 +342,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
               <input id="order-disc" v-model.number="discountTotal" type="number" step="0.01" min="0" />
             </McField>
           </div>
-          <label class="pos-check">
-            <input v-model="sendEmail" type="checkbox" />
-            Email invoice link
-          </label>
+          <McCheckbox v-model="sendEmail" label="Email invoice link" hint="Sends the customer a link to view &amp; download their invoice" />
         </McCard>
 
         <div class="pos-sticky-foot">
@@ -609,22 +607,6 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   }
 }
 
-.pos-check {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  margin-top: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
-  color: var(--mc-app-text-secondary, #333336);
-}
-
-.pos-check input {
-  width: 1.2rem;
-  height: 1.2rem;
-  accent-color: var(--mc-accent, #f47a20);
-}
-
 .pos-sticky-foot {
   position: sticky;
   bottom: 0;
@@ -637,15 +619,15 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 .pos-totals {
   background: var(--mc-app-surface, #fff);
   border: 1px solid var(--mc-app-border-soft, #ddd9d3);
-  border-radius: 14px;
-  padding: 1rem 1.25rem;
-  margin-bottom: 0.75rem;
-  box-shadow: var(--mc-app-shadow-md, 0 4px 16px rgba(0, 0, 0, 0.1));
+  border-radius: var(--mc-app-radius-card, 18px);
+  padding: 1.15rem 1.5rem;
+  margin-bottom: 0.85rem;
+  box-shadow: var(--mc-app-shadow-md, 0 8px 32px rgba(0, 0, 0, 0.12));
 }
 
-@media (min-width: 480px) {
+@media (max-width: 479px) {
   .pos-totals {
-    padding: 1.15rem 1.5rem;
+    padding: 0.85rem 1rem;
   }
 }
 
@@ -653,8 +635,9 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.3rem 0;
+  padding: 0.35rem 0;
   font-size: 0.95rem;
+  color: var(--mc-app-text-secondary, #333336);
 }
 
 .pos-totals__row--muted {
@@ -666,12 +649,15 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 .pos-totals__grand {
   margin-top: 0.5rem;
   padding-top: 0.65rem;
-  border-top: 2px solid var(--mc-accent, #f47a20);
-  font-size: 1.2rem;
+  border-top: 3px solid var(--mc-accent, #f47a20);
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--mc-app-heading, #0a0a0c);
 }
 
 .pos-checkout-btn {
-  min-height: 54px;
-  font-size: 0.95rem;
+  min-height: 58px;
+  font-size: 1rem;
+  letter-spacing: 0.06em;
 }
 </style>

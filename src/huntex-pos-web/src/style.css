@@ -78,9 +78,10 @@ body.mc-body-app {
   --mc-app-table-row-alt: #faf9f7;
   --mc-app-link: #c2410c;
   --mc-app-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.06);
-  --mc-app-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
-  --mc-app-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
-  --mc-app-radius-card: 14px;
+  --mc-app-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.06);
+  --mc-app-shadow-md: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
+  --mc-app-shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.18), 0 8px 24px rgba(0, 0, 0, 0.1);
+  --mc-app-radius-card: 18px;
   --mc-app-radius-control: 10px;
   --mc-app-pad-page-x: 2rem;
   --mc-app-pad-page-y: 1.5rem;
@@ -144,7 +145,7 @@ h3,
   background: var(--mc-app-surface, #fff);
   border: 1px solid var(--mc-app-border-soft, #ddd9d3);
   box-shadow: var(--mc-app-shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.1));
-  border-radius: var(--mc-app-radius-card, 14px);
+  border-radius: var(--mc-app-radius-card, 18px);
 }
 
 .row {

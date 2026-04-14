@@ -7,6 +7,8 @@ import McCard from '@/components/ui/McCard.vue'
 import McButton from '@/components/ui/McButton.vue'
 import McField from '@/components/ui/McField.vue'
 import McAlert from '@/components/ui/McAlert.vue'
+import McCheckbox from '@/components/ui/McCheckbox.vue'
+import McActionBar from '@/components/ui/McActionBar.vue'
 
 type MailDto = {
   domain: string
@@ -108,22 +110,26 @@ async function sendTest() {
       <McField label="Private API key" for-id="mail-key" hint="Leave blank to keep the current key.">
         <input id="mail-key" v-model="apiKey" type="password" autocomplete="new-password" placeholder="••••••••" />
       </McField>
-      <p v-if="dto.hasApiKey" class="mail-key-note">A key is already configured (database or environment).</p>
-      <label class="mail-check">
-        <input v-model="dto.attachPdf" type="checkbox" />
-        Attach PDF to invoice emails
-      </label>
-      <McButton variant="primary" type="button" @click="save">Save</McButton>
+      <p v-if="dto.hasApiKey" class="mail-key-note">
+        <span class="mail-key-badge">Configured</span>
+        A key is already stored (database or environment).
+      </p>
+      <McCheckbox v-model="dto.attachPdf" label="Attach PDF to invoice emails" hint="Adds the invoice PDF as a file attachment instead of only a link" />
+      <McActionBar>
+        <McButton variant="primary" type="button" @click="save">Save mail settings</McButton>
+      </McActionBar>
     </McCard>
 
     <McCard title="Send test email">
-      <p class="mail-lead">Save settings first, then send a test to confirm DNS and credentials.</p>
-      <McField label="Recipient email" for-id="mail-test">
-        <input id="mail-test" v-model="testTo" type="email" placeholder="you@example.com" autocomplete="email" />
-      </McField>
-      <McButton variant="secondary" type="button" :disabled="testBusy || !testTo.trim()" @click="sendTest">
-        {{ testBusy ? 'Sending…' : 'Send test' }}
-      </McButton>
+      <p class="mail-lead">Save your configuration above first, then send a test to confirm DNS and credentials are working.</p>
+      <div class="mail-test-row">
+        <McField label="Recipient email" for-id="mail-test">
+          <input id="mail-test" v-model="testTo" type="email" placeholder="you@example.com" autocomplete="email" />
+        </McField>
+        <McButton variant="secondary" type="button" class="mail-test-btn" :disabled="testBusy || !testTo.trim()" @click="sendTest">
+          {{ testBusy ? 'Sending…' : 'Send test' }}
+        </McButton>
+      </div>
     </McCard>
   </div>
 </template>
@@ -134,29 +140,45 @@ async function sendTest() {
 }
 
 .mail-key-note {
-  margin: -0.5rem 0 1rem;
-  font-size: 0.85rem;
-  color: var(--mc-app-text-muted, #4a4842);
-}
-
-.mail-check {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-bottom: 1rem;
-  font-weight: 500;
-  cursor: pointer;
+  margin: -0.25rem 0 1rem;
+  font-size: 0.85rem;
+  color: var(--mc-app-text-muted, #4a4842);
 }
-
-.mail-check input {
-  width: 1.15rem;
-  height: 1.15rem;
-  accent-color: var(--mc-accent, #f47a20);
+.mail-key-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: rgba(46, 125, 50, 0.1);
+  color: #2e7d32;
+  border: 1px solid rgba(46, 125, 50, 0.2);
 }
-
 .mail-lead {
   margin: 0 0 1rem;
   color: var(--mc-app-text-muted, #4a4842);
   font-size: 0.95rem;
+  line-height: 1.5;
+}
+.mail-test-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.mail-test-row .mc-field {
+  flex: 1;
+  min-width: 200px;
+  margin-bottom: 0;
+}
+.mail-test-btn {
+  margin-bottom: 0;
+  flex-shrink: 0;
 }
 </style>

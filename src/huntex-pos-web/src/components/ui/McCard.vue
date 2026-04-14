@@ -22,8 +22,8 @@ defineProps<{
 .mc-card {
   background: var(--mc-app-surface, #ffffff);
   border: 1px solid var(--mc-app-border-soft, #ddd9d3);
-  border-radius: var(--mc-app-radius-card, 14px);
-  box-shadow: var(--mc-app-shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.1));
+  border-radius: var(--mc-app-radius-card, 18px);
+  box-shadow: var(--mc-app-shadow-sm, 0 2px 8px rgba(0, 0, 0, 0.08));
   margin-bottom: 1.5rem;
   max-width: 100%;
   min-width: 0;
@@ -33,13 +33,13 @@ defineProps<{
   overflow: hidden;
 }
 .mc-card--tight .mc-card__body > :last-child {
-  border-radius: 0 0 var(--mc-app-radius-card, 12px) var(--mc-app-radius-card, 12px);
+  border-radius: 0 0 var(--mc-app-radius-card, 18px) var(--mc-app-radius-card, 18px);
 }
 .mc-card__head {
   padding: 1.1rem 24px;
   border-bottom: 1px solid var(--mc-app-border-faint, #eceae5);
   background: var(--mc-app-surface-2, #f9f8f6);
-  border-radius: var(--mc-app-radius-card, 14px) var(--mc-app-radius-card, 14px) 0 0;
+  border-radius: var(--mc-app-radius-card, 18px) var(--mc-app-radius-card, 18px) 0 0;
 }
 .mc-card__title {
   margin: 0;

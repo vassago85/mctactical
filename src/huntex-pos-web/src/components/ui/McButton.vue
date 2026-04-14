@@ -47,8 +47,29 @@ defineProps<{
     color 0.15s ease;
 }
 .mc-btn:disabled {
-  opacity: 0.45;
   cursor: not-allowed;
+  pointer-events: none;
+}
+.mc-btn--primary:disabled {
+  background: #d4b599;
+  border-color: transparent;
+  color: rgba(10, 10, 11, 0.5);
+  box-shadow: none;
+}
+.mc-btn--secondary:disabled {
+  background: var(--mc-app-surface-muted, #f0eeea);
+  border-color: var(--mc-app-border-faint, #eceae5);
+  color: var(--mc-app-border, #9e9c94);
+  box-shadow: none;
+}
+.mc-btn--danger:disabled {
+  background: #c4a0a0;
+  border-color: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  box-shadow: none;
+}
+.mc-btn--ghost:disabled {
+  color: var(--mc-app-border-subtle, #c8c5bd);
 }
 .mc-btn--block {
   width: 100%;

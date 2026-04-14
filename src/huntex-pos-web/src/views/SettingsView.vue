@@ -8,6 +8,9 @@ import McButton from '@/components/ui/McButton.vue'
 import McField from '@/components/ui/McField.vue'
 import McAlert from '@/components/ui/McAlert.vue'
 import McModal from '@/components/ui/McModal.vue'
+import McCheckbox from '@/components/ui/McCheckbox.vue'
+import McRadioCard from '@/components/ui/McRadioCard.vue'
+import McActionBar from '@/components/ui/McActionBar.vue'
 
 const toast = useToast()
 const dto = ref({
@@ -75,14 +78,20 @@ async function runRecalculate() {
 
     <McCard title="Retail mode">
       <div class="set-radio-group">
-        <label class="set-radio">
-          <input v-model="dto.pricingMode" type="radio" value="normal" />
-          <span><strong>Normal retail</strong> — cost × 1.5, rounded up to nearest R10</span>
-        </label>
-        <label class="set-radio">
-          <input v-model="dto.pricingMode" type="radio" value="huntex" />
-          <span><strong>Huntex pricing</strong> — normal sell ÷ 1.1, rounded up to nearest R10</span>
-        </label>
+        <McRadioCard
+          :model-value="dto.pricingMode"
+          value="normal"
+          title="Normal retail"
+          description="Cost × 1.5, rounded up to nearest R10"
+          @update:model-value="dto.pricingMode = $event"
+        />
+        <McRadioCard
+          :model-value="dto.pricingMode"
+          value="huntex"
+          title="Huntex pricing"
+          description="Normal sell ÷ 1.1, rounded up to nearest R10"
+          @update:model-value="dto.pricingMode = $event"
+        />
       </div>
       <p class="set-hint">
         Sell prices round up to R10. Warnings appear if sell is below distributor cost (ex-VAT + 15%).
@@ -90,10 +99,7 @@ async function runRecalculate() {
     </McCard>
 
     <McCard title="Default cost markup">
-      <label class="set-check">
-        <input v-model="dto.useMarginPercent" type="checkbox" />
-        Use margin % (otherwise fixed markup in R)
-      </label>
+      <McCheckbox v-model="dto.useMarginPercent" label="Use margin %" hint="Otherwise a fixed markup in Rands is applied" />
       <McField label="Default margin % (50 = 1.5× cost)" for-id="set-margin">
         <input id="set-margin" v-model.number="dto.defaultMarginPercent" type="number" step="0.01" />
       </McField>
@@ -103,19 +109,16 @@ async function runRecalculate() {
     </McCard>
 
     <McCard title="POS display">
-      <p class="set-hint">MC Tactical is not VAT registered — customer invoices do not add VAT.</p>
-      <label class="set-check">
-        <input v-model="dto.hideCostForSalesRole" type="checkbox" />
-        Hide product cost for Sales role
-      </label>
+      <p class="set-hint" style="margin-top: 0">MC Tactical is not VAT registered — customer invoices do not add VAT.</p>
+      <McCheckbox v-model="dto.hideCostForSalesRole" label="Hide product cost for Sales role" hint="Sales staff won't see cost or margin values" />
     </McCard>
 
-    <div class="set-actions">
+    <McActionBar>
       <McButton variant="primary" type="button" @click="save">Save settings</McButton>
       <McButton variant="secondary" type="button" :disabled="recalcBusy" @click="showRecalcModal = true">
         Recalculate all product prices
       </McButton>
-    </div>
+    </McActionBar>
     <p v-if="recalcMsg" class="set-recalc-msg">{{ recalcMsg }}</p>
 
     <McModal v-model="showRecalcModal" title="Recalculate all prices?">
@@ -139,22 +142,7 @@ async function runRecalculate() {
 .set-radio-group {
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
-}
-
-.set-radio {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.65rem;
-  cursor: pointer;
-  line-height: 1.45;
-}
-
-.set-radio input {
-  margin-top: 0.2rem;
-  width: 1.15rem;
-  height: 1.15rem;
-  accent-color: var(--mc-accent, #f47a20);
+  gap: 0.75rem;
 }
 
 .set-hint {
@@ -162,30 +150,6 @@ async function runRecalculate() {
   font-size: 0.88rem;
   color: var(--mc-app-text-muted, #5c5a56);
   line-height: 1.5;
-}
-
-.set-check {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.set-check input {
-  width: 1.15rem;
-  height: 1.15rem;
-  accent-color: var(--mc-accent, #f47a20);
-}
-
-.set-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.65rem;
-  margin-top: 1.25rem;
-  padding-top: 1.25rem;
-  border-top: 2px solid var(--mc-app-border-faint, #eceae5);
 }
 
 .set-recalc-msg {
