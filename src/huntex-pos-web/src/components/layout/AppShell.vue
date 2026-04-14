@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { logoLight } from '@/branding'
 
 const auth = useAuthStore()
 const route = useRoute()
+const router = useRouter()
 const sidebarOpen = ref(false)
 
 watch(
@@ -17,6 +18,7 @@ watch(
 
 function logout() {
   auth.clear()
+  router.push('/login')
 }
 </script>
 
