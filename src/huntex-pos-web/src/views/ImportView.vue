@@ -180,8 +180,8 @@ async function addSupplier() {
     <h2>Huntex workbook or CSV</h2>
     <p>
       Upload <strong>.xlsx</strong> / <strong>.xlsm</strong> (sheet name defaults to <code>huntex 2026</code>) or
-      <strong>.csv</strong> with the same headers (first row). Sample files in the repo:
-      <code>samples/huntex2026.xlsx</code> and <code>samples/huntex2026.csv</code>.
+      <strong>.csv</strong> with the same headers (first row).
+      <a href="/api/imports/example-csv" download>Download example CSV</a> to see the expected format.
     </p>
     <div class="field">
       <label>Sheet name (Excel only)</label>

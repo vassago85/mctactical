@@ -23,6 +23,21 @@ public class ImportsController : ControllerBase
         _db = db;
     }
 
+    [HttpGet("example-csv")]
+    [AllowAnonymous]
+    public IActionResult DownloadExampleCsv()
+    {
+        const string csv = """
+            SKU,Barcode,Name,Category,Cost,SellPrice,QtyOnHand
+            ACC-001,6001234567890,Holster Kydex IWB,Holsters,450.00,680.00,12
+            AMM-556,6009876543210,5.56x45 FMJ 20rnd,Ammunition,185.00,280.00,50
+            OPT-RDS,,Red Dot Sight 1x25,Optics,1200.00,1800.00,5
+            CLN-KIT,6005551234567,Bore Snake .308,Cleaning,95.00,150.00,25
+            """;
+        var bytes = System.Text.Encoding.UTF8.GetBytes(csv.Replace("            ", ""));
+        return File(bytes, "text/csv", "import-example.csv");
+    }
+
     [HttpPost("huntex")]
     [RequestSizeLimit(50_000_000)]
     public async Task<ActionResult<object>> ImportHuntex(
