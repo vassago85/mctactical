@@ -388,7 +388,7 @@ async function commitWholesaler() {
   gap: 0.35rem 0.65rem;
   margin-bottom: 1.25rem;
   font-size: 0.85rem;
-  color: var(--mc-app-text-muted, #4a4842);
+  color: var(--mc-app-text-muted, #5c5a56);
 }
 
 .imp-steps__sep {
@@ -411,16 +411,16 @@ async function commitWholesaler() {
 }
 
 .imp-presets {
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--mc-app-border-faint, #e0ded8);
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--mc-app-border-faint, #eceae5);
 }
 
 .imp-presets__label {
   margin: 0 0 0.5rem;
   font-size: 0.8rem;
   font-weight: 700;
-  color: var(--mc-app-text-muted, #4a4842);
+  color: var(--mc-app-text-muted, #5c5a56);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -433,7 +433,7 @@ async function commitWholesaler() {
 
 .imp-lead {
   margin: 0 0 1rem;
-  color: var(--mc-app-text-muted, #4a4842);
+  color: var(--mc-app-text-muted, #5c5a56);
   line-height: 1.5;
 }
 
@@ -459,10 +459,17 @@ async function commitWholesaler() {
   max-width: 100%;
   font-family: ui-monospace, monospace;
   font-size: 0.85rem;
-  padding: 0.75rem;
-  border-radius: 8px;
-  border: 1px solid var(--mc-app-border-subtle, #b5b3ab);
+  padding: 0.85rem;
+  border-radius: 10px;
+  border: 1.5px solid var(--mc-app-border-subtle, #c8c5bd);
   box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.imp-json:focus {
+  outline: none;
+  border-color: var(--mc-accent, #f47a20);
+  box-shadow: 0 0 0 3px rgba(244, 122, 32, 0.2);
 }
 
 .imp-table-wrap {

@@ -152,15 +152,16 @@ async function runRecalculate() {
 
 .set-radio input {
   margin-top: 0.2rem;
-  width: 1.1rem;
-  height: 1.1rem;
+  width: 1.15rem;
+  height: 1.15rem;
+  accent-color: var(--mc-accent, #f47a20);
 }
 
 .set-hint {
   margin: 0.75rem 0 0;
   font-size: 0.88rem;
-  color: var(--mc-app-text-muted, #4a4842);
-  line-height: 1.45;
+  color: var(--mc-app-text-muted, #5c5a56);
+  line-height: 1.5;
 }
 
 .set-check {
@@ -182,6 +183,6 @@ async function runRecalculate() {
 .set-recalc-msg {
   margin: 0.75rem 0 0;
   font-size: 0.88rem;
-  color: var(--mc-app-text-muted, #4a4842);
+  color: var(--mc-app-text-muted, #5c5a56);
 }
 </style>

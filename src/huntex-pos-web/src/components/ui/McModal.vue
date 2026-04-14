@@ -77,8 +77,8 @@ onUnmounted(() => {
 .mc-modal-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(10, 10, 11, 0.55);
-  backdrop-filter: blur(2px);
+  background: rgba(10, 10, 11, 0.5);
+  backdrop-filter: blur(4px);
 }
 .mc-modal-panel {
   position: relative;
@@ -87,25 +87,26 @@ onUnmounted(() => {
   max-height: min(90dvh, 720px);
   overflow: auto;
   background: var(--mc-app-surface, #fff);
-  color: var(--mc-app-text, #121214);
-  border-radius: var(--mc-app-radius-card, 12px);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
-  border: 1px solid var(--mc-app-border-soft, #cfcdc6);
+  color: var(--mc-app-text, #1a1a1c);
+  border-radius: 16px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.25), 0 8px 24px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--mc-app-border-soft, #ddd9d3);
 }
 .mc-modal-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1.1rem 1.25rem;
-  border-bottom: 1px solid var(--mc-app-border-faint, #e0ded8);
-  background: var(--mc-app-surface-2, #f7f6f3);
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--mc-app-border-faint, #eceae5);
+  background: var(--mc-app-surface-2, #f9f8f6);
+  border-radius: 16px 16px 0 0;
 }
 .mc-modal-title {
   margin: 0;
   font-family: 'Barlow Condensed', 'Arial Narrow', sans-serif;
   font-size: 1.35rem;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--mc-app-heading, #0a0a0c);
@@ -114,27 +115,31 @@ onUnmounted(() => {
   flex-shrink: 0;
   width: 2.5rem;
   height: 2.5rem;
-  border: 1px solid var(--mc-app-border-faint, #e0ded8);
+  border: 1.5px solid var(--mc-app-border-faint, #eceae5);
   background: var(--mc-app-surface, #fff);
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 1.35rem;
   line-height: 1;
   cursor: pointer;
-  color: var(--mc-app-text-secondary, #2c2c30);
+  color: var(--mc-app-text-secondary, #333336);
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 .mc-modal-x:hover {
-  background: var(--mc-app-surface-muted, #ebe9e4);
+  background: var(--mc-app-surface-muted, #f0eeea);
+  border-color: var(--mc-app-border-subtle, #c8c5bd);
 }
 .mc-modal-body {
-  padding: 1.25rem;
+  padding: 1.5rem;
 }
 .mc-modal-footer {
-  padding: 1rem 1.25rem;
-  border-top: 1px solid var(--mc-app-border-faint, #e0ded8);
+  padding: 1.15rem 1.5rem;
+  border-top: 1px solid var(--mc-app-border-faint, #eceae5);
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.6rem;
   justify-content: flex-end;
+  background: var(--mc-app-surface-2, #f9f8f6);
+  border-radius: 0 0 16px 16px;
 }
 .mc-modal-enter-active,
 .mc-modal-leave-active {

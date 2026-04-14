@@ -22,10 +22,10 @@ defineProps<{
 }
 .mc-field__label {
   display: block;
-  font-size: 0.8125rem;
+  font-size: 0.8rem;
   font-weight: 700;
-  color: var(--mc-app-text-secondary, #2c2c30);
-  margin-bottom: 0.4rem;
+  color: var(--mc-app-text-secondary, #333336);
+  margin-bottom: 0.45rem;
   letter-spacing: 0.02em;
 }
 .mc-field__control :deep(input),
@@ -33,15 +33,16 @@ defineProps<{
 .mc-field__control :deep(textarea) {
   width: 100%;
   max-width: 100%;
-  min-height: 44px;
-  padding: 0.55rem 0.8rem;
-  border-radius: var(--mc-app-radius-control, 8px);
-  border: 1px solid var(--mc-app-border-subtle, #b5b3ab);
+  min-height: 46px;
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--mc-app-radius-control, 10px);
+  border: 1.5px solid var(--mc-app-border-subtle, #c8c5bd);
   background: var(--mc-app-surface, #fff);
-  color: var(--mc-app-text, #121214);
+  color: var(--mc-app-text, #1a1a1c);
   font: inherit;
   font-size: 1rem;
   box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .mc-field__control :deep(textarea) {
   min-height: 88px;
@@ -57,7 +58,7 @@ defineProps<{
 .mc-field__control :deep(textarea:focus) {
   outline: none;
   border-color: var(--mc-accent, #f47a20);
-  box-shadow: 0 0 0 2px rgba(244, 122, 32, 0.3);
+  box-shadow: 0 0 0 3px rgba(244, 122, 32, 0.2);
 }
 .mc-field__hint {
   margin: 0.4rem 0 0;

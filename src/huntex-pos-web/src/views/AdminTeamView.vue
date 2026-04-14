@@ -241,9 +241,9 @@ async function applyReset() {
 .team-invite-actions {
   display: flex;
   justify-content: flex-end;
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--mc-app-border-faint, #e0ded8);
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--mc-app-border-faint, #eceae5);
 }
 
 .team-table-scroll {

@@ -310,12 +310,12 @@ async function confirmPost() {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.5rem 0.85rem;
+  padding: 0.55rem 0.9rem;
   border-radius: 10px;
-  background: var(--mc-app-surface-muted, #ebe9e4);
-  border: 1px solid var(--mc-app-border-soft, #cfcdc6);
-  color: var(--mc-app-text-secondary, #2c2c30);
-  font-weight: 600;
+  background: var(--mc-app-surface-muted, #f0eeea);
+  border: 1.5px solid var(--mc-app-border-soft, #ddd9d3);
+  color: var(--mc-app-text-secondary, #333336);
+  font-weight: 700;
   font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -340,13 +340,14 @@ async function confirmPost() {
   border-radius: 50%;
   background: var(--mc-app-surface, #fff);
   font-size: 0.9rem;
-  border: 1px solid var(--mc-app-border-faint, #e0ded8);
+  font-weight: 700;
+  border: 1.5px solid var(--mc-app-border-faint, #eceae5);
 }
 
 .st-step__line {
   width: 2rem;
   height: 3px;
-  background: var(--mc-app-border-subtle, #b5b3ab);
+  background: var(--mc-app-border-subtle, #c8c5bd);
   border-radius: 2px;
 }
 
@@ -360,12 +361,12 @@ async function confirmPost() {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  margin-bottom: 1rem;
-  padding: 0.85rem 1rem;
+  margin-bottom: 1.25rem;
+  padding: 1rem 1.25rem;
   background: var(--mc-app-surface, #fff);
-  border: 1px solid var(--mc-app-border-soft, #cfcdc6);
-  border-radius: 12px;
-  box-shadow: var(--mc-app-shadow-xs, none);
+  border: 1px solid var(--mc-app-border-soft, #ddd9d3);
+  border-radius: 14px;
+  box-shadow: var(--mc-app-shadow-sm, 0 1px 3px rgba(0,0,0,0.1));
 }
 
 .st-session-badge {
@@ -375,7 +376,7 @@ async function confirmPost() {
 .st-session-meta {
   margin: 0;
   font-size: 0.9rem;
-  color: var(--mc-app-text-muted, #4a4842);
+  color: var(--mc-app-text-muted, #5c5a56);
   font-weight: 500;
 }
 
@@ -397,10 +398,10 @@ async function confirmPost() {
 
 .st-scanner {
   margin-bottom: 1rem;
-  padding: 0.75rem;
-  background: var(--mc-app-surface-2, #f7f6f3);
-  border-radius: 10px;
-  border: 1px solid var(--mc-app-border-faint, #e0ded8);
+  padding: 1rem;
+  background: var(--mc-app-surface-2, #f9f8f6);
+  border-radius: 12px;
+  border: 1px solid var(--mc-app-border-faint, #eceae5);
 }
 
 .st-search-row {
@@ -428,10 +429,11 @@ async function confirmPost() {
   grid-template-columns: 1fr auto auto;
   gap: 0.5rem;
   align-items: center;
-  padding: 0.75rem 0.65rem;
-  border-bottom: 1px solid var(--mc-app-border-faint, #e0ded8);
+  padding: 0.85rem 0.75rem;
+  border-bottom: 1px solid var(--mc-app-border-faint, #eceae5);
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: 10px;
+  transition: background 0.12s ease;
 }
 
 .st-result:hover,
@@ -442,12 +444,12 @@ async function confirmPost() {
 
 .st-result__name {
   font-weight: 600;
-  color: var(--mc-app-text, #121214);
+  color: var(--mc-app-text, #1a1a1c);
 }
 
 .st-result__sku {
   font-size: 0.85rem;
-  color: var(--mc-app-text-muted, #4a4842);
+  color: var(--mc-app-text-muted, #5c5a56);
 }
 
 .st-result__qty {
@@ -464,7 +466,7 @@ async function confirmPost() {
   display: block;
   margin-top: 0.35rem;
   font-size: 0.9rem;
-  color: var(--mc-app-text-muted, #4a4842);
+  color: var(--mc-app-text-muted, #5c5a56);
   font-weight: 500;
 }
 
@@ -496,7 +498,7 @@ async function confirmPost() {
 .st-post-hint {
   margin: 0.5rem 0 0;
   font-size: 0.85rem;
-  color: var(--mc-app-text-muted, #4a4842);
+  color: var(--mc-app-text-muted, #5c5a56);
   font-weight: 500;
 }
 </style>

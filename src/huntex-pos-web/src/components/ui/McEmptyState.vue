@@ -18,20 +18,20 @@ defineProps<{
 <style scoped>
 .mc-empty {
   text-align: center;
-  padding: 2.5rem 1.5rem;
-  color: var(--mc-app-text-muted, #4a4842);
+  padding: 3rem 2rem;
+  color: var(--mc-app-text-muted, #5c5a56);
 }
 .mc-empty__title {
   margin: 0 0 0.5rem;
   font-weight: 700;
-  font-size: 1.05rem;
-  color: var(--mc-app-text-secondary, #2c2c30);
+  font-size: 1.1rem;
+  color: var(--mc-app-text-secondary, #333336);
 }
 .mc-empty__hint {
   margin: 0 auto 1rem;
-  max-width: 36ch;
+  max-width: 38ch;
   font-size: 0.9rem;
-  line-height: 1.45;
+  line-height: 1.5;
   font-weight: 500;
 }
 .mc-empty__actions {

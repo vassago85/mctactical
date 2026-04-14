@@ -12,32 +12,32 @@ defineProps<{
 
 <style scoped>
 .mc-alert {
-  padding: 0.85rem 1.05rem;
-  border-radius: var(--mc-app-radius-control, 10px);
+  padding: 0.9rem 1.15rem;
+  border-radius: 12px;
   font-size: 0.9rem;
-  line-height: 1.45;
-  font-weight: 500;
-  margin-bottom: 1rem;
-  border: 1px solid transparent;
+  line-height: 1.5;
+  font-weight: 600;
+  margin-bottom: 1.25rem;
+  border: 1.5px solid transparent;
 }
 .mc-alert--error {
-  background: #f2dede;
-  border-color: #c08080;
-  color: #4a0f0f;
+  background: #fef2f2;
+  border-color: #f5c6c6;
+  color: #7f1d1d;
 }
 .mc-alert--success {
-  background: #d9e8da;
-  border-color: #6a9a6e;
-  color: #0f2912;
+  background: #f0fdf4;
+  border-color: #a7d8b0;
+  color: #14532d;
 }
 .mc-alert--info {
-  background: #f5ebe3;
-  border-color: #d4a574;
-  color: #3d2818;
+  background: #fef7ed;
+  border-color: #f5d4a8;
+  color: #7c2d12;
 }
 .mc-alert--warning {
-  background: #f2ead4;
-  border-color: #c9a928;
-  color: #4a3800;
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #78350f;
 }
 </style>

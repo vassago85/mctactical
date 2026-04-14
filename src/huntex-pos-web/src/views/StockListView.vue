@@ -404,7 +404,7 @@ onMounted(() => void load())
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 1rem;
-  padding: 1rem 1.15rem;
+  padding: 1.15rem var(--mc-app-pad-card, 1.75rem);
 }
 
 .stock-toolbar__search {
@@ -433,16 +433,23 @@ onMounted(() => void load())
 .stock-toolbar__label {
   font-size: 0.8rem;
   font-weight: 700;
-  color: var(--mc-app-text-secondary, #2c2c30);
+  color: var(--mc-app-text-secondary, #333336);
 }
 
 .stock-toolbar__select {
   min-height: 44px;
-  padding: 0 0.75rem;
-  border-radius: 8px;
-  border: 1px solid var(--mc-app-border-subtle, #b5b3ab);
+  padding: 0 0.85rem;
+  border-radius: 10px;
+  border: 1.5px solid var(--mc-app-border-subtle, #c8c5bd);
   background: var(--mc-app-surface, #fff);
-  color: var(--mc-app-text, #121214);
+  color: var(--mc-app-text, #1a1a1c);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.stock-toolbar__select:focus {
+  outline: none;
+  border-color: var(--mc-accent, #f47a20);
+  box-shadow: 0 0 0 3px rgba(244, 122, 32, 0.2);
 }
 
 .stock-toolbar__nav {
@@ -455,7 +462,7 @@ onMounted(() => void load())
 
 .stock-toolbar__meta {
   font-size: 0.85rem;
-  color: var(--mc-app-text-muted, #4a4842);
+  color: var(--mc-app-text-muted, #5c5a56);
   font-weight: 500;
 }
 
@@ -504,7 +511,7 @@ onMounted(() => void load())
   justify-content: center;
   gap: 0.75rem;
   padding: 3rem;
-  color: var(--mc-app-text-muted, #4a4842);
+  color: var(--mc-app-text-muted, #5c5a56);
 }
 
 .stock-drawer-overlay {
@@ -523,19 +530,19 @@ onMounted(() => void load())
   z-index: 10031;
   width: min(480px, 100vw);
   background: var(--mc-app-surface, #fff);
-  box-shadow: -8px 0 40px rgba(0, 0, 0, 0.15);
+  box-shadow: -8px 0 40px rgba(0, 0, 0, 0.2);
   display: flex;
   flex-direction: column;
-  border-left: 1px solid var(--mc-app-border-soft, #cfcdc6);
+  border-left: 1px solid var(--mc-app-border-soft, #ddd9d3);
 }
 
 .stock-drawer__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem 1.15rem;
-  border-bottom: 1px solid var(--mc-app-border-faint, #e0ded8);
-  background: var(--mc-app-surface-2, #f7f6f3);
+  padding: 1.15rem 1.5rem;
+  border-bottom: 1px solid var(--mc-app-border-faint, #eceae5);
+  background: var(--mc-app-surface-2, #f9f8f6);
 }
 
 .stock-drawer__title {
@@ -549,23 +556,25 @@ onMounted(() => void load())
 .stock-drawer__close {
   width: 44px;
   height: 44px;
-  border: 1px solid var(--mc-app-border-faint, #e0ded8);
+  border: 1.5px solid var(--mc-app-border-faint, #eceae5);
   background: var(--mc-app-surface, #fff);
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 1.35rem;
   line-height: 1;
   cursor: pointer;
-  color: var(--mc-app-text-secondary, #2c2c30);
+  color: var(--mc-app-text-secondary, #333336);
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .stock-drawer__close:hover {
-  background: var(--mc-app-surface-muted, #ebe9e4);
+  background: var(--mc-app-surface-muted, #f0eeea);
+  border-color: var(--mc-app-border-subtle, #c8c5bd);
 }
 
 .stock-drawer__body {
   flex: 1;
   overflow-y: auto;
-  padding: 1.15rem;
+  padding: 1.5rem;
 }
 
 .stock-drawer__grid {
@@ -581,13 +590,13 @@ onMounted(() => void load())
 }
 
 .stock-drawer__foot {
-  padding: 1rem 1.15rem;
-  border-top: 1px solid var(--mc-app-border-faint, #e0ded8);
+  padding: 1.15rem 1.5rem;
+  border-top: 1px solid var(--mc-app-border-faint, #eceae5);
   display: flex;
   justify-content: flex-end;
-  gap: 0.5rem;
+  gap: 0.6rem;
   flex-wrap: wrap;
-  background: var(--mc-app-surface-2, #f7f6f3);
+  background: var(--mc-app-surface-2, #f9f8f6);
 }
 
 .stock-drawer-fade-enter-active,

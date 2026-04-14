@@ -75,10 +75,10 @@ async function submit() {
 .auth-panel {
   width: 100%;
   max-width: 420px;
-  padding: 2rem 1.75rem 1.75rem;
+  padding: 2.5rem 2rem 2rem;
   background: #fff;
-  border-radius: 16px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+  border-radius: 18px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.15);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
