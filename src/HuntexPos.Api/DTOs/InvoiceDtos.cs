@@ -1,0 +1,62 @@
+using System.ComponentModel.DataAnnotations;
+
+namespace HuntexPos.Api.DTOs;
+
+public class CreateInvoiceLineRequest
+{
+    [Required]
+    public Guid ProductId { get; set; }
+    [Range(1, 99999)]
+    public int Quantity { get; set; }
+    public decimal? UnitPriceOverride { get; set; }
+    public decimal LineDiscount { get; set; }
+}
+
+public class CreateInvoiceRequest
+{
+    public string? CustomerName { get; set; }
+    public string? CustomerEmail { get; set; }
+    public string? CustomerType { get; set; }
+    [Required]
+    public string PaymentMethod { get; set; } = "Cash";
+    public decimal DiscountTotal { get; set; }
+    public bool SendEmail { get; set; }
+    [Required, MinLength(1)]
+    public List<CreateInvoiceLineRequest> Lines { get; set; } = new();
+}
+
+public class InvoiceDto
+{
+    public Guid Id { get; set; }
+    public string InvoiceNumber { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string? CustomerName { get; set; }
+    public string? CustomerEmail { get; set; }
+    public string? CustomerType { get; set; }
+    public string PaymentMethod { get; set; } = string.Empty;
+    public decimal SubTotal { get; set; }
+    public decimal TaxRate { get; set; }
+    public decimal TaxAmount { get; set; }
+    public decimal DiscountTotal { get; set; }
+    public decimal GrandTotal { get; set; }
+    public Guid PublicToken { get; set; }
+    public string? PdfUrl { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public List<InvoiceLineDto> Lines { get; set; } = new();
+}
+
+public class InvoiceLineDto
+{
+    public Guid ProductId { get; set; }
+    public string Description { get; set; } = string.Empty;
+    public int Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+    public decimal LineDiscount { get; set; }
+    public decimal LineTotal { get; set; }
+}
+
+public class VoidInvoiceRequest
+{
+    [Required, MinLength(3)]
+    public string Reason { get; set; } = string.Empty;
+}

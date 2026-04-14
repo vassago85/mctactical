@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/node_modules/
+**/dist/
+**/storage/pdfs/
+**/.env
+**/.env.local
+.env

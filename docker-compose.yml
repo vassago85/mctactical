@@ -1,0 +1,44 @@
+services:
+  api:
+    build:
+      context: ./src/HuntexPos.Api
+      dockerfile: Dockerfile
+    container_name: mctactical-pos-api
+    volumes:
+      - mctactical-data:/app/data
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: Data Source=/app/data/huntex.db
+      App__PdfStoragePath: /app/data/pdfs
+      App__PublicBaseUrl: ${PUBLIC_BASE_URL:-http://localhost:8080}
+      Jwt__Key: ${JWT_KEY:-CHANGE_ME_TO_A_LONG_RANDOM_SECRET_AT_LEAST_32_CHARS}
+      Jwt__Issuer: ${JWT_ISSUER:-MCTacticalPos}
+      Jwt__Audience: ${JWT_AUDIENCE:-MCTacticalPos}
+      Jwt__SalesExpiresMinutes: ${JWT_SALES_EXPIRES_MIN:-720}
+      PosRules__MaxCartDiscountPercent: ${POS_MAX_CART_DISC_PCT:-25}
+      PosRules__MaxLineDiscountPercent: ${POS_MAX_LINE_DISC_PCT:-50}
+      PosRules__MaxPriceDecreasePercentFromList: ${POS_MAX_PRICE_DOWN_PCT:-15}
+      PosRules__MaxPriceIncreasePercentFromList: ${POS_MAX_PRICE_UP_PCT:-10}
+      Seed__OwnerEmail: ${OWNER_EMAIL}
+      Seed__OwnerPassword: ${OWNER_PASSWORD}
+      Mailgun__ApiKey: ${MAILGUN_API_KEY:-}
+      Mailgun__Domain: ${MAILGUN_DOMAIN:-}
+      Mailgun__From: ${MAILGUN_FROM:-MC Tactical POS <noreply@mctactical.co.za>}
+    expose:
+      - "8080"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./src/huntex-pos-web
+      dockerfile: Dockerfile
+    container_name: mctactical-pos-web
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  mctactical-data:

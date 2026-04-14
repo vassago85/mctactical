@@ -1,0 +1,261 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Source+Sans+3:wght@400;600;700&display=swap');
+
+:root {
+  --mc-bg: #0a0a0b;
+  --mc-surface: #141416;
+  --mc-elevated: #1c1c1f;
+  --mc-border: #2e2e33;
+  --mc-text: #e8e6e1;
+  --mc-muted: #9a9690;
+  --mc-accent: #f47a20;
+  --mc-accent-dim: #c45f18;
+  --mc-link: #ff9a52;
+  --mc-danger: #b71c1c;
+  --mc-focus: #ffb366;
+
+  font-family: 'Source Sans 3', 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--mc-text);
+  background-color: var(--mc-bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--mc-bg);
+  background-image: radial-gradient(ellipse 120% 80% at 50% -20%, rgba(244, 122, 32, 0.1), transparent);
+}
+
+a {
+  color: var(--mc-link);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+input,
+select {
+  font: inherit;
+}
+
+h1,
+h2,
+h3,
+.brand-wordmark {
+  font-family: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.card {
+  background: var(--mc-surface);
+  border-radius: 4px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--mc-border);
+  box-shadow: 0 1px 0 rgba(244, 122, 32, 0.08);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.btn {
+  padding: 0.5rem 1rem;
+  border-radius: 2px;
+  border: 1px solid var(--mc-accent-dim);
+  background: linear-gradient(180deg, #ff9348 0%, #f47a20 45%, #d96516 100%);
+  color: #0a0a0b;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.8rem;
+}
+
+.btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.btn.secondary {
+  background: var(--mc-elevated);
+  color: var(--mc-text);
+  border-color: var(--mc-border);
+}
+
+.btn.danger {
+  background: var(--mc-danger);
+  border-color: #7f0000;
+  color: #fff;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.field label {
+  font-size: 0.85rem;
+  color: var(--mc-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.field input,
+.field select,
+.field textarea {
+  padding: 0.5rem 0.6rem;
+  border-radius: 2px;
+  border: 1px solid var(--mc-border);
+  background: var(--mc-bg);
+  color: var(--mc-text);
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  outline: 1px solid var(--mc-focus);
+  border-color: var(--mc-accent);
+}
+
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  align-items: center;
+}
+
+.nav a {
+  text-decoration: none;
+  padding: 0.4rem 0.85rem;
+  border-radius: 2px;
+  background: var(--mc-elevated);
+  border: 1px solid var(--mc-border);
+  color: var(--mc-text);
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.9rem;
+}
+
+.nav a.router-link-active {
+  border-color: var(--mc-accent);
+  color: var(--mc-accent);
+  background: rgba(244, 122, 32, 0.12);
+}
+
+.err {
+  color: #ffab91;
+  font-size: 0.9rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.4rem 0.35rem;
+  border-bottom: 1px solid var(--mc-border);
+}
+
+th {
+  font-family: 'Barlow Condensed', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.75rem;
+  color: var(--mc-muted);
+}
+
+.brand-strip {
+  border-bottom: 2px solid var(--mc-accent);
+  background: linear-gradient(180deg, #121214 0%, #0a0a0b 100%);
+  margin: -1rem -1rem 1rem -1rem;
+  padding: 0.65rem 1rem;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.brand-strip .tagline,
+.tagline {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--mc-muted);
+}
+
+.brand-strip__left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.brand-logo {
+  height: 38px;
+  width: auto;
+  display: block;
+  object-fit: contain;
+}
+
+.login-logo-wrap {
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.login-logo {
+  max-width: min(280px, 85vw);
+  height: auto;
+  display: inline-block;
+  object-fit: contain;
+}
+
+.invoice-public-logo {
+  max-width: 200px;
+  height: auto;
+  margin-bottom: 0.75rem;
+  display: block;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
