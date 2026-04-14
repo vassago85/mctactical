@@ -20,15 +20,17 @@ const busy = ref(false)
 const email = ref('')
 const password = ref('')
 const displayName = ref('')
-const role = ref<'Sales' | 'Admin'>('Sales')
+const role = ref<'Sales' | 'Admin' | 'Owner'>('Sales')
 
 const canCreateAdmin = ref(false)
+const canCreateOwner = ref(false)
 
 const resetUserId = ref<string | null>(null)
 const resetPassword = ref('')
 
 onMounted(async () => {
   canCreateAdmin.value = auth.hasRole('Owner', 'Dev')
+  canCreateOwner.value = auth.hasRole('Dev')
   await load()
 })
 
@@ -125,6 +127,7 @@ async function applyReset() {
       <select v-model="role">
         <option value="Sales">Sales (POS / stocktake)</option>
         <option v-if="canCreateAdmin" value="Admin">Admin (import, reports, this screen)</option>
+        <option v-if="canCreateOwner" value="Owner">Owner (full access, settings, team)</option>
       </select>
     </div>
     <button type="button" class="btn" :disabled="busy" @click="createUser">Create user</button>

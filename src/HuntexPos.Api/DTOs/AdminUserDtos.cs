@@ -23,8 +23,8 @@ public class CreateStaffUserRequest
 
     public string? DisplayName { get; set; }
 
-    /// <summary>Sales (cashiers) or Admin (back office). Owner/Dev cannot be created here.</summary>
-    [Required, AllowedValues("Sales", "Admin")]
+    /// <summary>Sales (cashiers), Admin (back office), or Owner (full access). Only Dev can assign Owner.</summary>
+    [Required, AllowedValues("Sales", "Admin", "Owner")]
     public string Role { get; set; } = "Sales";
 }
 

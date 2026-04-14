@@ -42,6 +42,8 @@ public class AdminUsersController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<AdminUserListDto>> Create([FromBody] CreateStaffUserRequest req, CancellationToken ct)
     {
+        if (req.Role == Roles.Owner && !User.IsInRole(Roles.Dev))
+            return Forbid();
         if (req.Role == Roles.Admin && !User.IsInRole(Roles.Owner) && !User.IsInRole(Roles.Dev))
             return Forbid();
 
