@@ -265,7 +265,7 @@ async function commitWholesaler() {
       </div>
       <McAlert v-for="w in huntexWarnings" :key="w" variant="warning">{{ w }}</McAlert>
       <div v-if="huntexPreview.length" class="imp-table-wrap">
-        <table>
+        <table class="mc-table">
           <thead>
             <tr>
               <th>#</th>
@@ -316,7 +316,7 @@ async function commitWholesaler() {
         <McButton variant="primary" type="button" :disabled="busy" @click="commitWholesaler">Commit import</McButton>
       </div>
       <div v-if="wholesalerPreview.length" class="imp-table-wrap">
-        <table>
+        <table class="mc-table">
           <thead>
             <tr>
               <th>#</th>
@@ -388,7 +388,7 @@ async function commitWholesaler() {
   gap: 0.35rem 0.65rem;
   margin-bottom: 1.25rem;
   font-size: 0.85rem;
-  color: #5c5a56;
+  color: var(--mc-app-text-muted, #4a4842);
 }
 
 .imp-steps__sep {
@@ -413,14 +413,14 @@ async function commitWholesaler() {
 .imp-presets {
   margin-top: 1rem;
   padding-top: 1rem;
-  border-top: 1px solid #eceae6;
+  border-top: 1px solid var(--mc-app-border-faint, #e0ded8);
 }
 
 .imp-presets__label {
   margin: 0 0 0.5rem;
   font-size: 0.8rem;
   font-weight: 700;
-  color: #7a7874;
+  color: var(--mc-app-text-muted, #4a4842);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -433,7 +433,7 @@ async function commitWholesaler() {
 
 .imp-lead {
   margin: 0 0 1rem;
-  color: #5c5a56;
+  color: var(--mc-app-text-muted, #4a4842);
   line-height: 1.5;
 }
 

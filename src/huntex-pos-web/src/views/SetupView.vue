@@ -136,7 +136,7 @@ async function sendTest() {
 .mail-key-note {
   margin: -0.5rem 0 1rem;
   font-size: 0.85rem;
-  color: #7a7874;
+  color: var(--mc-app-text-muted, #4a4842);
 }
 
 .mail-check {
@@ -150,7 +150,7 @@ async function sendTest() {
 
 .mail-lead {
   margin: 0 0 1rem;
-  color: #5c5a56;
+  color: var(--mc-app-text-muted, #4a4842);
   font-size: 0.95rem;
 }
 </style>

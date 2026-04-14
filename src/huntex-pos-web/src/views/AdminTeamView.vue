@@ -126,16 +126,20 @@ async function applyReset() {
 
 <template>
   <div class="team-page">
-    <McPageHeader
-      title="Team & sales logins"
-      description="Sales staff use POS and stocktake with tighter rules. Only Owner or Dev can create Admin users; only Dev can create Owner."
-    />
+    <McPageHeader title="Team & sales logins">
+      <template #default>
+        Sales staff use POS and stocktake with tighter rules. Only Owner or Dev can create Admin users; only Dev can
+        create Owner.
+      </template>
+    </McPageHeader>
 
     <McAlert v-if="err" variant="error">{{ err }}</McAlert>
 
     <McCard title="Invite user">
-      <p class="team-hint">An email is sent so they can set their own password.</p>
-      <div class="team-form-grid">
+      <p class="team-lead mc-text-muted">
+        An email is sent so they can set their own password.
+      </p>
+      <div class="team-invite-grid">
         <McField label="Email (login)" for-id="team-email">
           <input id="team-email" v-model="email" type="email" autocomplete="off" required />
         </McField>
@@ -150,41 +154,47 @@ async function applyReset() {
           </select>
         </McField>
       </div>
-      <McButton variant="primary" type="button" :disabled="busy" @click="createUser">Create user</McButton>
+      <div class="team-invite-actions">
+        <McButton variant="primary" type="button" :disabled="busy" @click="createUser">Create user</McButton>
+      </div>
     </McCard>
 
     <McCard title="Users">
-      <div class="team-table-wrap">
-        <table class="team-table">
-          <thead>
-            <tr>
-              <th>Email</th>
-              <th>Name</th>
-              <th>Roles</th>
-              <th>Status</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="u in users" :key="u.id">
-              <td>{{ u.email }}</td>
-              <td>{{ u.displayName ?? '—' }}</td>
-              <td>{{ u.roles.join(', ') }}</td>
-              <td>
-                <McBadge :variant="u.lockedOut ? 'danger' : 'success'">
-                  {{ u.lockedOut ? 'Locked' : 'Active' }}
-                </McBadge>
-              </td>
-              <td class="team-actions">
-                <McButton variant="secondary" type="button" @click="toggleLock(u)">
-                  {{ u.lockedOut ? 'Unlock' : 'Lock' }}
-                </McButton>
-                <McButton variant="secondary" type="button" @click="resendInvite(u)">Resend invite</McButton>
-                <McButton variant="ghost" type="button" @click="openReset(u)">Set password</McButton>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="team-table-panel">
+        <div class="team-table-scroll">
+          <table class="mc-table team-table">
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>Name</th>
+                <th>Roles</th>
+                <th>Status</th>
+                <th class="team-th-actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="u in users" :key="u.id">
+                <td class="team-cell-strong">{{ u.email }}</td>
+                <td>{{ u.displayName ?? '—' }}</td>
+                <td class="team-roles">{{ u.roles.join(', ') }}</td>
+                <td>
+                  <McBadge :variant="u.lockedOut ? 'danger' : 'success'">
+                    {{ u.lockedOut ? 'Locked' : 'Active' }}
+                  </McBadge>
+                </td>
+                <td class="team-actions">
+                  <div class="team-actions__inner">
+                    <McButton variant="secondary" dense type="button" @click="toggleLock(u)">
+                      {{ u.lockedOut ? 'Unlock' : 'Lock' }}
+                    </McButton>
+                    <McButton variant="secondary" dense type="button" @click="resendInvite(u)">Resend invite</McButton>
+                    <McButton variant="ghost" dense type="button" @click="openReset(u)">Set password</McButton>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </McCard>
 
@@ -192,7 +202,7 @@ async function applyReset() {
       <McField label="New password" for-id="team-reset-pw">
         <input id="team-reset-pw" v-model="resetPassword" type="password" minlength="10" autocomplete="new-password" />
       </McField>
-      <p class="team-hint">Min. 10 characters with upper, lower, digit, and symbol.</p>
+      <p class="team-modal-hint mc-text-muted">Min. 10 characters with upper, lower, digit, and symbol.</p>
       <template #footer>
         <McButton variant="secondary" type="button" @click="showResetModal = false">Cancel</McButton>
         <McButton variant="primary" type="button" :disabled="resetPassword.length < 10" @click="applyReset">
@@ -206,37 +216,85 @@ async function applyReset() {
 <style scoped>
 .team-page {
   min-height: 100%;
+  max-width: 100%;
 }
 
-.team-hint {
+.team-lead {
   margin: 0 0 1rem;
-  font-size: 0.88rem;
-  color: #7a7874;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  max-width: 62ch;
 }
 
-.team-form-grid {
+.team-invite-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 0 1rem;
-  margin-bottom: 1rem;
+  grid-template-columns: 1fr;
+  gap: 0 1.25rem;
+  margin-bottom: 0.25rem;
 }
 
-.team-table-wrap {
+@media (min-width: 720px) {
+  .team-invite-grid {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 0.9fr);
+    align-items: end;
+  }
+}
+
+.team-invite-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--mc-app-border-faint, #e0ded8);
+}
+
+.team-table-panel {
+  margin: calc(-1 * var(--mc-app-pad-card, 1.25rem));
+  margin-top: 0;
+  border-top: 1px solid var(--mc-app-border-faint, #e0ded8);
+  background: var(--mc-app-surface-2, #f7f6f3);
+}
+
+.team-table-scroll {
   overflow-x: auto;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
 }
 
 .team-table {
-  min-width: 720px;
+  min-width: 760px;
 }
 
-.team-actions {
+.team-th-actions {
+  text-align: right;
+  width: 1%;
   white-space: nowrap;
 }
 
-.team-actions :deep(.mc-btn) {
-  min-height: 38px;
-  margin: 0.15rem;
-  padding: 0 0.6rem;
-  font-size: 0.75rem;
+.team-cell-strong {
+  font-weight: 600;
+}
+
+.team-roles {
+  font-size: 0.875rem;
+}
+
+.team-actions {
+  text-align: right;
+  vertical-align: middle;
+}
+
+.team-actions__inner {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  max-width: 22rem;
+}
+
+.team-modal-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
 }
 </style>

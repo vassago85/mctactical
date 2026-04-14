@@ -259,7 +259,7 @@ onMounted(() => void load())
 
     <McCard :padded="false" title="Products">
       <div class="stock-table-wrap">
-        <table v-if="page?.items.length" class="stock-table">
+        <table v-if="page?.items.length" class="stock-table mc-table">
           <thead>
             <tr>
               <th>SKU</th>
@@ -297,8 +297,8 @@ onMounted(() => void load())
                 <McBadge :variant="p.active ? 'success' : 'neutral'">{{ p.active ? 'Active' : 'Inactive' }}</McBadge>
               </td>
               <td v-if="canManage" class="stock-actions">
-                <McButton variant="secondary" type="button" @click="openEdit(p)">Edit</McButton>
-                <McButton variant="ghost" type="button" @click="toggleActive(p)">
+                <McButton variant="secondary" dense type="button" @click="openEdit(p)">Edit</McButton>
+                <McButton variant="ghost" dense type="button" @click="toggleActive(p)">
                   {{ p.active ? 'Deactivate' : 'Activate' }}
                 </McButton>
               </td>
@@ -411,15 +411,17 @@ onMounted(() => void load())
 
 .stock-toolbar__label {
   font-size: 0.8rem;
-  font-weight: 600;
-  color: #5c5a56;
+  font-weight: 700;
+  color: var(--mc-app-text-secondary, #2c2c30);
 }
 
 .stock-toolbar__select {
   min-height: 44px;
   padding: 0 0.75rem;
   border-radius: 8px;
-  border: 1px solid #d4d2cd;
+  border: 1px solid var(--mc-app-border-subtle, #b5b3ab);
+  background: var(--mc-app-surface, #fff);
+  color: var(--mc-app-text, #121214);
 }
 
 .stock-toolbar__nav {
@@ -432,22 +434,21 @@ onMounted(() => void load())
 
 .stock-toolbar__meta {
   font-size: 0.85rem;
-  color: #7a7874;
+  color: var(--mc-app-text-muted, #4a4842);
+  font-weight: 500;
 }
 
 .stock-table-wrap {
   overflow-x: auto;
+  padding: 0 var(--mc-app-pad-card, 1.25rem) var(--mc-app-pad-card, 1.25rem);
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .stock-table {
   width: 100%;
   min-width: 900px;
   font-size: 0.88rem;
-}
-
-.stock-table th,
-.stock-table td {
-  padding: 0.7rem 0.65rem;
 }
 
 .stock-mono {
@@ -478,19 +479,13 @@ onMounted(() => void load())
   white-space: nowrap;
 }
 
-.stock-actions :deep(.mc-btn) {
-  min-height: 38px;
-  padding: 0 0.65rem;
-  font-size: 0.75rem;
-}
-
 .stock-loading {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.75rem;
   padding: 3rem;
-  color: #7a7874;
+  color: var(--mc-app-text-muted, #4a4842);
 }
 
 .stock-drawer-overlay {
@@ -508,11 +503,11 @@ onMounted(() => void load())
   bottom: 0;
   z-index: 10031;
   width: min(480px, 100vw);
-  background: #fff;
+  background: var(--mc-app-surface, #fff);
   box-shadow: -8px 0 40px rgba(0, 0, 0, 0.15);
   display: flex;
   flex-direction: column;
-  border-left: 1px solid #e2e0db;
+  border-left: 1px solid var(--mc-app-border-soft, #cfcdc6);
 }
 
 .stock-drawer__head {
@@ -520,8 +515,8 @@ onMounted(() => void load())
   align-items: center;
   justify-content: space-between;
   padding: 1rem 1.15rem;
-  border-bottom: 1px solid #eceae6;
-  background: #fafaf8;
+  border-bottom: 1px solid var(--mc-app-border-faint, #e0ded8);
+  background: var(--mc-app-surface-2, #f7f6f3);
 }
 
 .stock-drawer__title {
@@ -535,12 +530,17 @@ onMounted(() => void load())
 .stock-drawer__close {
   width: 44px;
   height: 44px;
-  border: none;
-  background: #eceae6;
+  border: 1px solid var(--mc-app-border-faint, #e0ded8);
+  background: var(--mc-app-surface, #fff);
   border-radius: 8px;
   font-size: 1.35rem;
   line-height: 1;
   cursor: pointer;
+  color: var(--mc-app-text-secondary, #2c2c30);
+}
+
+.stock-drawer__close:hover {
+  background: var(--mc-app-surface-muted, #ebe9e4);
 }
 
 .stock-drawer__body {
@@ -563,12 +563,12 @@ onMounted(() => void load())
 
 .stock-drawer__foot {
   padding: 1rem 1.15rem;
-  border-top: 1px solid #eceae6;
+  border-top: 1px solid var(--mc-app-border-faint, #e0ded8);
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
   flex-wrap: wrap;
-  background: #fff;
+  background: var(--mc-app-surface-2, #f7f6f3);
 }
 
 .stock-drawer-fade-enter-active,

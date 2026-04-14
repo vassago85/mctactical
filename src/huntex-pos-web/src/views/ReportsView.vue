@@ -78,7 +78,7 @@ async function exportCsv() {
 
     <McCard title="Daily totals (final invoices)">
       <div class="rep-table-wrap">
-        <table>
+        <table class="mc-table">
           <thead>
             <tr>
               <th>Date</th>
@@ -99,7 +99,7 @@ async function exportCsv() {
 
     <McCard title="Recent invoices">
       <div class="rep-table-wrap">
-        <table>
+        <table class="mc-table">
           <thead>
             <tr>
               <th>Invoice</th>
@@ -135,6 +135,7 @@ async function exportCsv() {
 
 .rep-table-wrap {
   overflow-x: auto;
+  max-width: 100%;
 }
 
 .rep-num {

@@ -265,7 +265,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
             hint="Add products from the search results."
           />
           <div v-else class="pos-cart-table-wrap">
-            <table class="pos-cart-table">
+            <table class="pos-cart-table mc-table">
               <thead>
                 <tr>
                   <th>Item</th>
@@ -375,7 +375,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 
     <McModal v-model="showBelowCostModal" title="Below cost">
       <p>{{ belowCostWarning }}</p>
-      <p style="margin-bottom: 0; color: #5c5a56; font-size: 0.9rem">Continue only if you intend to approve this sale.</p>
+      <p class="mc-text-muted" style="margin-bottom: 0; font-size: 0.9rem">Continue only if you intend to approve this sale.</p>
       <template #footer>
         <McButton variant="secondary" type="button" @click="showBelowCostModal = false">Cancel</McButton>
         <McButton variant="primary" type="button" :disabled="busy" @click="doCheckout">Proceed</McButton>
@@ -409,9 +409,9 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 .pos-scanner-wrap {
   margin-bottom: 1rem;
   padding: 0.75rem;
-  background: #fafaf8;
+  background: var(--mc-app-surface-2, #f7f6f3);
   border-radius: 10px;
-  border: 1px solid #eceae6;
+  border: 1px solid var(--mc-app-border-faint, #e0ded8);
 }
 
 .pos-search-input {
@@ -433,7 +433,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.85rem 0;
-  border-bottom: 1px solid #eceae6;
+  border-bottom: 1px solid var(--mc-app-border-faint, #e0ded8);
 }
 
 .pos-result:last-child {
@@ -443,14 +443,15 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 .pos-result__name {
   margin: 0 0 0.2rem;
   font-weight: 600;
-  color: #1a1a1c;
+  color: var(--mc-app-text, #121214);
   font-size: 1rem;
 }
 
 .pos-result__meta {
   margin: 0;
   font-size: 0.85rem;
-  color: #7a7874;
+  color: var(--mc-app-text-muted, #4a4842);
+  font-weight: 500;
 }
 
 .pos-result__side {
@@ -463,7 +464,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 .pos-result__price {
   font-weight: 700;
   font-size: 1.05rem;
-  color: #1a1a1c;
+  color: var(--mc-app-text, #121214);
 }
 
 .pos-result__stock {
@@ -487,12 +488,6 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   font-size: 0.9rem;
 }
 
-.pos-cart-table th,
-.pos-cart-table td {
-  padding: 0.65rem 0.5rem;
-  vertical-align: middle;
-}
-
 .pos-cart-name {
   max-width: 12rem;
   font-weight: 500;
@@ -501,25 +496,25 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 .pos-stepper {
   display: inline-flex;
   align-items: center;
-  border: 1px solid #d4d2cd;
+  border: 1px solid var(--mc-app-border-subtle, #b5b3ab);
   border-radius: 8px;
   overflow: hidden;
-  background: #fff;
+  background: var(--mc-app-surface, #fff);
 }
 
 .pos-stepper__btn {
   min-width: 44px;
   min-height: 44px;
   border: none;
-  background: #f4f3f0;
+  background: var(--mc-app-surface-muted, #ebe9e4);
   font-size: 1.25rem;
   font-weight: 600;
-  color: #2a2a2d;
+  color: var(--mc-app-text-secondary, #2c2c30);
   cursor: pointer;
 }
 
 .pos-stepper__btn:hover {
-  background: #eceae6;
+  background: var(--mc-app-border-faint, #e0ded8);
 }
 
 .pos-stepper__val {
@@ -533,7 +528,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   min-height: 44px;
   padding: 0.35rem 0.5rem;
   border-radius: 8px;
-  border: 1px solid #d4d2cd;
+  border: 1px solid var(--mc-app-border-subtle, #b5b3ab);
 }
 
 .pos-cart-line-total {
@@ -567,16 +562,16 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   z-index: 5;
   margin-top: 0.5rem;
   padding: 1rem 0 0.25rem;
-  background: linear-gradient(180deg, transparent 0%, #e8e6e1 18%);
+  background: linear-gradient(180deg, transparent 0%, var(--mc-app-page-bg, #d2d1cc) 18%);
 }
 
 .pos-totals {
-  background: #fff;
-  border: 1px solid #e2e0db;
+  background: var(--mc-app-surface, #fff);
+  border: 1px solid var(--mc-app-border-soft, #cfcdc6);
   border-radius: 12px;
   padding: 1rem 1.15rem;
   margin-bottom: 0.75rem;
-  box-shadow: 0 4px 20px rgba(26, 26, 28, 0.08);
+  box-shadow: var(--mc-app-shadow-md, 0 4px 20px rgba(26, 26, 28, 0.08));
 }
 
 .pos-totals__row {
@@ -588,8 +583,9 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 }
 
 .pos-totals__row--muted {
-  color: #7a7874;
+  color: var(--mc-app-text-muted, #4a4842);
   font-size: 0.88rem;
+  font-weight: 500;
 }
 
 .pos-totals__grand {

@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { http } from '@/api/http'
-import { logoLight } from '@/branding'
+import { logoDark } from '@/branding'
 import McButton from '@/components/ui/McButton.vue'
 import McField from '@/components/ui/McField.vue'
 import McAlert from '@/components/ui/McAlert.vue'
@@ -58,7 +58,7 @@ async function submit() {
   <div class="auth-layout">
     <div class="auth-panel">
       <div class="auth-panel__brand">
-        <img class="auth-panel__logo" :src="logoLight" alt="MC Tactical" />
+        <img class="auth-panel__logo" :src="logoDark" alt="MC Tactical" />
       </div>
       <p class="auth-panel__title">Set your password</p>
       <p class="auth-panel__sub">

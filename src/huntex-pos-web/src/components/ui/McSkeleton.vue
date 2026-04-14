@@ -20,7 +20,12 @@ defineProps<{
 .mc-skel__line {
   height: 12px;
   border-radius: 6px;
-  background: linear-gradient(90deg, #eceae6 0%, #f4f3f0 50%, #eceae6 100%);
+  background: linear-gradient(
+    90deg,
+    var(--mc-app-border-faint, #e0ded8) 0%,
+    var(--mc-app-surface-muted, #ebe9e4) 50%,
+    var(--mc-app-border-faint, #e0ded8) 100%
+  );
   background-size: 200% 100%;
   animation: mc-skel-shimmer 1.2s ease-in-out infinite;
 }

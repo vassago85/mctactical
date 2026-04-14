@@ -230,7 +230,7 @@ async function confirmPost() {
       </div>
 
       <McCard title="Session lines">
-        <table v-if="session.lines.length" class="st-lines">
+        <table v-if="session.lines.length" class="st-lines mc-table">
           <thead>
             <tr>
               <th>Product</th>
@@ -272,7 +272,7 @@ async function confirmPost() {
       </div>
 
       <McCard v-else title="Complete">
-        <p style="margin: 0; color: #5c5a56">This session is closed. Start a new session for the next count.</p>
+        <p class="mc-text-muted" style="margin: 0">This session is closed. Start a new session for the next count.</p>
       </McCard>
     </template>
 
@@ -306,8 +306,9 @@ async function confirmPost() {
   gap: 0.5rem;
   padding: 0.5rem 0.85rem;
   border-radius: 10px;
-  background: #eceae6;
-  color: #7a7874;
+  background: var(--mc-app-surface-muted, #ebe9e4);
+  border: 1px solid var(--mc-app-border-soft, #cfcdc6);
+  color: var(--mc-app-text-secondary, #2c2c30);
   font-weight: 600;
   font-size: 0.85rem;
   text-transform: uppercase;
@@ -331,14 +332,15 @@ async function confirmPost() {
   width: 1.65rem;
   height: 1.65rem;
   border-radius: 50%;
-  background: #fff;
+  background: var(--mc-app-surface, #fff);
   font-size: 0.9rem;
+  border: 1px solid var(--mc-app-border-faint, #e0ded8);
 }
 
 .st-step__line {
   width: 2rem;
   height: 3px;
-  background: #d4d2cd;
+  background: var(--mc-app-border-subtle, #b5b3ab);
   border-radius: 2px;
 }
 
@@ -354,9 +356,10 @@ async function confirmPost() {
   gap: 0.75rem;
   margin-bottom: 1rem;
   padding: 0.85rem 1rem;
-  background: #fff;
-  border: 1px solid #e2e0db;
+  background: var(--mc-app-surface, #fff);
+  border: 1px solid var(--mc-app-border-soft, #cfcdc6);
   border-radius: 12px;
+  box-shadow: var(--mc-app-shadow-xs, none);
 }
 
 .st-session-badge {
@@ -366,7 +369,8 @@ async function confirmPost() {
 .st-session-meta {
   margin: 0;
   font-size: 0.9rem;
-  color: #7a7874;
+  color: var(--mc-app-text-muted, #4a4842);
+  font-weight: 500;
 }
 
 .st-grid {
@@ -388,9 +392,9 @@ async function confirmPost() {
 .st-scanner {
   margin-bottom: 1rem;
   padding: 0.75rem;
-  background: #fafaf8;
+  background: var(--mc-app-surface-2, #f7f6f3);
   border-radius: 10px;
-  border: 1px solid #eceae6;
+  border: 1px solid var(--mc-app-border-faint, #e0ded8);
 }
 
 .st-search-row {
@@ -419,7 +423,7 @@ async function confirmPost() {
   gap: 0.5rem;
   align-items: center;
   padding: 0.75rem 0.65rem;
-  border-bottom: 1px solid #eceae6;
+  border-bottom: 1px solid var(--mc-app-border-faint, #e0ded8);
   cursor: pointer;
   border-radius: 8px;
 }
@@ -432,11 +436,12 @@ async function confirmPost() {
 
 .st-result__name {
   font-weight: 600;
+  color: var(--mc-app-text, #121214);
 }
 
 .st-result__sku {
   font-size: 0.85rem;
-  color: #7a7874;
+  color: var(--mc-app-text-muted, #4a4842);
 }
 
 .st-result__qty {
@@ -453,8 +458,8 @@ async function confirmPost() {
   display: block;
   margin-top: 0.35rem;
   font-size: 0.9rem;
-  color: #7a7874;
-  font-weight: 400;
+  color: var(--mc-app-text-muted, #4a4842);
+  font-weight: 500;
 }
 
 .st-count-input {
@@ -466,11 +471,6 @@ async function confirmPost() {
 .st-lines {
   width: 100%;
   font-size: 0.9rem;
-}
-
-.st-lines th,
-.st-lines td {
-  padding: 0.65rem 0.5rem;
 }
 
 .st-var--ok {
@@ -490,6 +490,7 @@ async function confirmPost() {
 .st-post-hint {
   margin: 0.5rem 0 0;
   font-size: 0.85rem;
-  color: #7a7874;
+  color: var(--mc-app-text-muted, #4a4842);
+  font-weight: 500;
 }
 </style>

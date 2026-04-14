@@ -86,11 +86,11 @@ onUnmounted(() => {
   max-width: 480px;
   max-height: min(90dvh, 720px);
   overflow: auto;
-  background: #fff;
-  color: #1a1a1c;
-  border-radius: 12px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.25);
-  border: 1px solid #e2e0db;
+  background: var(--mc-app-surface, #fff);
+  color: var(--mc-app-text, #121214);
+  border-radius: var(--mc-app-radius-card, 12px);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--mc-app-border-soft, #cfcdc6);
 }
 .mc-modal-header {
   display: flex;
@@ -98,7 +98,8 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 1rem;
   padding: 1.1rem 1.25rem;
-  border-bottom: 1px solid #e8e6e1;
+  border-bottom: 1px solid var(--mc-app-border-faint, #e0ded8);
+  background: var(--mc-app-surface-2, #f7f6f3);
 }
 .mc-modal-title {
   margin: 0;
@@ -107,29 +108,29 @@ onUnmounted(() => {
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #1a1a1c;
+  color: var(--mc-app-heading, #0a0a0c);
 }
 .mc-modal-x {
   flex-shrink: 0;
   width: 2.5rem;
   height: 2.5rem;
-  border: none;
-  background: #f4f3f0;
+  border: 1px solid var(--mc-app-border-faint, #e0ded8);
+  background: var(--mc-app-surface, #fff);
   border-radius: 8px;
   font-size: 1.35rem;
   line-height: 1;
   cursor: pointer;
-  color: #3d3d40;
+  color: var(--mc-app-text-secondary, #2c2c30);
 }
 .mc-modal-x:hover {
-  background: #e8e6e1;
+  background: var(--mc-app-surface-muted, #ebe9e4);
 }
 .mc-modal-body {
   padding: 1.25rem;
 }
 .mc-modal-footer {
   padding: 1rem 1.25rem;
-  border-top: 1px solid #e8e6e1;
+  border-top: 1px solid var(--mc-app-border-faint, #e0ded8);
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;

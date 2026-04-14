@@ -1,0 +1,7 @@
+UI: stronger light-workspace contrast, containment, and auth logo
+
+- Add --mc-app-* surface/text/border/table tokens on mc-body-app; global mc-table zebra and .mc-text-muted utilities
+- Update McCard, McField, McPageHeader, McButton (dense), McBadge, McAlert, McModal, McToastHost, McEmptyState, McSkeleton to use tokens and readable contrast
+- Redesign AdminTeamView: invite grid, table panel, mc-table, dense row actions
+- Apply mc-table and token-based greys across Reports, Import, Stock, POS cart, Stocktake; polish drawers and toolbars
+- Use logoDark on Login and Setup password screens for white auth panels

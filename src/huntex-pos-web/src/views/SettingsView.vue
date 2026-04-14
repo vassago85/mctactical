@@ -159,7 +159,7 @@ async function runRecalculate() {
 .set-hint {
   margin: 0.75rem 0 0;
   font-size: 0.88rem;
-  color: #7a7874;
+  color: var(--mc-app-text-muted, #4a4842);
   line-height: 1.45;
 }
 
@@ -182,6 +182,6 @@ async function runRecalculate() {
 .set-recalc-msg {
   margin: 0.75rem 0 0;
   font-size: 0.88rem;
-  color: #5c5a56;
+  color: var(--mc-app-text-muted, #4a4842);
 }
 </style>
