@@ -469,6 +469,7 @@ onMounted(() => void load())
 .stock-table-wrap {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  padding: 0 24px 16px;
 }
 
 .stock-table {

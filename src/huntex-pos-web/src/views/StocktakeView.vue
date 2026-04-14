@@ -362,7 +362,7 @@ async function confirmPost() {
   justify-content: space-between;
   gap: 0.75rem;
   margin-bottom: 1.25rem;
-  padding: 1rem 1.25rem;
+  padding: 1.15rem 1.5rem;
   background: var(--mc-app-surface, #fff);
   border: 1px solid var(--mc-app-border-soft, #ddd9d3);
   border-radius: 14px;

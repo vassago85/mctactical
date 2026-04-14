@@ -49,6 +49,7 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
             e.Property(l => l.UnitPrice).HasPrecision(18, 2);
             e.Property(l => l.LineDiscount).HasPrecision(18, 2);
             e.Property(l => l.LineTotal).HasPrecision(18, 2);
+            e.Property(l => l.CostAtSale).HasPrecision(18, 2);
         });
 
         modelBuilder.Entity<PricingSettings>(e =>

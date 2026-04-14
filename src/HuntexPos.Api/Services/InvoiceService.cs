@@ -86,7 +86,8 @@ public class InvoiceService
                 Quantity = l.Quantity,
                 UnitPrice = unit,
                 LineDiscount = l.LineDiscount,
-                LineTotal = lineTotal
+                LineTotal = lineTotal,
+                CostAtSale = p.Cost
             });
 
             p.QtyOnHand -= l.Quantity;

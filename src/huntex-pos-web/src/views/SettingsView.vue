@@ -173,11 +173,19 @@ async function runRecalculate() {
   cursor: pointer;
 }
 
+.set-check input {
+  width: 1.15rem;
+  height: 1.15rem;
+  accent-color: var(--mc-accent, #f47a20);
+}
+
 .set-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.65rem;
-  margin-top: 0.5rem;
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 2px solid var(--mc-app-border-faint, #eceae5);
 }
 
 .set-recalc-msg {

@@ -249,6 +249,7 @@ async function applyReset() {
 .team-table-scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  padding: 0 24px 16px;
 }
 
 .team-table {

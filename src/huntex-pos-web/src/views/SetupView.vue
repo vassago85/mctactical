@@ -148,6 +148,12 @@ async function sendTest() {
   cursor: pointer;
 }
 
+.mail-check input {
+  width: 1.15rem;
+  height: 1.15rem;
+  accent-color: var(--mc-accent, #f47a20);
+}
+
 .mail-lead {
   margin: 0 0 1rem;
   color: var(--mc-app-text-muted, #4a4842);

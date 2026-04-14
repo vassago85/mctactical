@@ -445,6 +445,8 @@ async function commitWholesaler() {
   display: block;
   margin: 0.75rem 0;
   font-size: 0.9rem;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .imp-actions {
@@ -457,12 +459,15 @@ async function commitWholesaler() {
 .imp-json {
   width: 100%;
   max-width: 100%;
+  min-width: 0;
   font-family: ui-monospace, monospace;
   font-size: 0.85rem;
   padding: 0.85rem;
   border-radius: 10px;
   border: 1.5px solid var(--mc-app-border-subtle, #c8c5bd);
   box-sizing: border-box;
+  background: var(--mc-app-surface, #fff);
+  color: var(--mc-app-text, #1a1a1c);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 

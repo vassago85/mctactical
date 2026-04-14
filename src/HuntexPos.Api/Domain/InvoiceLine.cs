@@ -14,4 +14,7 @@ public class InvoiceLine
     public decimal UnitPrice { get; set; }
     public decimal LineDiscount { get; set; }
     public decimal LineTotal { get; set; }
+
+    /// <summary>Wholesale cost (excl VAT) snapshotted at time of sale for GP reporting.</summary>
+    public decimal CostAtSale { get; set; }
 }
