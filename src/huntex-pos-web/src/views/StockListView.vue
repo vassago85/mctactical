@@ -124,6 +124,8 @@ const form = ref({
 })
 const formBusy = ref(false)
 const formErr = ref<string | null>(null)
+const sellPriceManual = ref(false)
+let computeTimer: ReturnType<typeof setTimeout> | null = null
 
 function closeDrawer() {
   showForm.value = false
@@ -131,6 +133,7 @@ function closeDrawer() {
 
 function openAdd() {
   editId.value = null
+  sellPriceManual.value = false
   form.value = { sku: '', barcode: '', name: '', category: '', manufacturer: '', itemType: '', cost: 0, sellPrice: 0, qtyOnHand: 0 }
   formErr.value = null
   showForm.value = true
@@ -138,6 +141,7 @@ function openAdd() {
 
 function openEdit(p: Product) {
   editId.value = p.id
+  sellPriceManual.value = true
   form.value = {
     sku: p.sku,
     barcode: p.barcode ?? '',
@@ -152,6 +156,18 @@ function openEdit(p: Product) {
   formErr.value = null
   showForm.value = true
 }
+
+watch(() => form.value.cost, (cost) => {
+  if (sellPriceManual.value) return
+  if (computeTimer) clearTimeout(computeTimer)
+  if (!cost || cost <= 0) { form.value.sellPrice = 0; return }
+  computeTimer = setTimeout(async () => {
+    try {
+      const { data } = await http.get<{ sellPrice: number }>('/api/settings/pricing/compute-sell', { params: { cost } })
+      if (!sellPriceManual.value) form.value.sellPrice = data.sellPrice
+    } catch { /* keep current value */ }
+  }, 300)
+})
 
 async function saveProduct() {
   formErr.value = null
@@ -358,8 +374,8 @@ onMounted(() => void load())
               <McField label="Cost (R)" for-id="f-cost">
                 <input id="f-cost" v-model.number="form.cost" type="number" step="0.01" min="0" />
               </McField>
-              <McField label="Sell price (R)" for-id="f-sell">
-                <input id="f-sell" v-model.number="form.sellPrice" type="number" step="0.01" min="0" />
+              <McField label="Sell price (R)" for-id="f-sell" :hint="sellPriceManual ? '' : 'Auto-calculated from cost'">
+                <input id="f-sell" v-model.number="form.sellPrice" type="number" step="0.01" min="0" @input="sellPriceManual = true" />
               </McField>
               <McField label="Qty on hand" for-id="f-qty">
                 <input id="f-qty" v-model.number="form.qtyOnHand" type="number" step="1" min="0" />

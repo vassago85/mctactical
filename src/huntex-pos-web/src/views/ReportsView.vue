@@ -42,8 +42,15 @@ async function load() {
     ])
     invoices.value = inv.data
     daily.value = d.data
-  } catch {
-    err.value = 'Failed to load reports'
+  } catch (e: unknown) {
+    const ax = e as { response?: { status?: number; data?: { error?: string } } }
+    const status = ax.response?.status
+    const detail = ax.response?.data?.error
+    if (status === 401 || status === 403) {
+      err.value = 'You do not have permission to view reports. Only Admin / Owner roles can access this page.'
+    } else {
+      err.value = detail ? `Failed to load reports: ${detail}` : 'Failed to load reports — check that the API is running.'
+    }
   }
 }
 

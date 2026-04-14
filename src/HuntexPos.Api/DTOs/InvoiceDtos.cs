@@ -61,6 +61,7 @@ public class InvoiceDto
 
     /// <summary>Non-null if the sale total is below total cost (managers only).</summary>
     public string? BelowCostWarning { get; set; }
+    public string? EmailWarning { get; set; }
 }
 
 public class InvoiceLineDto

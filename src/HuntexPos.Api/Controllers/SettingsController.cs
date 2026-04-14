@@ -92,6 +92,15 @@ public class SettingsController : ControllerBase
         return dto;
     }
 
+    [HttpGet("pricing/compute-sell")]
+    [Authorize(Roles = $"{Roles.Owner},{Roles.Admin},{Roles.Dev}")]
+    public async Task<IActionResult> ComputeSellPrice([FromQuery] decimal cost, CancellationToken ct)
+    {
+        var settings = await _db.PricingSettings.AsNoTracking().FirstOrDefaultAsync(ct) ?? new PricingSettings();
+        var sell = cost > 0 ? PricingCalculator.ComputeSellPrice(cost, settings) : 0m;
+        return Ok(new { sellPrice = sell });
+    }
+
     /// <summary>Recalculate all active product sell prices from cost using current pricing settings.</summary>
     [HttpPost("pricing/recalculate")]
     [Authorize(Roles = $"{Roles.Owner},{Roles.Admin},{Roles.Dev}")]

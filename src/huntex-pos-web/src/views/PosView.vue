@@ -36,7 +36,7 @@ const customerEmail = ref('')
 const customerType = ref('')
 const paymentMethod = ref('Cash')
 const discountTotal = ref(0)
-const sendEmail = ref(false)
+const sendEmail = ref(true)
 const busy = ref(false)
 const err = ref<string | null>(null)
 const searchLoading = ref(false)
@@ -163,6 +163,7 @@ async function doCheckout() {
     let msg = `Invoice ${data.invoiceNumber} — total ${formatZAR(data.grandTotal)}`
     if (data.belowCostWarning) msg += `\n${data.belowCostWarning}`
     toast.success(msg)
+    if (data.emailWarning) toast.error(data.emailWarning)
   } catch (e: unknown) {
     const ax = e as { response?: { data?: { error?: string } } }
     err.value = ax.response?.data?.error ?? 'Checkout failed'

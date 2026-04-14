@@ -136,37 +136,46 @@ public class InvoiceService
 
         await tx.CommitAsync(ct);
 
+        string? emailWarning = null;
         if (req.SendEmail && !string.IsNullOrWhiteSpace(req.CustomerEmail))
         {
-            var viewUrl = $"{_app.PublicBaseUrl.TrimEnd('/')}/#/invoice/{invoice.PublicToken.ToString("N")}";
-            var shopName = string.IsNullOrWhiteSpace(_app.CompanyDisplayName)
-                ? "MC Tactical"
-                : _app.CompanyDisplayName.Trim();
-            var footer = ReceiptCompanyContact.ToEmailHtmlFooter(_app);
-            var html = $"""
-                        <p>Thank you for your purchase at {System.Net.WebUtility.HtmlEncode(shopName)}.</p>
-                        <p>Invoice <strong>{invoice.InvoiceNumber}</strong> — Total <strong>{invoice.GrandTotal:F2}</strong></p>
-                        <p><a href="{viewUrl}">View or print your invoice</a></p>
-                        {footer}
-                        """;
-            try
+            var mailOpt = await _mailgun.GetAsync(ct);
+            if (string.IsNullOrWhiteSpace(mailOpt.ApiKey) || string.IsNullOrWhiteSpace(mailOpt.Domain))
             {
-                var mailOpt = await _mailgun.GetAsync(ct);
-                await _email.SendInvoiceEmailAsync(
-                    req.CustomerEmail.Trim(),
-                    $"Invoice {invoice.InvoiceNumber}",
-                    html,
-                    mailOpt.AttachPdf ? pdfBytes : null,
-                    mailOpt.AttachPdf ? $"{invoice.InvoiceNumber}.pdf" : null,
-                    ct);
+                emailWarning = "Email not sent — Mailgun is not configured. Set up email in Settings → Email.";
             }
-            catch
+            else
             {
-                // logged in sender; invoice still valid
+                var viewUrl = $"{_app.PublicBaseUrl.TrimEnd('/')}/#/invoice/{invoice.PublicToken.ToString("N")}";
+                var shopName = string.IsNullOrWhiteSpace(_app.CompanyDisplayName)
+                    ? "MC Tactical"
+                    : _app.CompanyDisplayName.Trim();
+                var footer = ReceiptCompanyContact.ToEmailHtmlFooter(_app);
+                var html = $"""
+                            <p>Thank you for your purchase at {System.Net.WebUtility.HtmlEncode(shopName)}.</p>
+                            <p>Invoice <strong>{invoice.InvoiceNumber}</strong> — Total <strong>{invoice.GrandTotal:F2}</strong></p>
+                            <p><a href="{viewUrl}">View or print your invoice</a></p>
+                            {footer}
+                            """;
+                try
+                {
+                    await _email.SendInvoiceEmailAsync(
+                        req.CustomerEmail.Trim(),
+                        $"Invoice {invoice.InvoiceNumber}",
+                        html,
+                        mailOpt.AttachPdf ? pdfBytes : null,
+                        mailOpt.AttachPdf ? $"{invoice.InvoiceNumber}.pdf" : null,
+                        ct);
+                }
+                catch (Exception ex)
+                {
+                    emailWarning = $"Invoice saved but email failed: {ex.Message}";
+                }
             }
         }
 
         var dto = MapToDto(invoice, pdfBytes);
+        dto.EmailWarning = emailWarning;
 
         var totalCost = lines.Sum(line =>
         {
