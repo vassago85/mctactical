@@ -34,8 +34,18 @@
   background-color: var(--mc-bg);
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
+}
+
+html {
+  overflow-x: hidden;
+}
+
+input, select, textarea, button {
+  max-width: 100%;
 }
 
 body {
@@ -237,7 +247,7 @@ h3,
 .field textarea:focus {
   outline: none;
   border-color: var(--mc-accent);
-  box-shadow: 0 0 0 3px rgba(244, 122, 32, 0.2);
+  box-shadow: inset 0 0 0 1px var(--mc-accent);
 }
 
 .nav {
@@ -452,8 +462,10 @@ body.mc-body-app .app-main tbody tr:hover {
 .app-main {
   flex: 1;
   min-width: 0;
+  max-width: 100%;
   background: var(--mc-app-page-bg, #eae8e3);
   overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .app-main__inner {
@@ -463,6 +475,7 @@ body.mc-body-app .app-main tbody tr:hover {
   padding: var(--mc-app-pad-page-y, 1.5rem) var(--mc-app-pad-page-x, 2rem)
     var(--mc-space-8);
   color: var(--mc-app-text, inherit);
+  overflow: hidden;
 }
 
 .mc-topbar {

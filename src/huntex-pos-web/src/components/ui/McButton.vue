@@ -52,6 +52,7 @@ defineProps<{
 }
 .mc-btn--block {
   width: 100%;
+  max-width: 100%;
 }
 .mc-btn--dense {
   min-height: 36px;

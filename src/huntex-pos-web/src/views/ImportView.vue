@@ -469,7 +469,7 @@ async function commitWholesaler() {
 .imp-json:focus {
   outline: none;
   border-color: var(--mc-accent, #f47a20);
-  box-shadow: 0 0 0 3px rgba(244, 122, 32, 0.2);
+  box-shadow: inset 0 0 0 1px var(--mc-accent, #f47a20);
 }
 
 .imp-table-wrap {

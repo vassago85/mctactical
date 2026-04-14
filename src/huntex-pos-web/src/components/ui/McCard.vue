@@ -53,7 +53,7 @@ defineProps<{
 .mc-card__body {
   padding: 24px;
   min-width: 0;
-  overflow-x: auto;
+  overflow: hidden;
 }
 .mc-card--tight .mc-card__head + .mc-card__body {
   padding: 0;

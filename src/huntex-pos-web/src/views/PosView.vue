@@ -391,7 +391,13 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 
 <style scoped>
 .pos-page {
-  /* wrapper for scoped table overrides inside cards */
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.pos-col {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .pos-grid {
@@ -399,6 +405,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   grid-template-columns: 1fr;
   gap: 1.5rem;
   align-items: start;
+  max-width: 100%;
 }
 
 @media (min-width: 960px) {
@@ -571,7 +578,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 .pos-cart-input:focus {
   outline: none;
   border-color: var(--mc-accent, #f47a20);
-  box-shadow: 0 0 0 3px rgba(244, 122, 32, 0.2);
+  box-shadow: inset 0 0 0 1px var(--mc-accent, #f47a20);
 }
 
 @media (min-width: 480px) {
