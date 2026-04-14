@@ -55,9 +55,9 @@ defineProps<{
 .mc-field__control :deep(input:focus),
 .mc-field__control :deep(select:focus),
 .mc-field__control :deep(textarea:focus) {
-  outline: 2px solid rgba(244, 122, 32, 0.35);
-  outline-offset: 1px;
+  outline: none;
   border-color: var(--mc-accent, #f47a20);
+  box-shadow: 0 0 0 2px rgba(244, 122, 32, 0.3);
 }
 .mc-field__hint {
   margin: 0.4rem 0 0;
