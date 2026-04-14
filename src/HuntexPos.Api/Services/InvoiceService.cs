@@ -166,7 +166,17 @@ public class InvoiceService
             }
         }
 
-        return MapToDto(invoice, pdfBytes);
+        var dto = MapToDto(invoice, pdfBytes);
+
+        var totalCost = lines.Sum(line =>
+        {
+            products.TryGetValue(line.ProductId, out var prod);
+            return prod != null ? prod.Cost * line.Quantity : 0m;
+        });
+        if (grandTotal < totalCost)
+            dto.BelowCostWarning = $"Sale total R{grandTotal:0.00} is below total cost R{totalCost:0.00}";
+
+        return dto;
     }
 
     private InvoiceDto MapToDto(Invoice inv, byte[]? pdfBytes, bool includeCompanyContact = false)

@@ -42,13 +42,15 @@ public class SettingsController : ControllerBase
     [Authorize(Roles = $"{Roles.Sales},{Roles.Admin},{Roles.Owner},{Roles.Dev}")]
     public ActionResult<PosRulesDto> GetPosRules()
     {
+        var isManager = User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Owner) || User.IsInRole(Roles.Dev);
         return new PosRulesDto
         {
             MaxCartDiscountPercent = _posRules.MaxCartDiscountPercent,
             MaxLineDiscountPercent = _posRules.MaxLineDiscountPercent,
             MaxPriceDecreasePercentFromList = _posRules.MaxPriceDecreasePercentFromList,
             MaxPriceIncreasePercentFromList = _posRules.MaxPriceIncreasePercentFromList,
-            BlockZeroOrNegativeTotal = _posRules.BlockZeroOrNegativeTotal
+            BlockZeroOrNegativeTotal = _posRules.BlockZeroOrNegativeTotal,
+            IsManager = isManager
         };
     }
 

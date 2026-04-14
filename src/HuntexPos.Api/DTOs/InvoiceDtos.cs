@@ -58,6 +58,9 @@ public class InvoiceDto
 
     /// <summary>Set on anonymous public invoice responses so the web receipt can show shop details.</summary>
     public CompanyContactDto? CompanyContact { get; set; }
+
+    /// <summary>Non-null if the sale total is below total cost (managers only).</summary>
+    public string? BelowCostWarning { get; set; }
 }
 
 public class InvoiceLineDto

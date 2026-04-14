@@ -29,17 +29,20 @@ const sendEmail = ref(false)
 const busy = ref(false)
 const err = ref<string | null>(null)
 const auth = useAuthStore()
+const isManager = ref(false)
 const posRules = ref<{
   maxCartDiscountPercent: number
   maxLineDiscountPercent: number
   maxPriceDecreasePercentFromList: number
   maxPriceIncreasePercentFromList: number
+  isManager: boolean
 } | null>(null)
 
 onMounted(async () => {
   try {
     const { data } = await http.get('/api/settings/pos-rules')
     posRules.value = data
+    isManager.value = data.isManager ?? false
   } catch {
     posRules.value = null
   }
@@ -96,9 +99,21 @@ const subTotal = computed(() =>
 
 const grandPreview = computed(() => Math.max(0, subTotal.value - discountTotal.value))
 
+const totalCost = computed(() =>
+  cart.value.reduce((s, l) => s + (l.product.cost ?? 0) * l.qty, 0)
+)
+
+const belowCostWarning = computed(() => {
+  if (!isManager.value || cart.value.length === 0) return null
+  if (grandPreview.value < totalCost.value && totalCost.value > 0)
+    return `Sale total R${grandPreview.value.toFixed(2)} is below total cost R${totalCost.value.toFixed(2)}`
+  return null
+})
+
 async function checkout() {
   err.value = null
   if (!cart.value.length) return
+  if (belowCostWarning.value && !confirm(`${belowCostWarning.value}. Proceed anyway?`)) return
   busy.value = true
   try {
     const { data } = await http.post('/api/invoices', {
@@ -117,7 +132,9 @@ async function checkout() {
     })
     cart.value = []
     discountTotal.value = 0
-    alert(`Invoice ${data.invoiceNumber} — total ${data.grandTotal?.toFixed?.(2) ?? data.grandTotal}`)
+    let msg = `Invoice ${data.invoiceNumber} — total R${data.grandTotal?.toFixed?.(2) ?? data.grandTotal}`
+    if (data.belowCostWarning) msg += `\n\n⚠ ${data.belowCostWarning}`
+    alert(msg)
   } catch (e: unknown) {
     const ax = e as { response?: { data?: { error?: string } } }
     err.value = ax.response?.data?.error ?? 'Checkout failed'
@@ -131,12 +148,8 @@ async function checkout() {
   <h1>Point of sale</h1>
   <div v-if="posRules" class="card" style="font-size: 0.82rem; color: var(--mc-muted)">
     <strong style="color: var(--mc-text)">POS rules</strong>
-    — Cart discount max <strong>{{ posRules.maxCartDiscountPercent }}%</strong> of line subtotal; line discount max
-    <strong>{{ posRules.maxLineDiscountPercent }}%</strong> of each line; price edits within
-    <strong>{{ posRules.maxPriceDecreasePercentFromList }}%</strong> below /
-    <strong>{{ posRules.maxPriceIncreasePercentFromList }}%</strong> above list price.
-    <span v-if="auth.hasRole('Admin', 'Owner', 'Dev')"> Managers bypass these limits.</span>
-    <span v-else> Ask a manager to override large discounts or price changes.</span>
+    <span v-if="isManager"> — Manager mode: discounts and price edits enabled. Below-cost sales will show a warning.</span>
+    <span v-else> — Sales staff: sell at listed price only. No discounts or price changes. Ask a manager to override.</span>
   </div>
   <p class="err" v-if="err">{{ err }}</p>
 
@@ -183,8 +196,10 @@ async function checkout() {
         <tr>
           <th>Item</th>
           <th>Qty</th>
-          <th>Price</th>
-          <th>Disc</th>
+          <th v-if="isManager">Price</th>
+          <th v-else>Price</th>
+          <th v-if="isManager">Line disc</th>
+          <th>Line total</th>
         </tr>
       </thead>
       <tbody>
@@ -193,16 +208,24 @@ async function checkout() {
           <td>
             <input type="number" v-model.number="l.qty" min="1" :max="l.product.qtyOnHand" style="width: 4rem" />
           </td>
-          <td>
+          <td v-if="isManager">
             <input type="number" v-model.number="l.unitPrice" step="0.01" style="width: 5rem" />
           </td>
-          <td>
-            <input type="number" v-model.number="l.lineDiscount" step="0.01" style="width: 5rem" />
+          <td v-else>{{ l.unitPrice.toFixed(2) }}</td>
+          <td v-if="isManager">
+            <input type="number" v-model.number="l.lineDiscount" step="0.01" min="0" style="width: 5rem" />
           </td>
+          <td>{{ Math.max(0, l.unitPrice * l.qty - l.lineDiscount).toFixed(2) }}</td>
         </tr>
       </tbody>
     </table>
-    <p>Subtotal (preview): {{ subTotal.toFixed(2) }} — after order discount: {{ grandPreview.toFixed(2) }}</p>
+    <p>
+      Subtotal: <strong>R{{ subTotal.toFixed(2) }}</strong>
+      <template v-if="isManager && discountTotal > 0"> — after order discount: <strong>R{{ grandPreview.toFixed(2) }}</strong></template>
+    </p>
+    <p v-if="belowCostWarning" style="color: #ef5350; font-weight: 600">
+      ⚠ {{ belowCostWarning }}
+    </p>
   </div>
 
   <div class="card">
@@ -226,8 +249,8 @@ async function checkout() {
         <option>Bank</option>
       </select>
     </div>
-    <div class="field">
-      <label>Order discount</label>
+    <div v-if="isManager" class="field">
+      <label>Order discount (R)</label>
       <input type="number" v-model.number="discountTotal" step="0.01" min="0" />
     </div>
     <label><input type="checkbox" v-model="sendEmail" /> Email invoice link</label>

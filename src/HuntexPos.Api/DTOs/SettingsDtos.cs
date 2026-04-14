@@ -7,6 +7,8 @@ public class PosRulesDto
     public decimal MaxPriceDecreasePercentFromList { get; set; }
     public decimal MaxPriceIncreasePercentFromList { get; set; }
     public bool BlockZeroOrNegativeTotal { get; set; }
+    /// <summary>True if the requesting user can bypass POS limits (Admin/Owner/Dev).</summary>
+    public bool IsManager { get; set; }
 }
 
 public class PricingSettingsDto
