@@ -83,7 +83,7 @@ public class InvoicePdfService
                         }
 
                         MetaCell(row.RelativeItem(), "DATE",
-                            invoice.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd  HH:mm"));
+                            invoice.CreatedAt.ToOffset(TimeSpan.FromHours(2)).ToString("yyyy-MM-dd  HH:mm"));
 
                         if (!string.IsNullOrWhiteSpace(invoice.CustomerName))
                             MetaCell(row.RelativeItem(), "CUSTOMER", invoice.CustomerName);

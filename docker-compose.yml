@@ -8,6 +8,7 @@ services:
       # Default ./data (next to compose file) for local dev. Production: MCTACTICAL_DATA_DIR=/opt/mctactical in .env
       - ${MCTACTICAL_DATA_DIR:-./data}:/app/data
     environment:
+      TZ: Africa/Johannesburg
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: Data Source=/app/data/huntex.db
