@@ -20,6 +20,8 @@ const dto = ref<MailDto>({
 const apiKey = ref('')
 const err = ref<string | null>(null)
 const ok = ref<string | null>(null)
+const testTo = ref('')
+const testBusy = ref(false)
 
 async function load() {
   const { data } = await http.get<MailDto>('/api/settings/mail')
@@ -44,6 +46,24 @@ async function save() {
     await load()
   } catch {
     err.value = 'Save failed'
+  }
+}
+
+async function sendTest() {
+  if (!testTo.value.trim()) return
+  err.value = null
+  ok.value = null
+  testBusy.value = true
+  try {
+    const { data } = await http.post<{ message?: string }>('/api/settings/mail/test', {
+      to: testTo.value.trim()
+    })
+    ok.value = data.message ?? 'Test email sent'
+  } catch (e: unknown) {
+    const ax = e as { response?: { data?: { error?: string } } }
+    err.value = ax.response?.data?.error ?? 'Test email failed'
+  } finally {
+    testBusy.value = false
   }
 }
 </script>
@@ -86,5 +106,19 @@ async function save() {
     <div style="margin-top: 1rem">
       <button type="button" class="btn" @click="save">Save</button>
     </div>
+  </div>
+
+  <div class="card">
+    <h2>Send test email</h2>
+    <p style="color: var(--mc-muted); font-size: 0.9rem">
+      Save your settings above first, then send a test to verify everything works.
+    </p>
+    <div class="field">
+      <label>Recipient email</label>
+      <input v-model="testTo" type="email" placeholder="you@example.com" autocomplete="email" />
+    </div>
+    <button type="button" class="btn" :disabled="testBusy || !testTo.trim()" @click="sendTest">
+      {{ testBusy ? 'Sending…' : 'Send test' }}
+    </button>
   </div>
 </template>

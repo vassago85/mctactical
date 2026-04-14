@@ -19,16 +19,23 @@ public class SettingsController : ControllerBase
     private readonly IEffectiveMailgunProvider _effectiveMail;
     private readonly IOptions<MailgunOptions> _mailCfg;
 
+    private readonly IEmailSender _email;
+    private readonly AppOptions _app;
+
     public SettingsController(
         HuntexDbContext db,
         IOptions<PosRulesOptions> posRules,
         IEffectiveMailgunProvider effectiveMail,
-        IOptions<MailgunOptions> mailCfg)
+        IOptions<MailgunOptions> mailCfg,
+        IEmailSender email,
+        IOptions<AppOptions> app)
     {
         _db = db;
         _posRules = posRules.Value;
         _effectiveMail = effectiveMail;
         _mailCfg = mailCfg;
+        _email = email;
+        _app = app.Value;
     }
 
     [HttpGet("pos-rules")]
@@ -100,6 +107,34 @@ public class SettingsController : ControllerBase
         var eff = await _effectiveMail.GetAsync(ct);
         dto.HasApiKey = !string.IsNullOrWhiteSpace(eff.ApiKey);
         return dto;
+    }
+
+    [HttpPost("mail/test")]
+    [Authorize(Roles = $"{Roles.Owner},{Roles.Admin},{Roles.Dev}")]
+    public async Task<IActionResult> SendTestEmail([FromBody] TestEmailRequest body, CancellationToken ct)
+    {
+        var to = body.To?.Trim();
+        if (string.IsNullOrWhiteSpace(to))
+            return BadRequest(new { error = "Email address required." });
+
+        var shopName = string.IsNullOrWhiteSpace(_app.CompanyDisplayName)
+            ? "MC Tactical"
+            : _app.CompanyDisplayName.Trim();
+        var footer = ReceiptCompanyContact.ToEmailHtmlFooter(_app);
+        var html = $"""
+            <p>This is a test email from <strong>{System.Net.WebUtility.HtmlEncode(shopName)} POS</strong>.</p>
+            <p>If you received this, your Mailgun settings are working correctly.</p>
+            {footer}
+            """;
+        try
+        {
+            await _email.SendInvoiceEmailAsync(to, $"{shopName} — Test email", html, null, null, ct);
+            return Ok(new { message = $"Test email sent to {to}" });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     [HttpPut("mail")]

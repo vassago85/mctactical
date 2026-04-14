@@ -38,3 +38,8 @@ public class MailSettingsUpdateDto
     public string BaseUrl { get; set; } = string.Empty;
     public bool AttachPdf { get; set; }
 }
+
+public class TestEmailRequest
+{
+    public string? To { get; set; }
+}
