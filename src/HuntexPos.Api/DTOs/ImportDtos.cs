@@ -21,6 +21,8 @@ public class ImportPreviewRowDto
     public string? Barcode { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Category { get; set; }
+    public string? Manufacturer { get; set; }
+    public string? ItemType { get; set; }
     public decimal Cost { get; set; }
     public decimal SellPrice { get; set; }
     public int QtyOnHand { get; set; }

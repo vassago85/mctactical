@@ -27,6 +27,8 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
             e.HasIndex(p => p.Sku);
             e.HasIndex(p => p.Barcode);
             e.HasIndex(p => p.Name);
+            e.HasIndex(p => p.Manufacturer);
+            e.HasIndex(p => p.ItemType);
             e.Property(p => p.Cost).HasPrecision(18, 2);
             e.Property(p => p.SellPrice).HasPrecision(18, 2);
         });

@@ -28,11 +28,13 @@ public class ImportsController : ControllerBase
     public IActionResult DownloadExampleCsv()
     {
         const string csv = """
-            SKU,Barcode,Name,Category,Cost,SellPrice,QtyOnHand
-            ACC-001,6001234567890,Holster Kydex IWB,Holsters,450.00,680.00,12
-            AMM-556,6009876543210,5.56x45 FMJ 20rnd,Ammunition,185.00,280.00,50
-            OPT-RDS,,Red Dot Sight 1x25,Optics,1200.00,1800.00,5
-            CLN-KIT,6005551234567,Bore Snake .308,Cleaning,95.00,150.00,25
+            SKU,Barcode,Name,Category,Manufacturer,ItemType,Cost,SellPrice,QtyOnHand
+            ACC-001,6001234567890,Holster Kydex IWB,Holsters,Safariland,Holster,450.00,680.00,12
+            AMM-556,6009876543210,5.56x45 FMJ 20rnd,Ammunition,Hornady,Bullet,185.00,280.00,50
+            OPT-RDS,,Red Dot Sight 1x25,Optics,Vortex,Optic,1200.00,1800.00,5
+            CLN-KIT,6005551234567,Bore Snake .308,Cleaning,Hoppe's,Cleaning,95.00,150.00,25
+            BRS-308,6001112223334,.308 Win Brass 50ct,Reloading,Hornady,Brass,320.00,480.00,15
+            CAP-HRN,,Hornady Signature Mesh Cap,Apparel,Hornady,Cap,150.00,250.00,20
             """;
         var bytes = System.Text.Encoding.UTF8.GetBytes(csv.Replace("            ", ""));
         return File(bytes, "text/csv", "import-example.csv");

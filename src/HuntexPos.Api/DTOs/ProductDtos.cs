@@ -10,6 +10,8 @@ public class ProductDto
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
     public string? Category { get; set; }
+    public string? Manufacturer { get; set; }
+    public string? ItemType { get; set; }
     public decimal? Cost { get; set; }
     public decimal SellPrice { get; set; }
     public int QtyOnHand { get; set; }
@@ -48,6 +50,8 @@ public class CreateProductRequest
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
     public string? Category { get; set; }
+    public string? Manufacturer { get; set; }
+    public string? ItemType { get; set; }
     public Guid? SupplierId { get; set; }
     public decimal Cost { get; set; }
     public decimal SellPrice { get; set; }
@@ -61,6 +65,8 @@ public class UpdateProductRequest
     public string? Name { get; set; }
     public string? Description { get; set; }
     public string? Category { get; set; }
+    public string? Manufacturer { get; set; }
+    public string? ItemType { get; set; }
     public Guid? SupplierId { get; set; }
     public decimal? Cost { get; set; }
     public decimal? SellPrice { get; set; }

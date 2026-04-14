@@ -4,6 +4,7 @@ using HuntexPos.Api.Data;
 using HuntexPos.Api.Domain;
 using HuntexPos.Api.DTOs;
 using HuntexPos.Api.Options;
+using HuntexPos.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -68,7 +69,9 @@ public class ProductsController : ControllerBase
                 EF.Functions.Like(p.Name, $"%{s}%") ||
                 EF.Functions.Like(p.Sku, $"%{s}%") ||
                 (p.Barcode != null && EF.Functions.Like(p.Barcode, $"%{s}%")) ||
-                (p.Category != null && EF.Functions.Like(p.Category, $"%{s}%")));
+                (p.Category != null && EF.Functions.Like(p.Category, $"%{s}%")) ||
+                (p.Manufacturer != null && EF.Functions.Like(p.Manufacturer, $"%{s}%")) ||
+                (p.ItemType != null && EF.Functions.Like(p.ItemType, $"%{s}%")));
         }
 
         var take = Math.Clamp(q.Take, 1, 10_000);
@@ -105,12 +108,14 @@ public class ProductsController : ControllerBase
                 EF.Functions.Like(p.Name, $"%{s}%") ||
                 EF.Functions.Like(p.Sku, $"%{s}%") ||
                 (p.Barcode != null && EF.Functions.Like(p.Barcode, $"%{s}%")) ||
-                (p.Category != null && EF.Functions.Like(p.Category, $"%{s}%")));
+                (p.Category != null && EF.Functions.Like(p.Category, $"%{s}%")) ||
+                (p.Manufacturer != null && EF.Functions.Like(p.Manufacturer, $"%{s}%")) ||
+                (p.ItemType != null && EF.Functions.Like(p.ItemType, $"%{s}%")));
         }
 
         var list = await query.OrderBy(p => p.Name).ToListAsync(ct);
         var sb = new StringBuilder();
-        sb.AppendLine("Sku,Barcode,Name,Category,Supplier,Cost,SellPrice,QtyOnHand,Active");
+        sb.AppendLine("Sku,Barcode,Name,Category,Manufacturer,ItemType,Supplier,Cost,SellPrice,QtyOnHand,Active");
         foreach (var p in list)
         {
             sb.AppendLine(string.Join(",",
@@ -118,6 +123,8 @@ public class ProductsController : ControllerBase
                 Csv(p.Barcode ?? ""),
                 Csv(p.Name),
                 Csv(p.Category ?? ""),
+                Csv(p.Manufacturer ?? ""),
+                Csv(p.ItemType ?? ""),
                 Csv(p.Supplier?.Name ?? ""),
                 p.Cost.ToString(CultureInfo.InvariantCulture),
                 p.SellPrice.ToString(CultureInfo.InvariantCulture),
@@ -154,6 +161,9 @@ public class ProductsController : ControllerBase
         if (await _db.Products.AnyAsync(p => p.Sku == req.Sku.Trim(), ct))
             return BadRequest(new { error = $"SKU \"{req.Sku.Trim()}\" already exists." });
 
+        var settings = await _db.PricingSettings.AsNoTracking().FirstOrDefaultAsync(ct) ?? new PricingSettings();
+        var sell = PricingCalculator.ApplyRounding(req.SellPrice, settings);
+
         var product = new Product
         {
             Id = Guid.NewGuid(),
@@ -162,9 +172,11 @@ public class ProductsController : ControllerBase
             Name = req.Name.Trim(),
             Description = string.IsNullOrWhiteSpace(req.Description) ? null : req.Description.Trim(),
             Category = string.IsNullOrWhiteSpace(req.Category) ? null : req.Category.Trim(),
+            Manufacturer = string.IsNullOrWhiteSpace(req.Manufacturer) ? null : req.Manufacturer.Trim(),
+            ItemType = string.IsNullOrWhiteSpace(req.ItemType) ? null : req.ItemType.Trim(),
             SupplierId = req.SupplierId,
             Cost = req.Cost,
-            SellPrice = req.SellPrice,
+            SellPrice = sell,
             QtyOnHand = req.QtyOnHand,
             Active = true
         };
@@ -200,9 +212,15 @@ public class ProductsController : ControllerBase
         if (req.Barcode != null) p.Barcode = string.IsNullOrWhiteSpace(req.Barcode) ? null : req.Barcode.Trim();
         if (req.Description != null) p.Description = string.IsNullOrWhiteSpace(req.Description) ? null : req.Description.Trim();
         if (req.Category != null) p.Category = string.IsNullOrWhiteSpace(req.Category) ? null : req.Category.Trim();
+        if (req.Manufacturer != null) p.Manufacturer = string.IsNullOrWhiteSpace(req.Manufacturer) ? null : req.Manufacturer.Trim();
+        if (req.ItemType != null) p.ItemType = string.IsNullOrWhiteSpace(req.ItemType) ? null : req.ItemType.Trim();
         if (req.SupplierId.HasValue) p.SupplierId = req.SupplierId;
         if (req.Cost.HasValue) p.Cost = req.Cost.Value;
-        if (req.SellPrice.HasValue) p.SellPrice = req.SellPrice.Value;
+        if (req.SellPrice.HasValue)
+        {
+            var settings = await _db.PricingSettings.AsNoTracking().FirstOrDefaultAsync(ct) ?? new PricingSettings();
+            p.SellPrice = PricingCalculator.ApplyRounding(req.SellPrice.Value, settings);
+        }
         if (req.QtyOnHand.HasValue) p.QtyOnHand = req.QtyOnHand.Value;
         if (req.Active.HasValue) p.Active = req.Active.Value;
         p.UpdatedAt = DateTimeOffset.UtcNow;
@@ -229,6 +247,8 @@ public class ProductsController : ControllerBase
         Name = p.Name,
         Description = p.Description,
         Category = p.Category,
+        Manufacturer = p.Manufacturer,
+        ItemType = p.ItemType,
         Cost = hideCost ? null : p.Cost,
         SellPrice = p.SellPrice,
         QtyOnHand = p.QtyOnHand,

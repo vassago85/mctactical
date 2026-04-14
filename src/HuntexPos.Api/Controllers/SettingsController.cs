@@ -88,6 +88,31 @@ public class SettingsController : ControllerBase
         return dto;
     }
 
+    /// <summary>Re-round all existing product sell prices using current pricing settings.</summary>
+    [HttpPost("pricing/reround")]
+    [Authorize(Roles = $"{Roles.Owner},{Roles.Admin},{Roles.Dev}")]
+    public async Task<IActionResult> ReroundAllProducts(CancellationToken ct)
+    {
+        var settings = await _db.PricingSettings.AsNoTracking().FirstOrDefaultAsync(ct) ?? new PricingSettings();
+        if (settings.RoundSellToNearest <= 0)
+            return BadRequest(new { error = "No rounding is configured." });
+
+        var products = await _db.Products.Where(p => p.Active).ToListAsync(ct);
+        var updated = 0;
+        foreach (var p in products)
+        {
+            var rounded = PricingCalculator.ApplyRounding(p.SellPrice, settings);
+            if (rounded != p.SellPrice)
+            {
+                p.SellPrice = rounded;
+                p.UpdatedAt = DateTimeOffset.UtcNow;
+                updated++;
+            }
+        }
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { updated, total = products.Count });
+    }
+
     [HttpGet("mail")]
     [Authorize(Roles = $"{Roles.Owner},{Roles.Admin},{Roles.Dev}")]
     public async Task<MailSettingsDto> GetMail(CancellationToken ct)

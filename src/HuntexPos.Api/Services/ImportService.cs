@@ -137,6 +137,8 @@ public class ImportService
                 existing.SellPrice = p.SellPrice;
                 existing.QtyOnHand = p.QtyOnHand;
                 existing.Category = p.Category ?? existing.Category;
+                existing.Manufacturer = p.Manufacturer ?? existing.Manufacturer;
+                existing.ItemType = p.ItemType ?? existing.ItemType;
                 existing.SupplierId = supplierId ?? existing.SupplierId;
                 existing.UpdatedAt = DateTimeOffset.UtcNow;
             }
@@ -149,6 +151,8 @@ public class ImportService
                     Barcode = string.IsNullOrWhiteSpace(p.Barcode) ? null : p.Barcode.Trim(),
                     Name = p.Name,
                     Category = p.Category,
+                    Manufacturer = p.Manufacturer,
+                    ItemType = p.ItemType,
                     Cost = p.Cost,
                     SellPrice = p.SellPrice,
                     QtyOnHand = p.QtyOnHand,
@@ -234,6 +238,8 @@ public class ImportService
                 existing.SellPrice = p.SellPrice;
                 existing.QtyOnHand = p.QtyOnHand;
                 existing.Category = p.Category ?? existing.Category;
+                existing.Manufacturer = p.Manufacturer ?? existing.Manufacturer;
+                existing.ItemType = p.ItemType ?? existing.ItemType;
                 existing.SupplierId = supplierId;
                 existing.UpdatedAt = DateTimeOffset.UtcNow;
             }
@@ -246,6 +252,8 @@ public class ImportService
                     Barcode = string.IsNullOrWhiteSpace(p.Barcode) ? null : p.Barcode.Trim(),
                     Name = p.Name,
                     Category = p.Category,
+                    Manufacturer = p.Manufacturer,
+                    ItemType = p.ItemType,
                     Cost = p.Cost,
                     SellPrice = p.SellPrice,
                     QtyOnHand = p.QtyOnHand,
@@ -396,6 +404,8 @@ public class ImportService
         public int? Name { get; init; }
         public int? Description { get; init; }
         public int? Category { get; init; }
+        public int? Manufacturer { get; init; }
+        public int? ItemType { get; init; }
         public int? Cost { get; init; }
         public int? Sell { get; init; }
         public int? Qty { get; init; }
@@ -508,12 +518,14 @@ public class ImportService
             }
         }
         var qty = Match("qty", "quantity", "stock", "on hand", "soh");
+        var manufacturer = Match("manufacturer", "brand", "make");
+        var itemType = Match("item type", "type", "product type");
 
         if (sheetForMerge != null && !IsExplicitHuntexRoundedColumn(headers, sell))
             sell = TryResolveHuntexRoundedSellFromMerge(sheetForMerge, headers) ?? sell;
 
         var mappedCols = new HashSet<int>();
-        foreach (var n in new int?[] { sku, barcode, name, desc, category, cost, sell, qty })
+        foreach (var n in new int?[] { sku, barcode, name, desc, category, manufacturer, itemType, cost, sell, qty })
             if (n.HasValue) mappedCols.Add(n.Value);
 
         var unmapped = headers.Where(kv => !string.IsNullOrWhiteSpace(kv.Value) && !mappedCols.Contains(kv.Key))
@@ -526,6 +538,8 @@ public class ImportService
             Name = name,
             Description = desc,
             Category = category,
+            Manufacturer = manufacturer,
+            ItemType = itemType,
             Cost = cost,
             Sell = sell,
             Qty = qty,
@@ -622,7 +636,7 @@ public class ImportService
 
     private static bool IsRowEmpty(IXLRow row, HeaderMap map)
     {
-        foreach (var col in new[] { map.Sku, map.Name, map.Barcode, map.Cost, map.Sell, map.Qty })
+        foreach (var col in new[] { map.Sku, map.Name, map.Barcode, map.Cost, map.Sell, map.Qty, map.Manufacturer, map.ItemType })
         {
             if (col == null) continue;
             if (!string.IsNullOrWhiteSpace(row.Cell(col.Value).GetString()))
@@ -688,6 +702,8 @@ public class ImportService
         var qty = (int)ParseDecimal(get(map.Qty), 0);
         var barcode = get(map.Barcode);
         var category = get(map.Category);
+        var manufacturer = get(map.Manufacturer);
+        var itemTypeVal = get(map.ItemType);
 
         return new ImportPreviewRowDto
         {
@@ -696,6 +712,8 @@ public class ImportService
             Barcode = string.IsNullOrWhiteSpace(barcode) ? null : barcode,
             Name = name,
             Category = string.IsNullOrWhiteSpace(category) ? null : category,
+            Manufacturer = string.IsNullOrWhiteSpace(manufacturer) ? null : manufacturer,
+            ItemType = string.IsNullOrWhiteSpace(itemTypeVal) ? null : itemTypeVal,
             Cost = cost,
             SellPrice = sellPrice,
             QtyOnHand = qty

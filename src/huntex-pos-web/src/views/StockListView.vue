@@ -9,6 +9,8 @@ type Product = {
   barcode?: string | null
   name: string
   category?: string | null
+  manufacturer?: string | null
+  itemType?: string | null
   supplierName?: string | null
   cost?: number | null
   sellPrice: number
@@ -98,6 +100,8 @@ const form = ref({
   barcode: '',
   name: '',
   category: '',
+  manufacturer: '',
+  itemType: '',
   cost: 0,
   sellPrice: 0,
   qtyOnHand: 0
@@ -108,7 +112,7 @@ const formOk = ref<string | null>(null)
 
 function openAdd() {
   editId.value = null
-  form.value = { sku: '', barcode: '', name: '', category: '', cost: 0, sellPrice: 0, qtyOnHand: 0 }
+  form.value = { sku: '', barcode: '', name: '', category: '', manufacturer: '', itemType: '', cost: 0, sellPrice: 0, qtyOnHand: 0 }
   formErr.value = null
   formOk.value = null
   showForm.value = true
@@ -121,6 +125,8 @@ function openEdit(p: Product) {
     barcode: p.barcode ?? '',
     name: p.name,
     category: p.category ?? '',
+    manufacturer: p.manufacturer ?? '',
+    itemType: p.itemType ?? '',
     cost: p.cost ?? 0,
     sellPrice: p.sellPrice,
     qtyOnHand: p.qtyOnHand
@@ -141,6 +147,8 @@ async function saveProduct() {
         barcode: form.value.barcode || null,
         name: form.value.name,
         category: form.value.category || null,
+        manufacturer: form.value.manufacturer || null,
+        itemType: form.value.itemType || null,
         cost: form.value.cost,
         sellPrice: form.value.sellPrice,
         qtyOnHand: form.value.qtyOnHand
@@ -152,6 +160,8 @@ async function saveProduct() {
         barcode: form.value.barcode || null,
         name: form.value.name,
         category: form.value.category || null,
+        manufacturer: form.value.manufacturer || null,
+        itemType: form.value.itemType || null,
         cost: form.value.cost,
         sellPrice: form.value.sellPrice,
         qtyOnHand: form.value.qtyOnHand
@@ -246,6 +256,14 @@ onMounted(() => void load())
         <label>Category</label>
         <input v-model="form.category" />
       </div>
+      <div class="field" style="flex: 1; min-width: 120px">
+        <label>Manufacturer</label>
+        <input v-model="form.manufacturer" placeholder="e.g. Hornady" />
+      </div>
+      <div class="field" style="flex: 1; min-width: 120px">
+        <label>Item type</label>
+        <input v-model="form.itemType" placeholder="e.g. Bullet, Cap, Brass" />
+      </div>
     </div>
     <div class="row" style="flex-wrap: wrap; gap: 0.75rem">
       <div class="field" style="flex: 1; min-width: 100px">
@@ -276,6 +294,8 @@ onMounted(() => void load())
           <th>SKU</th>
           <th>Barcode</th>
           <th>Name</th>
+          <th>Manufacturer</th>
+          <th>Type</th>
           <th>Category</th>
           <th>Supplier</th>
           <th>Cost</th>
@@ -290,6 +310,8 @@ onMounted(() => void load())
           <td>{{ p.sku }}</td>
           <td>{{ p.barcode }}</td>
           <td>{{ p.name }}</td>
+          <td>{{ p.manufacturer }}</td>
+          <td>{{ p.itemType }}</td>
           <td>{{ p.category }}</td>
           <td>{{ p.supplierName }}</td>
           <td>{{ p.cost != null ? p.cost.toFixed(2) : '—' }}</td>

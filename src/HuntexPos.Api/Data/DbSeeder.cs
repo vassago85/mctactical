@@ -22,6 +22,7 @@ public static class DbSeeder
         await db.Database.EnsureCreatedAsync(ct);
         await EnsureMailSettingsTableAsync(db, ct);
         await EnsurePricingColumnsAsync(db, ct);
+        await EnsureProductColumnsAsync(db, ct);
 
         foreach (var r in Roles.All)
         {
@@ -97,6 +98,14 @@ public static class DbSeeder
                 """ALTER TABLE "PricingSettings" ADD COLUMN "RoundSellToNearest" TEXT NOT NULL DEFAULT '0';""", ct);
         }
         catch { /* column already exists */ }
+    }
+
+    /// <summary>Add Manufacturer and ItemType columns to Products if missing (older DBs).</summary>
+    private static async Task EnsureProductColumnsAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "Manufacturer" TEXT;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "ItemType" TEXT;""", ct); } catch { }
     }
 
     /// <summary>Upgrades SQLite DBs created before MailSettings existed (EnsureCreated does not alter schema).</summary>

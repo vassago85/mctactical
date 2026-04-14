@@ -11,6 +11,8 @@ public class Product
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
     public string? Category { get; set; }
+    public string? Manufacturer { get; set; }
+    public string? ItemType { get; set; }
 
     public decimal Cost { get; set; }
     public decimal SellPrice { get; set; }

@@ -8,6 +8,8 @@ type PreviewRow = {
   rowIndex: number
   sku: string
   name: string
+  manufacturer?: string | null
+  itemType?: string | null
   cost: number
   sellPrice: number
   qtyOnHand: number
@@ -199,6 +201,8 @@ async function addSupplier() {
           <th>#</th>
           <th>SKU</th>
           <th>Name</th>
+          <th>Manufacturer</th>
+          <th>Type</th>
           <th>Cost</th>
           <th>Sell</th>
           <th>Qty</th>
@@ -210,6 +214,8 @@ async function addSupplier() {
           <td>{{ r.rowIndex }}</td>
           <td>{{ r.sku }}</td>
           <td>{{ r.name }}</td>
+          <td>{{ r.manufacturer }}</td>
+          <td>{{ r.itemType }}</td>
           <td>{{ r.cost }}</td>
           <td>{{ r.sellPrice }}</td>
           <td>{{ r.qtyOnHand }}</td>
@@ -237,6 +243,8 @@ async function addSupplier() {
           <th>#</th>
           <th>SKU</th>
           <th>Name</th>
+          <th>Manufacturer</th>
+          <th>Type</th>
           <th>Cost</th>
           <th>Sell</th>
           <th>Qty</th>
@@ -248,6 +256,8 @@ async function addSupplier() {
           <td>{{ r.rowIndex }}</td>
           <td>{{ r.sku }}</td>
           <td>{{ r.name }}</td>
+          <td>{{ r.manufacturer }}</td>
+          <td>{{ r.itemType }}</td>
           <td>{{ r.cost }}</td>
           <td>{{ r.sellPrice }}</td>
           <td>{{ r.qtyOnHand }}</td>
