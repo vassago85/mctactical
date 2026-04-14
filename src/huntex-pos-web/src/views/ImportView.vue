@@ -456,16 +456,19 @@ async function commitWholesaler() {
 
 .imp-json {
   width: 100%;
+  max-width: 100%;
   font-family: ui-monospace, monospace;
   font-size: 0.85rem;
   padding: 0.75rem;
   border-radius: 8px;
-  border: 1px solid #d4d2cd;
+  border: 1px solid var(--mc-app-border-subtle, #b5b3ab);
+  box-sizing: border-box;
 }
 
 .imp-table-wrap {
   overflow-x: auto;
   margin-top: 1rem;
+  -webkit-overflow-scrolling: touch;
 }
 
 .imp-warn {

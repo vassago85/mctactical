@@ -74,7 +74,7 @@ body.mc-body-app {
   --mc-app-radius-control: var(--mc-radius-md);
   --mc-app-pad-page-x: var(--mc-space-6);
   --mc-app-pad-page-y: var(--mc-space-5);
-  --mc-app-pad-card: 1.25rem;
+  --mc-app-pad-card: 1.35rem;
 
   background: var(--mc-app-page-bg);
   background-image: none;
@@ -448,6 +448,7 @@ body.mc-body-app .app-main tbody tr:hover {
 
 .app-main__inner {
   max-width: min(1400px, 100%);
+  min-width: 0;
   margin: 0 auto;
   padding: var(--mc-app-pad-page-y, var(--mc-space-5)) var(--mc-app-pad-page-x, var(--mc-space-5))
     var(--mc-space-8);

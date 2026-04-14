@@ -445,9 +445,7 @@ onMounted(() => void load())
 
 .stock-table-wrap {
   overflow-x: auto;
-  padding: 0 var(--mc-app-pad-card, 1.25rem) var(--mc-app-pad-card, 1.25rem);
-  max-width: 100%;
-  box-sizing: border-box;
+  -webkit-overflow-scrolling: touch;
 }
 
 .stock-table {

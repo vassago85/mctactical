@@ -249,20 +249,20 @@ async function applyReset() {
 }
 
 .team-table-panel {
-  margin: calc(-1 * var(--mc-app-pad-card, 1.25rem));
-  margin-top: 0;
+  margin: 0 calc(-1 * var(--mc-app-pad-card, 1.35rem)) calc(-1 * var(--mc-app-pad-card, 1.35rem));
   border-top: 1px solid var(--mc-app-border-faint, #e0ded8);
   background: var(--mc-app-surface-2, #f7f6f3);
+  border-radius: 0 0 var(--mc-app-radius-card, 12px) var(--mc-app-radius-card, 12px);
+  overflow: hidden;
 }
 
 .team-table-scroll {
   overflow-x: auto;
-  max-width: 100%;
   -webkit-overflow-scrolling: touch;
 }
 
 .team-table {
-  min-width: 760px;
+  min-width: 720px;
 }
 
 .team-th-actions {

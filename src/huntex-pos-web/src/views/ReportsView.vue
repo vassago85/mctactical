@@ -135,7 +135,7 @@ async function exportCsv() {
 
 .rep-table-wrap {
   overflow-x: auto;
-  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
 }
 
 .rep-num {

@@ -542,8 +542,9 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 
 .pos-customer-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 0 1rem;
+  max-width: 100%;
 }
 
 .pos-check {
