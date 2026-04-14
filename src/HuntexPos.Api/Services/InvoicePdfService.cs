@@ -63,6 +63,12 @@ public class InvoicePdfService
                         right.Item().Text($"Total: {invoice.GrandTotal:F2}").SemiBold();
                         right.Item().Text($"Payment: {invoice.PaymentMethod}");
                     });
+
+                    var (footerTitle, footerLines) = ReceiptCompanyContact.ToPdfFooter(_app);
+                    col.Item().PaddingTop(24).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
+                    col.Item().PaddingTop(10).Text(footerTitle).SemiBold().FontSize(10);
+                    foreach (var line in footerLines)
+                        col.Item().Text(line).FontSize(9).FontColor(Colors.Grey.Darken1);
                 });
             });
         }).GeneratePdf();

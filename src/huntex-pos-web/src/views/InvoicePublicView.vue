@@ -9,6 +9,15 @@ const token = route.params.token as string
 const base = import.meta.env.VITE_API_BASE?.replace(/\/$/, '') || ''
 const client = axios.create({ baseURL: base || undefined })
 
+type CompanyContact = {
+  displayName: string
+  phone?: string | null
+  email?: string | null
+  address?: string | null
+  website?: string | null
+  websiteLabel?: string | null
+}
+
 type Inv = {
   invoiceNumber: string
   grandTotal: number
@@ -16,6 +25,7 @@ type Inv = {
   customerName?: string | null
   paymentMethod: string
   lines: Array<{ description: string; quantity: number; unitPrice: number; lineTotal: number }>
+  companyContact?: CompanyContact | null
 }
 
 const inv = ref<Inv | null>(null)
@@ -66,6 +76,23 @@ function pdfLink() {
       </table>
       <p><strong>Total: {{ inv.grandTotal.toFixed(2) }}</strong></p>
       <p><a :href="pdfLink()" target="_blank" rel="noreferrer">Download PDF</a></p>
+      <footer v-if="inv.companyContact" class="invoice-public-contact">
+        <h2 class="sr-only">Contact</h2>
+        <p class="invoice-public-contact__name">{{ inv.companyContact.displayName }}</p>
+        <p v-if="inv.companyContact.phone">Tel: {{ inv.companyContact.phone }}</p>
+        <p v-if="inv.companyContact.email">
+          Email:
+          <a :href="'mailto:' + inv.companyContact.email">{{ inv.companyContact.email }}</a>
+        </p>
+        <p v-if="inv.companyContact.address" class="invoice-public-contact__address">
+          {{ inv.companyContact.address }}
+        </p>
+        <p v-if="inv.companyContact.website">
+          <a :href="inv.companyContact.website" target="_blank" rel="noreferrer">{{
+            inv.companyContact.websiteLabel || inv.companyContact.website
+          }}</a>
+        </p>
+      </footer>
     </template>
   </div>
 </template>

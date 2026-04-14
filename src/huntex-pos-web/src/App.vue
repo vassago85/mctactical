@@ -30,6 +30,7 @@ onMounted(() => {
         <RouterLink v-if="auth.hasRole('Admin', 'Owner', 'Dev')" to="/import">Import</RouterLink>
         <RouterLink v-if="auth.hasRole('Admin', 'Owner', 'Dev')" to="/reports">Reports</RouterLink>
         <RouterLink v-if="auth.hasRole('Admin', 'Owner', 'Dev')" to="/settings">Pricing</RouterLink>
+        <RouterLink v-if="auth.hasRole('Admin', 'Owner', 'Dev')" to="/setup">Email setup</RouterLink>
         <button type="button" class="btn secondary" style="margin-left: auto" @click="auth.clear()">
           Log out
         </button>

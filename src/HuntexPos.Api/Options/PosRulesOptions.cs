@@ -17,6 +17,6 @@ public class PosRulesOptions
     /// <summary>Sales cannot price above list × (1 + this/100).</summary>
     public decimal MaxPriceIncreasePercentFromList { get; set; } = 10;
 
-    /// <summary>Reject sales where grand total is zero or negative after tax.</summary>
+    /// <summary>Reject sales where grand total is zero or negative after discounts.</summary>
     public bool BlockZeroOrNegativeTotal { get; set; } = true;
 }

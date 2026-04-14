@@ -94,6 +94,7 @@ builder.Services.AddSwaggerGen(c =>
 
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<JwtTokenService>();
+builder.Services.AddScoped<IEffectiveMailgunProvider, EffectiveMailgunProvider>();
 builder.Services.AddScoped<IEmailSender, MailgunEmailSender>();
 builder.Services.AddScoped<InvoicePdfService>();
 builder.Services.AddScoped<InvoiceService>();
@@ -119,4 +120,5 @@ app.UseCors("dev");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapGet("/api/health", () => Results.Text("ok", "text/plain"));
 app.Run();

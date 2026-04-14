@@ -26,7 +26,7 @@ public class ImportService
             ?? workbook.Worksheets.First();
 
         var headers = ReadHeaderRow(sheet);
-        var map = AutoMapHeaders(headers);
+        var map = AutoMapHeaders(headers, sheet);
         var rows = new List<ImportPreviewRowDto>();
         var warnings = new List<string>();
 
@@ -83,7 +83,7 @@ public class ImportService
         for (var i = 0; i < headerRecord.Length; i++)
             headersDict[i + 1] = headerRecord[i]?.Trim() ?? "";
 
-        var map = AutoMapHeaders(headersDict);
+        var map = AutoMapHeaders(headersDict, sheetForMerge: null);
         var colCount = headerRecord.Length;
         var rowIndex = 1;
         while (await csv.ReadAsync())
@@ -412,7 +412,7 @@ public class ImportService
         return d;
     }
 
-    private static HeaderMap AutoMapHeaders(Dictionary<int, string> headers)
+    private static HeaderMap AutoMapHeaders(Dictionary<int, string> headers, IXLWorksheet? sheetForMerge)
     {
         int? Match(params string[] keys)
         {
@@ -509,6 +509,9 @@ public class ImportService
         }
         var qty = Match("qty", "quantity", "stock", "on hand", "soh");
 
+        if (sheetForMerge != null && !IsExplicitHuntexRoundedColumn(headers, sell))
+            sell = TryResolveHuntexRoundedSellFromMerge(sheetForMerge, headers) ?? sell;
+
         var mappedCols = new HashSet<int>();
         foreach (var n in new int?[] { sku, barcode, name, desc, category, cost, sell, qty })
             if (n.HasValue) mappedCols.Add(n.Value);
@@ -528,6 +531,93 @@ public class ImportService
             Qty = qty,
             UnmappedHeaders = unmapped
         };
+    }
+
+    /// <summary>Header already names the Huntex rounded column (e.g. "Huntes Rounded to next 10").</summary>
+    private static bool IsExplicitHuntexRoundedColumn(Dictionary<int, string> headers, int? sellCol)
+    {
+        if (sellCol == null) return false;
+        var h = headers.GetValueOrDefault(sellCol.Value, "").ToLowerInvariant();
+        return h.Contains("rounded", StringComparison.OrdinalIgnoreCase)
+               && (h.Contains("huntex", StringComparison.OrdinalIgnoreCase)
+                   || h.Contains("huntes", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Second data column under a row-1 "Huntex" group merge (rounded price), or column after a lone Huntex label.
+    /// Skips headers that are Huntex sale / unrounded.
+    /// </summary>
+    private static int? TryResolveHuntexRoundedSellFromMerge(IXLWorksheet sheet, Dictionary<int, string> headers)
+    {
+        var headerLast = headers.Keys.DefaultIfEmpty(0).Max();
+        var sheetLast = sheet.LastColumnUsed()?.ColumnNumber() ?? headerLast;
+        var maxCol = Math.Max(headerLast, sheetLast);
+        var seenMerge = new HashSet<string>(StringComparer.Ordinal);
+
+        for (var c = 1; c <= maxCol; c++)
+        {
+            var cell = sheet.Cell(1, c);
+            if (!cell.IsMerged()) continue;
+            IXLRange merge;
+            try
+            {
+                merge = cell.MergedRange();
+            }
+            catch
+            {
+                continue;
+            }
+
+            var ra = merge.RangeAddress;
+            if (ra.FirstAddress.RowNumber != 1 || ra.LastAddress.RowNumber != 1)
+                continue;
+            var mergeKey = $"{ra.FirstAddress.RowNumber}:{ra.FirstAddress.ColumnNumber}:{ra.LastAddress.RowNumber}:{ra.LastAddress.ColumnNumber}";
+            if (!seenMerge.Add(mergeKey)) continue;
+
+            var label = merge.FirstCell().GetString().Trim();
+            var low = label.ToLowerInvariant();
+            if (string.IsNullOrEmpty(low) || !low.Contains("huntex", StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (low.Contains("rounded", StringComparison.OrdinalIgnoreCase)
+                || low.Contains("sale", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var fc = ra.FirstAddress.ColumnNumber;
+            var lc = ra.LastAddress.ColumnNumber;
+            if (lc > fc)
+                return fc + 1;
+        }
+
+        for (var k = 1; k <= maxCol; k++)
+        {
+            var h = headers.GetValueOrDefault(k, "").Trim();
+            var low = h.ToLowerInvariant();
+            if (string.IsNullOrEmpty(low) || !low.Contains("huntex", StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (low.Contains("rounded", StringComparison.OrdinalIgnoreCase)
+                || low.Contains("sale", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var cell = sheet.Cell(1, k);
+            if (cell.IsMerged())
+            {
+                try
+                {
+                    var merge = cell.MergedRange();
+                    var rng = merge.RangeAddress;
+                    if (rng.LastAddress.ColumnNumber > rng.FirstAddress.ColumnNumber)
+                        return rng.FirstAddress.ColumnNumber + 1;
+                }
+                catch
+                {
+                    return k + 1 <= maxCol ? k + 1 : null;
+                }
+            }
+            else
+                return k + 1 <= maxCol ? k + 1 : null;
+        }
+
+        return null;
     }
 
     private static bool IsRowEmpty(IXLRow row, HeaderMap map)
@@ -612,15 +702,8 @@ public class ImportService
         };
     }
 
-    private static decimal ParseDecimal(string s, decimal fallback)
-    {
-        if (string.IsNullOrWhiteSpace(s)) return fallback;
-        s = s.Trim();
-        if (s.Length > 0 && (s[0] == 'R' || s[0] == 'r'))
-            s = s[1..].Trim();
-        s = s.Replace(",", "", StringComparison.Ordinal).Replace("\u00a0", "", StringComparison.Ordinal).Trim();
-        return decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : fallback;
-    }
+    private static decimal ParseDecimal(string s, decimal fallback) =>
+        HuntexImportNumberParsing.ParseAmount(s, fallback);
 
     public static string SerializeMapping(ColumnMappingDto m) => JsonSerializer.Serialize(m);
 

@@ -20,6 +20,7 @@ public static class DbSeeder
         var log = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DbSeeder");
 
         await db.Database.EnsureCreatedAsync(ct);
+        await EnsureMailSettingsTableAsync(db, ct);
 
         foreach (var r in Roles.All)
         {
@@ -36,6 +37,21 @@ public static class DbSeeder
                 UseMarginPercent = true,
                 DefaultTaxRate = 0,
                 HideCostForSalesRole = true
+            });
+            await db.SaveChangesAsync(ct);
+        }
+
+        var mailCfg = scope.ServiceProvider.GetRequiredService<IOptions<MailgunOptions>>().Value;
+        if (!await db.MailSettings.AnyAsync(ct))
+        {
+            db.MailSettings.Add(new MailSettings
+            {
+                ApiKey = mailCfg.ApiKey ?? "",
+                Domain = mailCfg.Domain ?? "",
+                SenderFrom = mailCfg.From ?? "",
+                BaseUrl = string.IsNullOrWhiteSpace(mailCfg.BaseUrl) ? "https://api.mailgun.net/v3" : mailCfg.BaseUrl.Trim(),
+                AttachPdf = mailCfg.AttachPdf,
+                UpdatedAt = DateTimeOffset.UtcNow
             });
             await db.SaveChangesAsync(ct);
         }
@@ -68,5 +84,26 @@ public static class DbSeeder
                     string.Join("; ", result.Errors.Select(e => e.Description)));
             }
         }
+    }
+
+    /// <summary>Upgrades SQLite DBs created before MailSettings existed (EnsureCreated does not alter schema).</summary>
+    private static async Task EnsureMailSettingsTableAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite())
+            return;
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS "MailSettings" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_MailSettings" PRIMARY KEY,
+                "ApiKey" TEXT NOT NULL,
+                "Domain" TEXT NOT NULL,
+                "SenderFrom" TEXT NOT NULL,
+                "BaseUrl" TEXT NOT NULL,
+                "AttachPdf" INTEGER NOT NULL,
+                "UpdatedAt" TEXT NOT NULL
+            );
+            """,
+            ct);
     }
 }

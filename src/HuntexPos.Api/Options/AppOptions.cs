@@ -6,4 +6,19 @@ public class AppOptions
     public string PublicBaseUrl { get; set; } = "http://localhost:5173";
     public string PdfStoragePath { get; set; } = "storage/pdfs";
     public bool HideCostForSalesRole { get; set; } = true;
+
+    /// <summary>Shown on customer receipts (email, PDF, public invoice page).</summary>
+    public string CompanyDisplayName { get; set; } = "MC Tactical";
+
+    public string CompanyPhone { get; set; } = "082 821 0420";
+    public string CompanyEmail { get; set; } = "sales@mctactical.co.za";
+
+    /// <summary>Single line or short block for the shop address.</summary>
+    public string CompanyAddress { get; set; } =
+        "877 Patryshond Street, Garsfontein, Pretoria, 0042";
+
+    public string CompanyWebsite { get; set; } = "https://www.mctactical.co.za";
+
+    /// <summary>Short link text for <see cref="CompanyWebsite"/> (e.g. mctactical.co.za). If empty, derived from the URL.</summary>
+    public string CompanyWebsiteLabel { get; set; } = "";
 }

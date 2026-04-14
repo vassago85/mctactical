@@ -12,6 +12,7 @@ const router = createRouter({
     { path: '/import', component: () => import('@/views/ImportView.vue') },
     { path: '/reports', component: () => import('@/views/ReportsView.vue') },
     { path: '/settings', component: () => import('@/views/SettingsView.vue') },
+    { path: '/setup', component: () => import('@/views/SetupView.vue') },
     { path: '/admin/team', component: () => import('@/views/AdminTeamView.vue') },
     { path: '/invoice/:token', component: () => import('@/views/InvoicePublicView.vue'), meta: { public: true } }
   ]

@@ -6,7 +6,6 @@ const dto = ref({
   defaultMarginPercent: 50,
   defaultFixedMarkup: 0,
   useMarginPercent: true,
-  defaultTaxRate: 0,
   hideCostForSalesRole: true
 })
 const err = ref<string | null>(null)
@@ -32,23 +31,22 @@ async function save() {
 </script>
 
 <template>
-  <h1>Pricing & tax</h1>
+  <h1>Pricing</h1>
   <p class="err" v-if="err">{{ err }}</p>
   <p v-if="ok" style="color: #a5d6a7">{{ ok }}</p>
   <div class="card">
     <label><input type="checkbox" v-model="dto.useMarginPercent" /> Use margin % (else fixed markup)</label>
     <div class="field">
-      <label>Default margin % (on ex-VAT cost; 50 = list 1.5× cost)</label>
+      <label>Default margin % (on wholesale cost; 50 = list 1.5× cost)</label>
       <input type="number" v-model.number="dto.defaultMarginPercent" step="0.01" />
     </div>
     <div class="field">
       <label>Default fixed markup</label>
       <input type="number" v-model.number="dto.defaultFixedMarkup" step="0.01" />
     </div>
-    <div class="field">
-      <label>Default tax rate % (VAT/GST)</label>
-      <input type="number" v-model.number="dto.defaultTaxRate" step="0.01" />
-    </div>
+    <p style="color: var(--mc-muted); font-size: 0.88rem; margin: 0">
+      Invoices do not add VAT — MC Tactical is not VAT registered.
+    </p>
     <label><input type="checkbox" v-model="dto.hideCostForSalesRole" /> Hide cost for Sales role</label>
     <div style="margin-top: 1rem">
       <button type="button" class="btn" @click="save">Save</button>

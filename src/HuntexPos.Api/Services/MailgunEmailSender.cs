@@ -1,35 +1,33 @@
 using System.Net.Http.Headers;
 using System.Text;
-using HuntexPos.Api.Options;
-using Microsoft.Extensions.Options;
-
 namespace HuntexPos.Api.Services;
 
 public class MailgunEmailSender : IEmailSender
 {
-    private readonly MailgunOptions _opt;
+    private readonly IEffectiveMailgunProvider _mail;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<MailgunEmailSender> _logger;
 
-    public MailgunEmailSender(IOptions<MailgunOptions> opt, IHttpClientFactory httpClientFactory, ILogger<MailgunEmailSender> logger)
+    public MailgunEmailSender(IEffectiveMailgunProvider mail, IHttpClientFactory httpClientFactory, ILogger<MailgunEmailSender> logger)
     {
-        _opt = opt.Value;
+        _mail = mail;
         _httpClientFactory = httpClientFactory;
         _logger = logger;
     }
 
     public async Task SendInvoiceEmailAsync(string toEmail, string subject, string htmlBody, byte[]? pdfAttachment, string? attachmentFileName, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(_opt.ApiKey) || string.IsNullOrWhiteSpace(_opt.Domain))
+        var opt = await _mail.GetAsync(ct);
+        if (string.IsNullOrWhiteSpace(opt.ApiKey) || string.IsNullOrWhiteSpace(opt.Domain))
         {
             _logger.LogWarning("Mailgun not configured; skipping email to {Email}", toEmail);
             return;
         }
 
         var client = _httpClientFactory.CreateClient();
-        var url = $"{_opt.BaseUrl.TrimEnd('/')}/{_opt.Domain}/messages";
+        var url = $"{opt.BaseUrl.TrimEnd('/')}/{opt.Domain}/messages";
         using var content = new MultipartFormDataContent();
-        content.Add(new StringContent(_opt.From), "from");
+        content.Add(new StringContent(opt.From), "from");
         content.Add(new StringContent(toEmail), "to");
         content.Add(new StringContent(subject), "subject");
         content.Add(new StringContent(htmlBody, Encoding.UTF8, "text/html"), "html");
@@ -43,7 +41,7 @@ public class MailgunEmailSender : IEmailSender
 
         using var req = new HttpRequestMessage(HttpMethod.Post, url);
         req.Headers.Authorization = new AuthenticationHeaderValue("Basic",
-            Convert.ToBase64String(Encoding.ASCII.GetBytes($"api:{_opt.ApiKey}")));
+            Convert.ToBase64String(Encoding.ASCII.GetBytes($"api:{opt.ApiKey}")));
         req.Content = content;
 
         var resp = await client.SendAsync(req, ct);

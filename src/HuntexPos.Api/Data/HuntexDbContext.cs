@@ -15,6 +15,7 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<StocktakeSession> StocktakeSessions => Set<StocktakeSession>();
     public DbSet<StocktakeLine> StocktakeLines => Set<StocktakeLine>();
     public DbSet<PricingSettings> PricingSettings => Set<PricingSettings>();
+    public DbSet<MailSettings> MailSettings => Set<MailSettings>();
     public DbSet<ImportPreset> ImportPresets => Set<ImportPreset>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -53,6 +54,13 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
             e.Property(p => p.DefaultMarginPercent).HasPrecision(18, 4);
             e.Property(p => p.DefaultFixedMarkup).HasPrecision(18, 2);
             e.Property(p => p.DefaultTaxRate).HasPrecision(18, 4);
+        });
+
+        modelBuilder.Entity<MailSettings>(e =>
+        {
+            e.Property(m => m.SenderFrom).HasMaxLength(512);
+            e.Property(m => m.Domain).HasMaxLength(256);
+            e.Property(m => m.BaseUrl).HasMaxLength(512);
         });
 
         modelBuilder.Entity<Invoice>()

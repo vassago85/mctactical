@@ -6,6 +6,8 @@ public class PricingSettings
     public decimal DefaultMarginPercent { get; set; }
     public decimal DefaultFixedMarkup { get; set; }
     public bool UseMarginPercent { get; set; } = true;
+
+    /// <summary>Unused: invoices are VAT-free. Column retained for existing databases.</summary>
     public decimal DefaultTaxRate { get; set; }
     public bool HideCostForSalesRole { get; set; } = true;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;

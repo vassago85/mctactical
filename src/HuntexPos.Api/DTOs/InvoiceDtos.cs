@@ -25,6 +25,18 @@ public class CreateInvoiceRequest
     public List<CreateInvoiceLineRequest> Lines { get; set; } = new();
 }
 
+/// <summary>Shop contact block for customer-facing receipts (e.g. public invoice view).</summary>
+public class CompanyContactDto
+{
+    public string DisplayName { get; set; } = string.Empty;
+    public string? Phone { get; set; }
+    public string? Email { get; set; }
+    public string? Address { get; set; }
+    public string? Website { get; set; }
+    /// <summary>Human-friendly label for <see cref="Website"/>.</summary>
+    public string? WebsiteLabel { get; set; }
+}
+
 public class InvoiceDto
 {
     public Guid Id { get; set; }
@@ -43,6 +55,9 @@ public class InvoiceDto
     public string? PdfUrl { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public List<InvoiceLineDto> Lines { get; set; } = new();
+
+    /// <summary>Set on anonymous public invoice responses so the web receipt can show shop details.</summary>
+    public CompanyContactDto? CompanyContact { get; set; }
 }
 
 public class InvoiceLineDto

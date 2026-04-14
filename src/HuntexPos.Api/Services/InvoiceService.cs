@@ -13,7 +13,7 @@ public class InvoiceService
     private readonly InvoicePdfService _pdf;
     private readonly IEmailSender _email;
     private readonly AppOptions _app;
-    private readonly MailgunOptions _mailgun;
+    private readonly IEffectiveMailgunProvider _mailgun;
     private readonly PosRulesOptions _posRules;
 
     public InvoiceService(
@@ -21,21 +21,22 @@ public class InvoiceService
         InvoicePdfService pdf,
         IEmailSender email,
         IOptions<AppOptions> app,
-        IOptions<MailgunOptions> mailgun,
+        IEffectiveMailgunProvider mailgun,
         IOptions<PosRulesOptions> posRules)
     {
         _db = db;
         _pdf = pdf;
         _email = email;
         _app = app.Value;
-        _mailgun = mailgun.Value;
+        _mailgun = mailgun;
         _posRules = posRules.Value;
     }
 
     public async Task<InvoiceDto> CreateAsync(CreateInvoiceRequest req, string userId, bool managerBypassPosRules, CancellationToken ct)
     {
-        var settings = await _db.PricingSettings.AsNoTracking().FirstOrDefaultAsync(ct) ?? new PricingSettings();
-        var taxRate = settings.DefaultTaxRate;
+        // Shop is not VAT-registered: totals are VAT-free (no tax line on invoices).
+        const decimal taxRate = 0m;
+        const decimal taxAmount = 0m;
 
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
@@ -102,8 +103,7 @@ public class InvoiceService
 
         subTotal -= req.DiscountTotal;
         if (subTotal < 0) subTotal = 0;
-        var taxAmount = PricingCalculator.Round2(subTotal * taxRate / 100m);
-        var grandTotal = subTotal + taxAmount;
+        var grandTotal = subTotal;
 
         if (!managerBypassPosRules && _posRules.BlockZeroOrNegativeTotal && grandTotal <= 0)
             throw new InvalidOperationException("Sale total must be greater than zero.");
@@ -139,19 +139,25 @@ public class InvoiceService
         if (req.SendEmail && !string.IsNullOrWhiteSpace(req.CustomerEmail))
         {
             var viewUrl = $"{_app.PublicBaseUrl.TrimEnd('/')}/#/invoice/{invoice.PublicToken.ToString("N")}";
+            var shopName = string.IsNullOrWhiteSpace(_app.CompanyDisplayName)
+                ? "MC Tactical"
+                : _app.CompanyDisplayName.Trim();
+            var footer = ReceiptCompanyContact.ToEmailHtmlFooter(_app);
             var html = $"""
-                        <p>Thank you for your purchase at MC Tactical.</p>
+                        <p>Thank you for your purchase at {System.Net.WebUtility.HtmlEncode(shopName)}.</p>
                         <p>Invoice <strong>{invoice.InvoiceNumber}</strong> — Total <strong>{invoice.GrandTotal:F2}</strong></p>
                         <p><a href="{viewUrl}">View or print your invoice</a></p>
+                        {footer}
                         """;
             try
             {
+                var mailOpt = await _mailgun.GetAsync(ct);
                 await _email.SendInvoiceEmailAsync(
                     req.CustomerEmail.Trim(),
                     $"Invoice {invoice.InvoiceNumber}",
                     html,
-                    _mailgun.AttachPdf ? pdfBytes : null,
-                    _mailgun.AttachPdf ? $"{invoice.InvoiceNumber}.pdf" : null,
+                    mailOpt.AttachPdf ? pdfBytes : null,
+                    mailOpt.AttachPdf ? $"{invoice.InvoiceNumber}.pdf" : null,
                     ct);
             }
             catch
@@ -163,7 +169,7 @@ public class InvoiceService
         return MapToDto(invoice, pdfBytes);
     }
 
-    private InvoiceDto MapToDto(Invoice inv, byte[]? pdfBytes)
+    private InvoiceDto MapToDto(Invoice inv, byte[]? pdfBytes, bool includeCompanyContact = false)
     {
         var pdfUrl = inv.PdfStorageKey != null
             ? $"/api/invoices/{inv.Id}/pdf"
@@ -193,7 +199,8 @@ public class InvoiceService
                 UnitPrice = l.UnitPrice,
                 LineDiscount = l.LineDiscount,
                 LineTotal = l.LineTotal
-            }).ToList()
+            }).ToList(),
+            CompanyContact = includeCompanyContact ? ReceiptCompanyContact.ToDto(_app) : null
         };
     }
 
@@ -220,7 +227,7 @@ public class InvoiceService
     public async Task<InvoiceDto?> GetByPublicTokenAsync(Guid token, CancellationToken ct)
     {
         var inv = await _db.Invoices.Include(i => i.Lines).FirstOrDefaultAsync(i => i.PublicToken == token, ct);
-        return inv == null ? null : MapToDto(inv, null);
+        return inv == null ? null : MapToDto(inv, null, includeCompanyContact: true);
     }
 
     public async Task<byte[]?> GetPdfByPublicTokenAsync(Guid token, CancellationToken ct)

@@ -248,6 +248,30 @@ th {
   display: block;
 }
 
+.invoice-public-contact {
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--mc-border, #333);
+  font-size: 0.9rem;
+  color: var(--mc-muted, #aaa);
+  line-height: 1.55;
+}
+
+.invoice-public-contact__name {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--mc-fg, #fff);
+}
+
+.invoice-public-contact p {
+  margin: 0.35rem 0;
+}
+
+.invoice-public-contact__address {
+  white-space: pre-line;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

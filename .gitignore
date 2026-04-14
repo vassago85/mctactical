@@ -9,3 +9,6 @@
 **/.env
 **/.env.local
 .env
+
+# Docker Compose local data (SQLite + PDFs)
+/data/
