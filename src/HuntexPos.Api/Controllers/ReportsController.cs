@@ -25,33 +25,33 @@ public class ReportsController : ControllerBase
         [FromQuery] string? status,
         CancellationToken ct)
     {
-        var q = _db.Invoices.AsNoTracking().AsQueryable();
-        if (from.HasValue) q = q.Where(i => i.CreatedAt >= from);
-        if (to.HasValue) q = q.Where(i => i.CreatedAt <= to);
+        var all = await _db.Invoices.AsNoTracking().ToListAsync(ct);
+        IEnumerable<Invoice> rows = all;
+        if (from.HasValue) rows = rows.Where(i => i.CreatedAt >= from.Value);
+        if (to.HasValue) rows = rows.Where(i => i.CreatedAt <= to.Value);
         if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<InvoiceStatus>(status, true, out var st))
-            q = q.Where(i => i.Status == st);
+            rows = rows.Where(i => i.Status == st);
 
-        var rows = await q.OrderByDescending(i => i.CreatedAt).Take(500).ToListAsync(ct);
-        return rows.Select(i => new InvoiceListItemDto
-        {
-            Id = i.Id,
-            InvoiceNumber = i.InvoiceNumber,
-            Status = i.Status.ToString(),
-            GrandTotal = i.GrandTotal,
-            CreatedAt = i.CreatedAt,
-            CustomerName = i.CustomerName,
-            CreatedByUserId = i.CreatedByUserId
-        }).ToList();
+        return rows.OrderByDescending(i => i.CreatedAt).Take(500)
+            .Select(i => new InvoiceListItemDto
+            {
+                Id = i.Id,
+                InvoiceNumber = i.InvoiceNumber,
+                Status = i.Status.ToString(),
+                GrandTotal = i.GrandTotal,
+                CreatedAt = i.CreatedAt,
+                CustomerName = i.CustomerName,
+                CreatedByUserId = i.CreatedByUserId
+            }).ToList();
     }
 
     [HttpGet("daily")]
     public async Task<List<DailySummaryDto>> Daily(CancellationToken ct, [FromQuery] int days = 14)
     {
         var from = DateTimeOffset.UtcNow.AddDays(-Math.Clamp(days, 1, 90));
-        var list = await _db.Invoices.AsNoTracking()
+        var all = await _db.Invoices.AsNoTracking().ToListAsync(ct);
+        return all
             .Where(i => i.Status == InvoiceStatus.Final && i.CreatedAt >= from)
-            .ToListAsync(ct);
-        return list
             .GroupBy(i => DateOnly.FromDateTime(i.CreatedAt.UtcDateTime))
             .Select(g => new DailySummaryDto
             {
@@ -69,11 +69,12 @@ public class ReportsController : ControllerBase
         [FromQuery] DateTimeOffset? to,
         CancellationToken ct)
     {
-        var q = _db.Invoices.AsNoTracking().Include(i => i.Lines).AsQueryable();
-        if (from.HasValue) q = q.Where(i => i.CreatedAt >= from);
-        if (to.HasValue) q = q.Where(i => i.CreatedAt <= to);
+        var all = await _db.Invoices.AsNoTracking().Include(i => i.Lines).ToListAsync(ct);
+        IEnumerable<Invoice> rows = all;
+        if (from.HasValue) rows = rows.Where(i => i.CreatedAt >= from.Value);
+        if (to.HasValue) rows = rows.Where(i => i.CreatedAt <= to.Value);
 
-        var list = await q.OrderByDescending(i => i.CreatedAt).Take(2000).ToListAsync(ct);
+        var list = rows.OrderByDescending(i => i.CreatedAt).Take(2000).ToList();
         var sb = new StringBuilder();
         sb.AppendLine("InvoiceNumber,Status,CreatedAt,Customer,GrandTotal,Lines");
         foreach (var inv in list)

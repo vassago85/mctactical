@@ -1,0 +1,22 @@
+services:
+  api:
+    build:
+      context: ./src/HuntexPos.Api
+      dockerfile: Dockerfile
+    container_name: mctactical-local-api
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "5288:8080"
+    environment:
+      TZ: Africa/Johannesburg
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: Data Source=/app/data/huntex.db
+      App__PdfStoragePath: /app/data/pdfs
+      App__PublicBaseUrl: http://localhost:5173
+      Jwt__Key: ${JWT_KEY:-nf9TrSMIYib6J21xAUhkGmWXpOwjPdlE507cq8uC3ZFQgaRD}
+      Jwt__Issuer: MCTacticalPos
+      Jwt__Audience: MCTacticalPos
+      Seed__OwnerEmail: ${OWNER_EMAIL:-paul@charsley.co.za}
+      Seed__OwnerPassword: ${OWNER_PASSWORD:-PaulCharsley2026!}
