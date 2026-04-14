@@ -43,13 +43,18 @@ async function load() {
     invoices.value = inv.data
     daily.value = d.data
   } catch (e: unknown) {
-    const ax = e as { response?: { status?: number; data?: { error?: string } } }
+    const ax = e as { response?: { status?: number; data?: unknown; statusText?: string }; message?: string }
     const status = ax.response?.status
-    const detail = ax.response?.data?.error
+    const rawData = ax.response?.data
+    const detail = typeof rawData === 'object' && rawData !== null && 'error' in rawData
+      ? (rawData as { error?: string }).error
+      : typeof rawData === 'string' ? rawData : null
     if (status === 401 || status === 403) {
       err.value = 'You do not have permission to view reports. Only Admin / Owner roles can access this page.'
+    } else if (status) {
+      err.value = `Reports failed (${status}): ${detail || ax.response?.statusText || 'Unknown error'}`
     } else {
-      err.value = detail ? `Failed to load reports: ${detail}` : 'Failed to load reports — check that the API is running.'
+      err.value = `Cannot reach the API: ${ax.message || 'Network error'}`
     }
   }
 }

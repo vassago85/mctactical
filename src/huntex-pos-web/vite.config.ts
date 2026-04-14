@@ -48,8 +48,9 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:5288',
-        changeOrigin: true
+        target: 'https://mctactical.charsleydigital.co.za',
+        changeOrigin: true,
+        secure: true
       }
     }
   }

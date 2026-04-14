@@ -31,18 +31,17 @@ public class ReportsController : ControllerBase
         if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<InvoiceStatus>(status, true, out var st))
             q = q.Where(i => i.Status == st);
 
-        return await q.OrderByDescending(i => i.CreatedAt).Take(500)
-            .Select(i => new InvoiceListItemDto
-            {
-                Id = i.Id,
-                InvoiceNumber = i.InvoiceNumber,
-                Status = i.Status.ToString(),
-                GrandTotal = i.GrandTotal,
-                CreatedAt = i.CreatedAt,
-                CustomerName = i.CustomerName,
-                CreatedByUserId = i.CreatedByUserId
-            })
-            .ToListAsync(ct);
+        var rows = await q.OrderByDescending(i => i.CreatedAt).Take(500).ToListAsync(ct);
+        return rows.Select(i => new InvoiceListItemDto
+        {
+            Id = i.Id,
+            InvoiceNumber = i.InvoiceNumber,
+            Status = i.Status.ToString(),
+            GrandTotal = i.GrandTotal,
+            CreatedAt = i.CreatedAt,
+            CustomerName = i.CustomerName,
+            CreatedByUserId = i.CreatedByUserId
+        }).ToList();
     }
 
     [HttpGet("daily")]
