@@ -71,6 +71,152 @@ public class ProductsController : ControllerBase
         };
     }
 
+    /// <summary>Get all specials for a product (standalone + promotion-linked).</summary>
+    [HttpGet("{productId:guid}/specials")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Owner},{Roles.Dev}")]
+    public async Task<List<ProductSpecialDto>> GetProductSpecials(Guid productId, CancellationToken ct)
+    {
+        var specials = await _db.ProductSpecials.AsNoTracking()
+            .Include(s => s.Product)
+            .Include(s => s.Promotion)
+            .Where(s => s.ProductId == productId)
+            .OrderByDescending(s => s.CreatedAt)
+            .ToListAsync(ct);
+        return specials.Select(s =>
+        {
+            var basePrice = s.Product?.SellPrice ?? 0;
+            decimal effective;
+            if (s.SpecialPrice.HasValue)
+                effective = s.SpecialPrice.Value;
+            else if (s.DiscountPercent.HasValue)
+                effective = Math.Round(basePrice * (1 - s.DiscountPercent.Value / 100m), 2);
+            else
+                effective = basePrice;
+
+            return new ProductSpecialDto
+            {
+                Id = s.Id,
+                ProductId = s.ProductId,
+                ProductSku = s.Product?.Sku ?? "",
+                ProductName = s.Product?.Name ?? "",
+                BaseSellPrice = basePrice,
+                PromotionId = s.PromotionId,
+                PromotionName = s.Promotion?.Name,
+                SpecialPrice = s.SpecialPrice,
+                DiscountPercent = s.DiscountPercent,
+                EffectivePrice = effective,
+                IsActive = s.IsActive
+            };
+        }).ToList();
+    }
+
+    /// <summary>Generate a 62mm label PDF for one product (Brother QL-800 / DK-22205).</summary>
+    [HttpGet("{productId:guid}/label")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Owner},{Roles.Dev}")]
+    public async Task<IActionResult> GetLabel(Guid productId, [FromQuery] int copies = 1, [FromQuery] bool promo = false, CancellationToken ct = default)
+    {
+        var product = await _db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == productId, ct);
+        if (product == null) return NotFound();
+        copies = Math.Clamp(copies, 1, 50);
+
+        var pricing = promo
+            ? await ResolvePromoPricing(product, ct)
+            : new LabelPdfService.LabelPricing(product.SellPrice, null, null);
+
+        var pdf = LabelPdfService.BuildSingleLabel(product, pricing, copies);
+        return File(pdf, "application/pdf", $"label-{product.Sku}.pdf");
+    }
+
+    /// <summary>Generate a multi-product label PDF (one label per product).</summary>
+    [HttpPost("labels")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Owner},{Roles.Dev}")]
+    public async Task<IActionResult> GetLabels([FromBody] LabelBatchRequest req, CancellationToken ct = default)
+    {
+        if (req.ProductIds == null || req.ProductIds.Count == 0)
+            return BadRequest(new { error = "At least one productId is required." });
+
+        var ids = req.ProductIds.Take(200).ToList();
+        var products = await _db.Products.AsNoTracking().Where(p => ids.Contains(p.Id)).ToListAsync(ct);
+        if (products.Count == 0) return NotFound();
+
+        var pricingMap = req.UsePromo
+            ? await ResolvePromoPricingBatch(products, ct)
+            : products.ToDictionary(p => p.Id, p => new LabelPdfService.LabelPricing(p.SellPrice, null, null));
+
+        var items = ids
+            .Select(id => products.FirstOrDefault(x => x.Id == id))
+            .Where(p => p != null)
+            .Select(p => (p!, pricingMap.GetValueOrDefault(p!.Id, new LabelPdfService.LabelPricing(p.SellPrice, null, null))));
+
+        var pdf = LabelPdfService.BuildMultipleLabels(items);
+        return File(pdf, "application/pdf", "labels.pdf");
+    }
+
+    private async Task<LabelPdfService.LabelPricing> ResolvePromoPricing(Product product, CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var promo = await _db.Promotions.AsNoTracking()
+            .Where(p => p.IsActive)
+            .Where(p => !p.StartsAt.HasValue || p.StartsAt <= now)
+            .Where(p => !p.EndsAt.HasValue || p.EndsAt >= now)
+            .FirstOrDefaultAsync(ct);
+
+        var special = await _db.ProductSpecials.AsNoTracking()
+            .Where(s => s.IsActive && s.ProductId == product.Id)
+            .Where(s => s.PromotionId == null || (promo != null && s.PromotionId == promo.Id))
+            .FirstOrDefaultAsync(ct);
+
+        return ComputeLabelPricing(product, promo, special);
+    }
+
+    private async Task<Dictionary<Guid, LabelPdfService.LabelPricing>> ResolvePromoPricingBatch(List<Product> products, CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var promo = await _db.Promotions.AsNoTracking()
+            .Where(p => p.IsActive)
+            .Where(p => !p.StartsAt.HasValue || p.StartsAt <= now)
+            .Where(p => !p.EndsAt.HasValue || p.EndsAt >= now)
+            .FirstOrDefaultAsync(ct);
+
+        var productIds = products.Select(p => p.Id).ToList();
+        var specials = await _db.ProductSpecials.AsNoTracking()
+            .Where(s => s.IsActive && productIds.Contains(s.ProductId))
+            .Where(s => s.PromotionId == null || (promo != null && s.PromotionId == promo.Id))
+            .ToListAsync(ct);
+        var specialMap = specials.GroupBy(s => s.ProductId).ToDictionary(g => g.Key, g => g.First());
+
+        return products.ToDictionary(
+            p => p.Id,
+            p => ComputeLabelPricing(p, promo, specialMap.GetValueOrDefault(p.Id)));
+    }
+
+    private static LabelPdfService.LabelPricing ComputeLabelPricing(Product product, Promotion? promo, ProductSpecial? special)
+    {
+        var baseSell = product.SellPrice;
+        decimal effective;
+
+        if (special != null)
+        {
+            if (special.SpecialPrice.HasValue)
+                effective = special.SpecialPrice.Value;
+            else if (special.DiscountPercent.HasValue)
+                effective = Math.Round(baseSell * (1 - special.DiscountPercent.Value / 100m), 2);
+            else
+                effective = baseSell;
+        }
+        else if (promo != null && promo.DiscountPercent > 0)
+        {
+            effective = Math.Round(baseSell * (1 - promo.DiscountPercent / 100m), 2);
+        }
+        else
+        {
+            return new LabelPdfService.LabelPricing(baseSell, null, null);
+        }
+
+        var promoName = promo?.Name;
+        return new LabelPdfService.LabelPricing(effective, baseSell, promoName);
+    }
+
     /// <summary>Download full stock as CSV (cost columns only for Admin / Owner / Dev).</summary>
     [HttpGet("stocklist/export")]
     [Authorize(Roles = $"{Roles.Admin},{Roles.Owner},{Roles.Dev}")]
@@ -89,7 +235,7 @@ public class ProductsController : ControllerBase
 
         var list = await query.OrderBy(p => p.Name).ToListAsync(ct);
         var sb = new StringBuilder();
-        sb.AppendLine("Sku,Barcode,Name,Category,Manufacturer,ItemType,Supplier,Cost,SellPrice,QtyOnHand,Active");
+        sb.AppendLine("Sku,Barcode,Name,Category,Manufacturer,ItemType,Supplier,Cost,SellPrice,QtyOwned,QtyConsignment,Active");
         foreach (var p in list)
         {
             sb.AppendLine(string.Join(",",
@@ -103,6 +249,7 @@ public class ProductsController : ControllerBase
                 p.Cost.ToString(CultureInfo.InvariantCulture),
                 p.SellPrice.ToString(CultureInfo.InvariantCulture),
                 p.QtyOnHand.ToString(CultureInfo.InvariantCulture),
+                p.QtyConsignment.ToString(CultureInfo.InvariantCulture),
                 p.Active ? "yes" : "no"));
         }
         var bytes = Encoding.UTF8.GetBytes(sb.ToString());
@@ -302,6 +449,7 @@ public class ProductsController : ControllerBase
         Cost = hideCost ? null : p.Cost,
         SellPrice = p.SellPrice,
         QtyOnHand = p.QtyOnHand,
+        QtyConsignment = p.QtyConsignment,
         Active = p.Active,
         Warning = !hideCost && PricingCalculator.IsBelowDistributorCost(p.SellPrice, p.Cost)
             ? $"Sell R{p.SellPrice:0} < distributor R{PricingCalculator.DistributorFloor(p.Cost):0.00}"

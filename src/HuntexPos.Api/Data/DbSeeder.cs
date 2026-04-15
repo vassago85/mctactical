@@ -101,12 +101,13 @@ public static class DbSeeder
             """ALTER TABLE "PricingSettings" ADD COLUMN "PricingMode" TEXT NOT NULL DEFAULT 'normal';""", ct); } catch { }
     }
 
-    /// <summary>Add Manufacturer and ItemType columns to Products if missing (older DBs).</summary>
+    /// <summary>Add Manufacturer, ItemType, QtyConsignment columns to Products if missing (older DBs).</summary>
     private static async Task EnsureProductColumnsAsync(HuntexDbContext db, CancellationToken ct)
     {
         if (!db.Database.IsSqlite()) return;
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "Manufacturer" TEXT;""", ct); } catch { }
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "ItemType" TEXT;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "QtyConsignment" INTEGER NOT NULL DEFAULT 0;""", ct); } catch { }
     }
 
     /// <summary>Add CostAtSale to InvoiceLines for GP reporting (older DBs).</summary>

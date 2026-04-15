@@ -17,6 +17,9 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<PricingSettings> PricingSettings => Set<PricingSettings>();
     public DbSet<MailSettings> MailSettings => Set<MailSettings>();
     public DbSet<ImportPreset> ImportPresets => Set<ImportPreset>();
+    public DbSet<StockReceipt> StockReceipts => Set<StockReceipt>();
+    public DbSet<Promotion> Promotions => Set<Promotion>();
+    public DbSet<ProductSpecial> ProductSpecials => Set<ProductSpecial>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -79,5 +82,25 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
             .WithOne(l => l.Session)
             .HasForeignKey(l => l.StocktakeSessionId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<StockReceipt>(e =>
+        {
+            e.HasIndex(r => r.ProductId);
+            e.HasIndex(r => r.SupplierId);
+            e.Property(r => r.Type).HasConversion<string>().HasMaxLength(30);
+        });
+
+        modelBuilder.Entity<Promotion>(e =>
+        {
+            e.Property(p => p.DiscountPercent).HasPrecision(18, 4);
+        });
+
+        modelBuilder.Entity<ProductSpecial>(e =>
+        {
+            e.HasIndex(s => s.ProductId);
+            e.HasIndex(s => s.PromotionId);
+            e.Property(s => s.SpecialPrice).HasPrecision(18, 2);
+            e.Property(s => s.DiscountPercent).HasPrecision(18, 4);
+        });
     }
 }

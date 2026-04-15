@@ -17,6 +17,7 @@ public class Product
     public decimal Cost { get; set; }
     public decimal SellPrice { get; set; }
     public int QtyOnHand { get; set; }
+    public int QtyConsignment { get; set; }
 
     public bool Active { get; set; } = true;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;

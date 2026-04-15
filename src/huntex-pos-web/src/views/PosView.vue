@@ -15,6 +15,7 @@ import McSkeleton from '@/components/ui/McSkeleton.vue'
 import McModal from '@/components/ui/McModal.vue'
 import McSpinner from '@/components/ui/McSpinner.vue'
 import McCheckbox from '@/components/ui/McCheckbox.vue'
+import McBadge from '@/components/ui/McBadge.vue'
 
 type Product = {
   id: string
@@ -26,7 +27,15 @@ type Product = {
   cost?: number | null
 }
 
-type Line = { product: Product; qty: number; unitPrice: number; lineDiscount: number }
+type ActiveSpecial = { productId: string; specialPrice?: number | null; discountPercent?: number | null }
+type ActivePromotion = {
+  promotionId?: string | null
+  promotionName?: string | null
+  siteDiscountPercent: number
+  specials: ActiveSpecial[]
+}
+
+type Line = { product: Product; qty: number; unitPrice: number; lineDiscount: number; originalPrice: number }
 
 const q = ref('')
 const results = ref<Product[]>([])
@@ -51,8 +60,26 @@ const posRules = ref<{
   maxPriceIncreasePercentFromList: number
   isManager: boolean
 } | null>(null)
+const activePromo = ref<ActivePromotion | null>(null)
 
 const showBelowCostModal = ref(false)
+
+function getEffectivePrice(p: Product): { price: number; hasDiscount: boolean } {
+  if (!activePromo.value) return { price: p.sellPrice, hasDiscount: false }
+  const special = activePromo.value.specials.find(s => s.productId === p.id)
+  if (special) {
+    if (special.specialPrice != null) return { price: special.specialPrice, hasDiscount: special.specialPrice !== p.sellPrice }
+    if (special.discountPercent != null) {
+      const price = Math.round(p.sellPrice * (1 - special.discountPercent / 100) * 100) / 100
+      return { price, hasDiscount: special.discountPercent > 0 }
+    }
+  }
+  if (activePromo.value.siteDiscountPercent > 0) {
+    const price = Math.round(p.sellPrice * (1 - activePromo.value.siteDiscountPercent / 100) * 100) / 100
+    return { price, hasDiscount: true }
+  }
+  return { price: p.sellPrice, hasDiscount: false }
+}
 
 onMounted(async () => {
   try {
@@ -62,6 +89,10 @@ onMounted(async () => {
   } catch {
     posRules.value = null
   }
+  try {
+    const { data } = await http.get<ActivePromotion>('/api/promotions/active')
+    if (data.promotionId || data.specials.length) activePromo.value = data
+  } catch { /* no active promotion */ }
 })
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
@@ -98,7 +129,8 @@ function addToCart(p: Product) {
     existing.qty += 1
   } else {
     if (p.qtyOnHand < 1) return
-    cart.value.push({ product: p, qty: 1, unitPrice: p.sellPrice, lineDiscount: 0 })
+    const { price } = getEffectivePrice(p)
+    cart.value.push({ product: p, qty: 1, unitPrice: price, originalPrice: p.sellPrice, lineDiscount: 0 })
   }
 }
 
@@ -197,6 +229,12 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
       </template>
     </McPageHeader>
 
+    <div v-if="activePromo?.promotionName" class="pos-promo-banner">
+      <McBadge variant="accent">{{ activePromo.promotionName }}</McBadge>
+      <span v-if="activePromo.siteDiscountPercent > 0">{{ activePromo.siteDiscountPercent }}% off all items</span>
+      <span v-if="activePromo.specials.length"> · {{ activePromo.specials.length }} product special{{ activePromo.specials.length !== 1 ? 's' : '' }}</span>
+    </div>
+
     <McAlert v-if="err" variant="error">{{ err }}</McAlert>
 
     <div class="pos-grid">
@@ -245,7 +283,11 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
                 </p>
               </div>
               <div class="pos-result__side">
-                <span class="pos-result__price">{{ formatZAR(p.sellPrice) }}</span>
+                <template v-if="getEffectivePrice(p).hasDiscount">
+                  <span class="pos-result__price pos-result__price--sale">{{ formatZAR(getEffectivePrice(p).price) }}</span>
+                  <span class="pos-result__price--was">{{ formatZAR(p.sellPrice) }}</span>
+                </template>
+                <span v-else class="pos-result__price">{{ formatZAR(p.sellPrice) }}</span>
                 <span class="pos-result__stock" :class="{ 'pos-result__stock--low': p.qtyOnHand <= 3 }">
                   Stock {{ p.qtyOnHand }}
                 </span>
@@ -284,7 +326,10 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
               </thead>
               <tbody>
                 <tr v-for="l in cart" :key="l.product.id">
-                  <td class="pos-cart-name">{{ l.product.name }}</td>
+                  <td class="pos-cart-name">
+                    {{ l.product.name }}
+                    <span v-if="l.originalPrice !== l.unitPrice" class="pos-cart-was">was {{ formatZAR(l.originalPrice) }}</span>
+                  </td>
                   <td>
                     <div class="pos-stepper">
                       <button type="button" class="pos-stepper__btn" aria-label="Decrease" @click="bumpQty(l, -1)">
@@ -658,5 +703,40 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   min-height: 58px;
   font-size: 1rem;
   letter-spacing: 0.06em;
+}
+
+/* Promotion banner */
+.pos-promo-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  background: rgba(244, 122, 32, 0.08);
+  border: 1px solid rgba(244, 122, 32, 0.25);
+  border-radius: var(--mc-app-radius-card, 18px);
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--mc-app-text-secondary, #333336);
+}
+
+/* Sale pricing in search results */
+.pos-result__price--sale {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.pos-result__price--was {
+  font-size: 0.78rem;
+  color: var(--mc-app-text-muted, #5c5a56);
+  text-decoration: line-through;
+}
+
+.pos-cart-was {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--mc-app-text-muted, #5c5a56);
+  text-decoration: line-through;
+  font-weight: 400;
 }
 </style>

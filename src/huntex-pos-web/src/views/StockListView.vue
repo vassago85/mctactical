@@ -12,6 +12,10 @@ import McAlert from '@/components/ui/McAlert.vue'
 import McBadge from '@/components/ui/McBadge.vue'
 import McSpinner from '@/components/ui/McSpinner.vue'
 import McEmptyState from '@/components/ui/McEmptyState.vue'
+import McModal from '@/components/ui/McModal.vue'
+import McCheckbox from '@/components/ui/McCheckbox.vue'
+
+type Supplier = { id: string; name: string }
 
 type Product = {
   id: string
@@ -21,15 +25,38 @@ type Product = {
   category?: string | null
   manufacturer?: string | null
   itemType?: string | null
+  supplierId?: string | null
   supplierName?: string | null
   cost?: number | null
   sellPrice: number
   qtyOnHand: number
+  qtyConsignment: number
   active: boolean
   warning?: string | null
 }
 
 type Page = { total: number; skip: number; take: number; items: Product[] }
+
+type StockReceipt = {
+  id: string
+  productId: string
+  supplierId?: string | null
+  supplierName?: string | null
+  type: string
+  quantity: number
+  notes?: string | null
+  processedBy?: string | null
+  createdAt: string
+}
+
+type ConsignmentSummaryLine = {
+  supplierId: string
+  supplierName: string
+  totalIn: number
+  totalMovedToStock: number
+  totalReturned: number
+  onHand: number
+}
 
 const auth = useAuthStore()
 const toast = useToast()
@@ -40,6 +67,7 @@ const pageSize = ref(500)
 const page = ref<Page | null>(null)
 const busy = ref(false)
 const err = ref<string | null>(null)
+const suppliers = ref<Supplier[]>([])
 
 const canManage = computed(() => auth.hasRole('Admin', 'Owner', 'Dev'))
 const canExport = canManage
@@ -61,6 +89,13 @@ watch([skip, pageSize], () => void load())
 watch(pageSize, () => {
   skip.value = 0
 })
+
+async function loadSuppliers() {
+  try {
+    const { data } = await http.get<Supplier[]>('/api/suppliers')
+    suppliers.value = data
+  } catch { /* non-critical */ }
+}
 
 async function load() {
   err.value = null
@@ -109,6 +144,8 @@ async function exportCsv() {
   }
 }
 
+/* ── Product add/edit drawer ── */
+
 const showForm = ref(false)
 const editId = ref<string | null>(null)
 const form = ref({
@@ -118,6 +155,7 @@ const form = ref({
   category: '',
   manufacturer: '',
   itemType: '',
+  supplierId: '' as string,
   cost: 0,
   sellPrice: 0,
   qtyOnHand: 0
@@ -134,7 +172,7 @@ function closeDrawer() {
 function openAdd() {
   editId.value = null
   sellPriceManual.value = false
-  form.value = { sku: '', barcode: '', name: '', category: '', manufacturer: '', itemType: '', cost: 0, sellPrice: 0, qtyOnHand: 0 }
+  form.value = { sku: '', barcode: '', name: '', category: '', manufacturer: '', itemType: '', supplierId: '', cost: 0, sellPrice: 0, qtyOnHand: 0 }
   formErr.value = null
   showForm.value = true
 }
@@ -149,6 +187,7 @@ function openEdit(p: Product) {
     category: p.category ?? '',
     manufacturer: p.manufacturer ?? '',
     itemType: p.itemType ?? '',
+    supplierId: p.supplierId ?? '',
     cost: p.cost ?? 0,
     sellPrice: p.sellPrice,
     qtyOnHand: p.qtyOnHand
@@ -173,31 +212,23 @@ async function saveProduct() {
   formErr.value = null
   formBusy.value = true
   try {
+    const payload = {
+      sku: form.value.sku,
+      barcode: form.value.barcode || null,
+      name: form.value.name,
+      category: form.value.category || null,
+      manufacturer: form.value.manufacturer || null,
+      itemType: form.value.itemType || null,
+      supplierId: form.value.supplierId || null,
+      cost: form.value.cost,
+      sellPrice: form.value.sellPrice,
+      qtyOnHand: form.value.qtyOnHand
+    }
     if (editId.value) {
-      await http.put(`/api/products/${editId.value}`, {
-        sku: form.value.sku,
-        barcode: form.value.barcode || null,
-        name: form.value.name,
-        category: form.value.category || null,
-        manufacturer: form.value.manufacturer || null,
-        itemType: form.value.itemType || null,
-        cost: form.value.cost,
-        sellPrice: form.value.sellPrice,
-        qtyOnHand: form.value.qtyOnHand
-      })
+      await http.put(`/api/products/${editId.value}`, payload)
       toast.success('Product updated')
     } else {
-      await http.post('/api/products', {
-        sku: form.value.sku,
-        barcode: form.value.barcode || null,
-        name: form.value.name,
-        category: form.value.category || null,
-        manufacturer: form.value.manufacturer || null,
-        itemType: form.value.itemType || null,
-        cost: form.value.cost,
-        sellPrice: form.value.sellPrice,
-        qtyOnHand: form.value.qtyOnHand
-      })
+      await http.post('/api/products', payload)
       toast.success('Product created')
     }
     showForm.value = false
@@ -222,7 +253,220 @@ async function toggleActive(p: Product) {
   }
 }
 
-onMounted(() => void load())
+/* ── Stock receipt modal (receive / move / return) ── */
+
+const showReceiptModal = ref(false)
+const receiptProduct = ref<Product | null>(null)
+const receiptType = ref<'OwnedIn' | 'ConsignmentIn' | 'ConsignmentToStock' | 'ConsignmentReturn'>('OwnedIn')
+const receiptSupplierId = ref('')
+const receiptQty = ref(1)
+const receiptNotes = ref('')
+const receiptBusy = ref(false)
+const receiptErr = ref<string | null>(null)
+const consignmentSummary = ref<ConsignmentSummaryLine[]>([])
+
+function openReceiptModal(p: Product, type: typeof receiptType.value) {
+  receiptProduct.value = p
+  receiptType.value = type
+  receiptSupplierId.value = ''
+  receiptQty.value = 1
+  receiptNotes.value = ''
+  receiptErr.value = null
+  consignmentSummary.value = []
+  showReceiptModal.value = true
+  if (type === 'ConsignmentToStock' || type === 'ConsignmentReturn') {
+    void loadConsignmentSummary(p.id)
+  }
+}
+
+async function loadConsignmentSummary(productId: string) {
+  try {
+    const { data } = await http.get<ConsignmentSummaryLine[]>(`/api/products/${productId}/consignment-summary`)
+    consignmentSummary.value = data.filter(s => s.onHand > 0)
+    if (consignmentSummary.value.length === 1) {
+      receiptSupplierId.value = consignmentSummary.value[0].supplierId
+    }
+  } catch { /* non-critical */ }
+}
+
+const receiptMaxQty = computed(() => {
+  if (receiptType.value !== 'ConsignmentToStock' && receiptType.value !== 'ConsignmentReturn') return 999999
+  const line = consignmentSummary.value.find(s => s.supplierId === receiptSupplierId.value)
+  return line?.onHand ?? 0
+})
+
+const receiptTypeLabel = computed(() => {
+  switch (receiptType.value) {
+    case 'OwnedIn': return 'Receive owned stock'
+    case 'ConsignmentIn': return 'Receive consignment'
+    case 'ConsignmentToStock': return 'Move to owned stock'
+    case 'ConsignmentReturn': return 'Return to supplier'
+    default: return 'Stock movement'
+  }
+})
+
+async function submitReceipt() {
+  receiptErr.value = null
+  if (!receiptProduct.value) return
+  if (receiptType.value !== 'OwnedIn' && !receiptSupplierId.value) {
+    receiptErr.value = 'Please select a supplier.'
+    return
+  }
+  receiptBusy.value = true
+  try {
+    await http.post(`/api/products/${receiptProduct.value.id}/stock-receipts`, {
+      type: receiptType.value,
+      supplierId: receiptSupplierId.value || null,
+      quantity: receiptQty.value,
+      notes: receiptNotes.value || null
+    })
+    toast.success(`${receiptTypeLabel.value}: ${receiptQty.value} units`)
+    showReceiptModal.value = false
+    await load()
+  } catch (e: unknown) {
+    const ax = e as { response?: { data?: { error?: string } } }
+    receiptErr.value = ax.response?.data?.error ?? 'Operation failed'
+  } finally {
+    receiptBusy.value = false
+  }
+}
+
+/* ── Stock history drawer ── */
+
+const showHistory = ref(false)
+const historyProduct = ref<Product | null>(null)
+const historyReceipts = ref<StockReceipt[]>([])
+const historyBusy = ref(false)
+
+async function openHistory(p: Product) {
+  historyProduct.value = p
+  historyReceipts.value = []
+  historyBusy.value = true
+  showHistory.value = true
+  try {
+    const { data } = await http.get<StockReceipt[]>(`/api/products/${p.id}/stock-receipts`)
+    historyReceipts.value = data
+  } catch {
+    toast.error('Could not load history')
+  } finally {
+    historyBusy.value = false
+  }
+}
+
+function receiptTypeBadge(type: string): { label: string; variant: 'success' | 'neutral' | 'warning' | 'error' } {
+  switch (type) {
+    case 'OwnedIn': return { label: 'Received (owned)', variant: 'success' }
+    case 'ConsignmentIn': return { label: 'Received (consignment)', variant: 'warning' }
+    case 'ConsignmentToStock': return { label: 'Moved to stock', variant: 'success' }
+    case 'ConsignmentReturn': return { label: 'Returned', variant: 'error' }
+    default: return { label: type, variant: 'neutral' }
+  }
+}
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+/* ── Per-product specials (standalone) ── */
+
+type ProductSpecialItem = {
+  id: string; productId: string; promotionId?: string | null; promotionName?: string | null
+  specialPrice?: number | null; discountPercent?: number | null; effectivePrice: number
+  isActive: boolean; baseSellPrice: number; productSku: string; productName: string
+}
+
+const showSpecialModal = ref(false)
+const specialProduct = ref<Product | null>(null)
+const existingSpecials = ref<ProductSpecialItem[]>([])
+const specialBusy = ref(false)
+const specialForm = ref({ usePrice: true, specialPrice: 0, discountPercent: 0 })
+const specialFormErr = ref<string | null>(null)
+const specialFormBusy = ref(false)
+
+async function openSpecialModal(p: Product) {
+  specialProduct.value = p
+  specialForm.value = { usePrice: true, specialPrice: p.sellPrice, discountPercent: 10 }
+  specialFormErr.value = null
+  existingSpecials.value = []
+  specialBusy.value = true
+  showSpecialModal.value = true
+  try {
+    const { data } = await http.get<ProductSpecialItem[]>(`/api/products/${p.id}/specials`)
+    existingSpecials.value = data
+  } catch { /* may not exist yet */ }
+  specialBusy.value = false
+}
+
+async function saveStandaloneSpecial() {
+  specialFormErr.value = null
+  if (!specialProduct.value) return
+  specialFormBusy.value = true
+  try {
+    await http.post('/api/promotions/specials', {
+      productId: specialProduct.value.id,
+      promotionId: null,
+      specialPrice: specialForm.value.usePrice ? specialForm.value.specialPrice : null,
+      discountPercent: !specialForm.value.usePrice ? specialForm.value.discountPercent : null,
+      isActive: true
+    })
+    toast.success('Special saved')
+    await openSpecialModal(specialProduct.value)
+  } catch (e: unknown) {
+    const ax = e as { response?: { data?: { error?: string } } }
+    specialFormErr.value = ax.response?.data?.error ?? 'Save failed'
+  } finally {
+    specialFormBusy.value = false
+  }
+}
+
+async function removeSpecial(s: ProductSpecialItem) {
+  try {
+    await http.delete(`/api/promotions/specials/${s.id}`)
+    toast.success('Special removed')
+    if (specialProduct.value) await openSpecialModal(specialProduct.value)
+  } catch { toast.error('Delete failed') }
+}
+
+/* ── Label printing (Brother QL-800) ── */
+
+const showLabelModal = ref(false)
+const labelProduct = ref<Product | null>(null)
+const labelCopies = ref(1)
+const labelUsePromo = ref(false)
+const labelBusy = ref(false)
+
+function openLabelModal(p: Product) {
+  labelProduct.value = p
+  labelCopies.value = 1
+  labelUsePromo.value = false
+  showLabelModal.value = true
+}
+
+async function printLabel() {
+  if (!labelProduct.value) return
+  labelBusy.value = true
+  try {
+    const resp = await http.get(`/api/products/${labelProduct.value.id}/label`, {
+      params: { copies: labelCopies.value, promo: labelUsePromo.value },
+      responseType: 'blob'
+    })
+    const url = URL.createObjectURL(new Blob([resp.data], { type: 'application/pdf' }))
+    const win = window.open(url, '_blank')
+    if (win) {
+      win.addEventListener('load', () => { win.print() })
+    }
+    showLabelModal.value = false
+  } catch {
+    toast.error('Label generation failed')
+  } finally {
+    labelBusy.value = false
+  }
+}
+
+onMounted(() => {
+  void load()
+  void loadSuppliers()
+})
 </script>
 
 <template>
@@ -292,7 +536,8 @@ onMounted(() => void load())
               <th>Supplier</th>
               <th>Cost</th>
               <th>Sell</th>
-              <th>Qty</th>
+              <th>Owned</th>
+              <th>Consign</th>
               <th>Status</th>
               <th v-if="canManage"></th>
             </tr>
@@ -315,10 +560,21 @@ onMounted(() => void load())
                 <strong :class="{ 'stock-qty--low': p.qtyOnHand <= 3 }">{{ p.qtyOnHand }}</strong>
               </td>
               <td>
+                <strong v-if="p.qtyConsignment > 0" class="stock-qty--consign">{{ p.qtyConsignment }}</strong>
+                <span v-else class="stock-qty--none">—</span>
+              </td>
+              <td>
                 <McBadge :variant="p.active ? 'success' : 'neutral'">{{ p.active ? 'Active' : 'Inactive' }}</McBadge>
               </td>
               <td v-if="canManage" class="stock-actions">
                 <McButton variant="secondary" dense type="button" @click="openEdit(p)">Edit</McButton>
+                <McButton variant="secondary" dense type="button" @click="openReceiptModal(p, 'OwnedIn')">+ Owned</McButton>
+                <McButton variant="secondary" dense type="button" @click="openReceiptModal(p, 'ConsignmentIn')">+ Consign</McButton>
+                <McButton v-if="p.qtyConsignment > 0" variant="secondary" dense type="button" @click="openReceiptModal(p, 'ConsignmentToStock')">Move</McButton>
+                <McButton v-if="p.qtyConsignment > 0" variant="ghost" dense type="button" @click="openReceiptModal(p, 'ConsignmentReturn')">Return</McButton>
+                <McButton variant="secondary" dense type="button" @click="openSpecialModal(p)">Special</McButton>
+                <McButton variant="secondary" dense type="button" @click="openLabelModal(p)">Label</McButton>
+                <McButton variant="ghost" dense type="button" @click="openHistory(p)">History</McButton>
                 <McButton variant="ghost" dense type="button" @click="toggleActive(p)">
                   {{ p.active ? 'Deactivate' : 'Activate' }}
                 </McButton>
@@ -359,6 +615,12 @@ onMounted(() => void load())
             <McField label="Name" for-id="f-name">
               <input id="f-name" v-model="form.name" required />
             </McField>
+            <McField label="Default supplier" for-id="f-supplier" hint="Primary supplier for this product">
+              <select id="f-supplier" v-model="form.supplierId">
+                <option value="">— None —</option>
+                <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+              </select>
+            </McField>
             <div class="stock-drawer__grid">
               <McField label="Category" for-id="f-cat">
                 <input id="f-cat" v-model="form.category" />
@@ -391,6 +653,165 @@ onMounted(() => void load())
         </aside>
       </Transition>
     </Teleport>
+    <!-- Stock receipt modal -->
+    <McModal v-model="showReceiptModal" :title="receiptTypeLabel">
+      <McAlert v-if="receiptErr" variant="error">{{ receiptErr }}</McAlert>
+      <p class="receipt-product-name">{{ receiptProduct?.name }}</p>
+
+      <McField
+        v-if="receiptType !== 'OwnedIn'"
+        label="Supplier"
+        for-id="r-supplier"
+      >
+        <select id="r-supplier" v-model="receiptSupplierId" required>
+          <option value="" disabled>Select supplier…</option>
+          <template v-if="receiptType === 'ConsignmentToStock' || receiptType === 'ConsignmentReturn'">
+            <option v-for="s in consignmentSummary" :key="s.supplierId" :value="s.supplierId">
+              {{ s.supplierName }} ({{ s.onHand }} on hand)
+            </option>
+          </template>
+          <template v-else>
+            <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+          </template>
+        </select>
+      </McField>
+
+      <McField v-if="receiptType === 'OwnedIn'" label="Supplier (optional)" for-id="r-supplier-opt">
+        <select id="r-supplier-opt" v-model="receiptSupplierId">
+          <option value="">— None —</option>
+          <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+        </select>
+      </McField>
+
+      <McField label="Quantity" for-id="r-qty">
+        <input id="r-qty" v-model.number="receiptQty" type="number" min="1" :max="receiptMaxQty" step="1" required />
+      </McField>
+      <p v-if="(receiptType === 'ConsignmentToStock' || receiptType === 'ConsignmentReturn') && receiptSupplierId" class="receipt-max-hint">
+        Max: {{ receiptMaxQty }} units from this supplier
+      </p>
+
+      <McField label="Notes (optional)" for-id="r-notes">
+        <input id="r-notes" v-model="receiptNotes" />
+      </McField>
+
+      <template #footer>
+        <McButton variant="secondary" type="button" @click="showReceiptModal = false">Cancel</McButton>
+        <McButton variant="primary" type="button" :disabled="receiptBusy || receiptQty < 1" @click="submitReceipt">
+          <McSpinner v-if="receiptBusy" />
+          <span v-else>Confirm</span>
+        </McButton>
+      </template>
+    </McModal>
+
+    <!-- Stock history drawer -->
+    <Teleport to="body">
+      <Transition name="stock-drawer-fade">
+        <div v-if="showHistory" class="stock-drawer-overlay" aria-hidden="true" @click.self="showHistory = false" />
+      </Transition>
+      <Transition name="stock-drawer-slide">
+        <aside v-if="showHistory" class="stock-drawer stock-drawer--wide" role="dialog" aria-labelledby="history-title">
+          <header class="stock-drawer__head">
+            <h2 id="history-title" class="stock-drawer__title">Stock history — {{ historyProduct?.name }}</h2>
+            <button type="button" class="stock-drawer__close" aria-label="Close" @click="showHistory = false">×</button>
+          </header>
+          <div class="stock-drawer__body">
+            <div v-if="historyBusy" class="stock-loading">
+              <McSpinner /><span>Loading…</span>
+            </div>
+            <McEmptyState v-else-if="!historyReceipts.length" title="No stock movements" hint="Use the Receive, Move, or Return actions to create entries." />
+            <table v-else class="mc-table history-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Type</th>
+                  <th>Supplier</th>
+                  <th>Qty</th>
+                  <th>Notes</th>
+                  <th>User</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="r in historyReceipts" :key="r.id">
+                  <td class="stock-mono">{{ formatDate(r.createdAt) }}</td>
+                  <td><McBadge :variant="receiptTypeBadge(r.type).variant">{{ receiptTypeBadge(r.type).label }}</McBadge></td>
+                  <td>{{ r.supplierName ?? '—' }}</td>
+                  <td><strong>{{ r.quantity }}</strong></td>
+                  <td>{{ r.notes ?? '—' }}</td>
+                  <td>{{ r.processedBy ?? '—' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </aside>
+      </Transition>
+    </Teleport>
+
+    <!-- Label print modal -->
+    <McModal v-model="showLabelModal" title="Print product label">
+      <p style="margin:0 0 0.75rem;font-size:0.9rem">
+        <strong>{{ labelProduct?.name }}</strong><br />
+        <span style="color:var(--mc-app-text-muted)">{{ labelProduct?.sku }}</span>
+        <span style="margin-left:0.5rem">{{ labelProduct ? formatZAR(labelProduct.sellPrice) : '' }}</span>
+      </p>
+      <McField label="Number of copies" for-id="lbl-copies" hint="Brother QL-800 · DK-22205 62mm">
+        <input id="lbl-copies" v-model.number="labelCopies" type="number" min="1" max="50" step="1" />
+      </McField>
+      <McCheckbox v-model="labelUsePromo" label="Apply active promotion / specials pricing" hint="Shows the discounted price with the original crossed out, and the promotion name" />
+      <template #footer>
+        <McButton variant="secondary" type="button" @click="showLabelModal = false">Cancel</McButton>
+        <McButton variant="primary" type="button" :disabled="labelBusy" @click="printLabel">
+          <McSpinner v-if="labelBusy" />
+          <span v-else>Print</span>
+        </McButton>
+      </template>
+    </McModal>
+
+    <!-- Per-product specials modal -->
+    <McModal v-model="showSpecialModal" :title="`Specials — ${specialProduct?.name ?? ''}`">
+      <div v-if="specialBusy" style="padding:1rem;text-align:center"><McSpinner /></div>
+      <template v-else>
+        <div v-if="existingSpecials.length" style="margin-bottom:1rem">
+          <h4 style="margin:0 0 0.5rem;font-size:0.85rem">Current specials</h4>
+          <table class="mc-table" style="font-size:0.82rem">
+            <thead><tr><th>Type</th><th>Value</th><th>Effective</th><th></th></tr></thead>
+            <tbody>
+              <tr v-for="s in existingSpecials" :key="s.id">
+                <td>
+                  <McBadge v-if="s.promotionName" variant="accent">{{ s.promotionName }}</McBadge>
+                  <McBadge v-else variant="neutral">Standalone</McBadge>
+                </td>
+                <td>
+                  <template v-if="s.specialPrice != null">{{ formatZAR(s.specialPrice) }}</template>
+                  <template v-else-if="s.discountPercent != null">{{ s.discountPercent }}% off</template>
+                </td>
+                <td><strong>{{ formatZAR(s.effectivePrice) }}</strong></td>
+                <td><McButton variant="ghost" dense type="button" @click="removeSpecial(s)">Remove</McButton></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <McAlert v-if="specialFormErr" variant="error">{{ specialFormErr }}</McAlert>
+        <h4 style="margin:0 0 0.5rem;font-size:0.85rem">Add standalone special</h4>
+        <div style="display:flex;gap:0.75rem;margin-bottom:0.5rem">
+          <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.85rem;cursor:pointer">
+            <input v-model="specialForm.usePrice" type="radio" :value="true" /> Special price (R)
+          </label>
+          <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.85rem;cursor:pointer">
+            <input v-model="specialForm.usePrice" type="radio" :value="false" /> Discount %
+          </label>
+        </div>
+        <McField v-if="specialForm.usePrice" label="Special price (R)" for-id="sp-price">
+          <input id="sp-price" v-model.number="specialForm.specialPrice" type="number" step="0.01" min="0" />
+        </McField>
+        <McField v-else label="Discount %" for-id="sp-disc">
+          <input id="sp-disc" v-model.number="specialForm.discountPercent" type="number" step="0.01" min="0" max="100" />
+        </McField>
+      </template>
+      <template #footer>
+        <McButton variant="secondary" type="button" @click="showSpecialModal = false">Close</McButton>
+        <McButton variant="primary" type="button" :disabled="specialFormBusy" @click="saveStandaloneSpecial">Add special</McButton>
+      </template>
+    </McModal>
   </div>
 </template>
 
@@ -474,7 +895,7 @@ onMounted(() => void load())
 
 .stock-table {
   width: 100%;
-  min-width: 900px;
+  min-width: 1100px;
   font-size: 0.88rem;
 }
 
@@ -502,8 +923,19 @@ onMounted(() => void load())
   color: #e65100;
 }
 
+.stock-qty--consign {
+  color: #1565c0;
+}
+
+.stock-qty--none {
+  color: var(--mc-app-text-muted, #5c5a56);
+}
+
 .stock-actions {
   white-space: nowrap;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
 }
 
 .stock-loading {
@@ -616,5 +1048,27 @@ onMounted(() => void load())
 .stock-drawer-slide-enter-from,
 .stock-drawer-slide-leave-to {
   transform: translateX(100%);
+}
+
+.stock-drawer--wide {
+  width: min(680px, 100vw);
+}
+
+.history-table {
+  width: 100%;
+  font-size: 0.85rem;
+}
+
+.receipt-product-name {
+  font-weight: 600;
+  font-size: 1rem;
+  margin: 0 0 1rem;
+  color: var(--mc-app-heading, #0a0a0c);
+}
+
+.receipt-max-hint {
+  font-size: 0.82rem;
+  color: var(--mc-app-text-muted, #5c5a56);
+  margin: -0.5rem 0 0.75rem;
 }
 </style>

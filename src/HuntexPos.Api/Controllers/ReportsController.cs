@@ -146,6 +146,152 @@ public class ReportsController : ControllerBase
         return File(bytes, "text/csv", "invoices.csv");
     }
 
+    [HttpGet("stock")]
+    public async Task<StockReportDto> StockReport(
+        [FromQuery] DateTimeOffset? from,
+        [FromQuery] DateTimeOffset? to,
+        CancellationToken ct)
+    {
+        var products = await _db.Products.AsNoTracking()
+            .Include(p => p.Supplier)
+            .Where(p => p.Active)
+            .OrderBy(p => p.Name)
+            .ToListAsync(ct);
+
+        var onHandLines = products.Select(p => new StockOnHandLineDto
+        {
+            Sku = p.Sku,
+            Name = p.Name,
+            SupplierName = p.Supplier?.Name,
+            QtyOwned = p.QtyOnHand,
+            QtyConsignment = p.QtyConsignment,
+            Cost = p.Cost,
+            SellPrice = p.SellPrice,
+            OwnedValue = p.Cost * p.QtyOnHand
+        }).ToList();
+
+        var onHand = new StockOnHandSummaryDto
+        {
+            TotalOwnedQty = products.Sum(p => p.QtyOnHand),
+            TotalOwnedValue = products.Sum(p => p.Cost * p.QtyOnHand),
+            TotalConsignmentQty = products.Sum(p => p.QtyConsignment),
+            ProductCount = products.Count,
+            Lines = onHandLines
+        };
+
+        // Consignment breakdown by supplier (all time)
+        var allReceipts = await _db.StockReceipts.AsNoTracking()
+            .Include(r => r.Supplier)
+            .Include(r => r.Product)
+            .Where(r => r.SupplierId != null)
+            .ToListAsync(ct);
+
+        var consignmentBySupplier = allReceipts
+            .GroupBy(r => r.SupplierId!.Value)
+            .Select(supplierGroup =>
+            {
+                var supplierName = supplierGroup.First().Supplier?.Name ?? "Unknown";
+                var productGroups = supplierGroup
+                    .GroupBy(r => r.ProductId)
+                    .Select(pg =>
+                    {
+                        var pIn = pg.Where(r => r.Type == StockReceiptType.ConsignmentIn).Sum(r => r.Quantity);
+                        var pMoved = pg.Where(r => r.Type == StockReceiptType.ConsignmentToStock).Sum(r => r.Quantity);
+                        var pRet = pg.Where(r => r.Type == StockReceiptType.ConsignmentReturn).Sum(r => r.Quantity);
+                        return new ConsignmentProductLineDto
+                        {
+                            Sku = pg.First().Product?.Sku ?? "",
+                            Name = pg.First().Product?.Name ?? "",
+                            OnHand = pIn - pMoved - pRet,
+                            TotalIn = pIn,
+                            TotalMovedToStock = pMoved,
+                            TotalReturned = pRet
+                        };
+                    })
+                    .Where(p => p.TotalIn > 0)
+                    .OrderBy(p => p.Name)
+                    .ToList();
+
+                return new ConsignmentBySupplierDto
+                {
+                    SupplierId = supplierGroup.Key,
+                    SupplierName = supplierName,
+                    TotalIn = productGroups.Sum(p => p.TotalIn),
+                    TotalMovedToStock = productGroups.Sum(p => p.TotalMovedToStock),
+                    TotalReturned = productGroups.Sum(p => p.TotalReturned),
+                    OnHand = productGroups.Sum(p => p.OnHand),
+                    Products = productGroups
+                };
+            })
+            .Where(s => s.TotalIn > 0)
+            .OrderBy(s => s.SupplierName)
+            .ToList();
+
+        // Period-filtered data
+        var periodReceipts = allReceipts.AsEnumerable();
+        if (from.HasValue) periodReceipts = periodReceipts.Where(r => r.CreatedAt >= from.Value);
+        if (to.HasValue) periodReceipts = periodReceipts.Where(r => r.CreatedAt <= to.Value);
+
+        // Also include receipts without supplier (OwnedIn)
+        var ownedReceipts = await _db.StockReceipts.AsNoTracking()
+            .Include(r => r.Product)
+            .Where(r => r.SupplierId == null)
+            .ToListAsync(ct);
+        var allReceiptsCombined = allReceipts.Concat(ownedReceipts);
+        var periodAll = allReceiptsCombined.AsEnumerable();
+        if (from.HasValue) periodAll = periodAll.Where(r => r.CreatedAt >= from.Value);
+        if (to.HasValue) periodAll = periodAll.Where(r => r.CreatedAt <= to.Value);
+
+        var receivedInPeriod = periodAll
+            .Where(r => r.Type is StockReceiptType.OwnedIn or StockReceiptType.ConsignmentIn)
+            .OrderByDescending(r => r.CreatedAt)
+            .Select(r => new StockMovementSummaryDto
+            {
+                Sku = r.Product?.Sku ?? "",
+                Name = r.Product?.Name ?? "",
+                SupplierName = r.Supplier?.Name,
+                Type = r.Type.ToString(),
+                Quantity = r.Quantity,
+                CreatedAt = r.CreatedAt
+            })
+            .ToList();
+
+        // Sold in period
+        var invoiceQuery = _db.Invoices.AsNoTracking()
+            .Include(i => i.Lines).ThenInclude(l => l.Product)
+            .Where(i => i.Status == InvoiceStatus.Final);
+        if (from.HasValue) invoiceQuery = invoiceQuery.Where(i => i.CreatedAt >= from.Value);
+        if (to.HasValue) invoiceQuery = invoiceQuery.Where(i => i.CreatedAt <= to.Value);
+
+        var invoices = await invoiceQuery.ToListAsync(ct);
+        var allSoldLines = invoices.SelectMany(i => i.Lines).ToList();
+
+        var soldInPeriod = allSoldLines
+            .GroupBy(l => l.ProductId)
+            .Select(g =>
+            {
+                var first = g.First();
+                return new ProductSoldSummaryDto
+                {
+                    Sku = first.Product?.Sku ?? "",
+                    Name = first.Description,
+                    QtySold = g.Sum(l => l.Quantity),
+                    Revenue = g.Sum(l => l.LineTotal),
+                    Cost = g.Sum(l => l.CostAtSale * l.Quantity)
+                };
+            })
+            .OrderByDescending(p => p.QtySold)
+            .ToList();
+
+        return new StockReportDto
+        {
+            OnHand = onHand,
+            ConsignmentBySupplier = consignmentBySupplier,
+            ReceivedInPeriod = receivedInPeriod,
+            SoldInPeriod = soldInPeriod
+        };
+    }
+
     private static string Csv(string s)
     {
         if (s.Contains('"') || s.Contains(',') || s.Contains('\n'))

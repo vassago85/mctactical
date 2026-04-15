@@ -15,6 +15,7 @@ public class ProductDto
     public decimal? Cost { get; set; }
     public decimal SellPrice { get; set; }
     public int QtyOnHand { get; set; }
+    public int QtyConsignment { get; set; }
     public bool Active { get; set; }
     /// <summary>Non-null if sell price is below distributor cost (ex-VAT + 15%).</summary>
     public string? Warning { get; set; }
@@ -74,4 +75,10 @@ public class UpdateProductRequest
     public decimal? SellPrice { get; set; }
     public int? QtyOnHand { get; set; }
     public bool? Active { get; set; }
+}
+
+public class LabelBatchRequest
+{
+    public List<Guid> ProductIds { get; set; } = new();
+    public bool UsePromo { get; set; }
 }
