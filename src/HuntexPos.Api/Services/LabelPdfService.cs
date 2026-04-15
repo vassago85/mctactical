@@ -62,12 +62,9 @@ public static class LabelPdfService
     {
         var logoBytes = LoadLogo();
 
-        page.Size(LabelWidthMm, LabelHeightMm, Unit.Millimetre);
+        page.Size(LabelHeightMm, LabelWidthMm, Unit.Millimetre);
         page.DefaultTextStyle(x => x.FontSize(8).FontColor(Colors.Black));
 
-        // Render the label content to an image, rotate it 90° CW, then embed it.
-        // This guarantees the text, barcode, and logo are all physically rotated
-        // regardless of how the PDF viewer or printer driver handles layout.
         var contentImage = RenderLabelContentImage(product, logoBytes, barcodeBytes, barcodeText, pricing);
         var rotatedImage = RotateImageCW(contentImage);
 
@@ -80,7 +77,7 @@ public static class LabelPdfService
         {
             container.Page(p =>
             {
-                p.Size(LabelHeightMm, LabelWidthMm, Unit.Millimetre);
+                p.Size(LabelWidthMm, LabelHeightMm, Unit.Millimetre);
                 p.MarginHorizontal(PaddingMm, Unit.Millimetre);
                 p.MarginVertical(PaddingMm, Unit.Millimetre);
                 p.DefaultTextStyle(x => x.FontSize(8).FontColor(Colors.Black));
