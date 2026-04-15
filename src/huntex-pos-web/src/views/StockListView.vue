@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
@@ -71,6 +71,10 @@ const page = ref<Page | null>(null)
 const busy = ref(false)
 const err = ref<string | null>(null)
 const suppliers = ref<Supplier[]>([])
+const actionsMenuId = ref<string | null>(null)
+function toggleActionsMenu(id: string) {
+  actionsMenuId.value = actionsMenuId.value === id ? null : id
+}
 
 const canManage = computed(() => auth.hasRole('Admin', 'Owner', 'Dev'))
 const canExport = canManage
@@ -505,10 +509,16 @@ async function printLabel() {
   }
 }
 
+function closeActionsMenu(e: MouseEvent) {
+  if (actionsMenuId.value && !(e.target as HTMLElement)?.closest('.stock-actions-more'))
+    actionsMenuId.value = null
+}
 onMounted(() => {
   void load()
   void loadSuppliers()
+  document.addEventListener('click', closeActionsMenu)
 })
+onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
 </script>
 
 <template>
@@ -583,17 +593,13 @@ onMounted(() => {
           <thead>
             <tr>
               <th>SKU</th>
-              <th>EAN-13 SKU</th>
               <th>Name</th>
-              <th>Mfr</th>
-              <th>Type</th>
-              <th>Category</th>
               <th>Supplier</th>
-              <th>Cost</th>
-              <th>Sell</th>
-              <th>Promo / Special</th>
-              <th>Owned</th>
-              <th>Consign</th>
+              <th class="text-right">Cost</th>
+              <th class="text-right">Sell</th>
+              <th class="text-right">Promo</th>
+              <th class="text-center">Owned</th>
+              <th class="text-center">Consign</th>
               <th>Status</th>
               <th v-if="canManage"></th>
             </tr>
@@ -601,28 +607,24 @@ onMounted(() => {
           <tbody>
             <tr v-for="p in page.items" :key="p.id">
               <td class="stock-mono">{{ p.sku }}</td>
-              <td class="stock-mono">{{ p.barcode ?? '—' }}</td>
               <td class="stock-name">{{ p.name }}</td>
-              <td>{{ p.manufacturer ?? '—' }}</td>
-              <td>{{ p.itemType ?? '—' }}</td>
-              <td>{{ p.category ?? '—' }}</td>
               <td>{{ p.supplierName ?? '—' }}</td>
-              <td>{{ p.cost != null && p.cost > 0 ? formatZAR(p.cost) : '—' }}</td>
-              <td :class="{ 'stock-warn': !!p.warning }">
+              <td class="text-right">{{ p.cost != null && p.cost > 0 ? formatZAR(p.cost) : '—' }}</td>
+              <td class="text-right" :class="{ 'stock-warn': !!p.warning }">
                 {{ formatZAR(p.sellPrice) }}
                 <span v-if="p.warning" :title="p.warning" class="stock-warn-icon">⚠</span>
               </td>
-              <td>
+              <td class="text-right">
                 <template v-if="p.specialPrice != null && p.specialPrice !== p.sellPrice">
                   <span class="stock-special-price">{{ formatZAR(p.specialPrice) }}</span>
                   <span class="stock-special-label">{{ p.specialLabel }}</span>
                 </template>
                 <span v-else class="stock-qty--none">—</span>
               </td>
-              <td>
+              <td class="text-center">
                 <strong :class="{ 'stock-qty--low': p.qtyOnHand <= 3 }">{{ p.qtyOnHand }}</strong>
               </td>
-              <td>
+              <td class="text-center">
                 <strong v-if="p.qtyConsignment > 0" class="stock-qty--consign">{{ p.qtyConsignment }}</strong>
                 <span v-else class="stock-qty--none">—</span>
               </td>
@@ -631,17 +633,22 @@ onMounted(() => {
               </td>
               <td v-if="canManage" class="stock-actions">
                 <McButton variant="secondary" dense type="button" @click="openEdit(p)">Edit</McButton>
-                <McButton variant="secondary" dense type="button" @click="openReceiptModal(p, 'OwnedIn')">+ Owned</McButton>
-                <McButton variant="secondary" dense type="button" @click="openReceiptModal(p, 'ConsignmentIn')">+ Consign</McButton>
-                <McButton v-if="p.qtyConsignment > 0" variant="secondary" dense type="button" @click="openReceiptModal(p, 'ConsignmentToStock')">Consign→Stock</McButton>
-                <McButton v-if="p.qtyOnHand > 0" variant="secondary" dense type="button" @click="openReceiptModal(p, 'StockToConsignment')">Stock→Consign</McButton>
-                <McButton v-if="p.qtyConsignment > 0" variant="ghost" dense type="button" @click="openReceiptModal(p, 'ConsignmentReturn')">Return</McButton>
-                <McButton variant="secondary" dense type="button" @click="openSpecialModal(p)">Special</McButton>
                 <McButton variant="secondary" dense type="button" @click="openLabelModal(p)">Label</McButton>
-                <McButton variant="ghost" dense type="button" @click="openHistory(p)">History</McButton>
-                <McButton variant="ghost" dense type="button" @click="toggleActive(p)">
-                  {{ p.active ? 'Deactivate' : 'Activate' }}
-                </McButton>
+                <div class="stock-actions-more">
+                  <button type="button" class="stock-actions-toggle" @click="toggleActionsMenu(p.id)">⋯</button>
+                  <div v-if="actionsMenuId === p.id" class="stock-actions-dropdown">
+                    <button type="button" @click="openReceiptModal(p, 'OwnedIn'); actionsMenuId = null">+ Owned stock</button>
+                    <button type="button" @click="openReceiptModal(p, 'ConsignmentIn'); actionsMenuId = null">+ Consignment</button>
+                    <button v-if="p.qtyConsignment > 0" type="button" @click="openReceiptModal(p, 'ConsignmentToStock'); actionsMenuId = null">Consign → Stock</button>
+                    <button v-if="p.qtyOnHand > 0" type="button" @click="openReceiptModal(p, 'StockToConsignment'); actionsMenuId = null">Stock → Consign</button>
+                    <button v-if="p.qtyConsignment > 0" type="button" @click="openReceiptModal(p, 'ConsignmentReturn'); actionsMenuId = null">Return consignment</button>
+                    <button type="button" @click="openSpecialModal(p); actionsMenuId = null">Manage specials</button>
+                    <button type="button" @click="openHistory(p); actionsMenuId = null">View history</button>
+                    <button type="button" @click="toggleActive(p); actionsMenuId = null">
+                      {{ p.active ? 'Deactivate' : 'Activate' }}
+                    </button>
+                  </div>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -1047,9 +1054,12 @@ onMounted(() => {
 
 .stock-table {
   width: 100%;
-  min-width: 1100px;
+  min-width: 750px;
   font-size: 0.88rem;
 }
+
+.text-right { text-align: right; }
+.text-center { text-align: center; }
 
 .stock-mono {
   font-variant-numeric: tabular-nums;
@@ -1099,8 +1109,51 @@ onMounted(() => {
 .stock-actions {
   white-space: nowrap;
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   gap: 0.25rem;
+}
+
+.stock-actions-more {
+  position: relative;
+}
+
+.stock-actions-toggle {
+  background: none;
+  border: 1px solid var(--mc-app-border, #ddd);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1.1rem;
+  padding: 2px 8px;
+  line-height: 1;
+  color: var(--mc-app-text, #333);
+}
+.stock-actions-toggle:hover { background: var(--mc-app-bg-hover, #f0f0f0); }
+
+.stock-actions-dropdown {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 100;
+  background: #fff;
+  border: 1px solid var(--mc-app-border, #ddd);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  min-width: 180px;
+  padding: 4px 0;
+}
+.stock-actions-dropdown button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 6px 14px;
+  font-size: 0.84rem;
+  cursor: pointer;
+  color: var(--mc-app-text, #333);
+}
+.stock-actions-dropdown button:hover {
+  background: var(--mc-app-bg-hover, #f5f5f5);
 }
 
 .stock-loading {
