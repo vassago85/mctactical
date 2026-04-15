@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { logoLight } from '@/branding'
@@ -9,12 +9,27 @@ const route = useRoute()
 const router = useRouter()
 const sidebarOpen = ref(false)
 
+const isStandalone = ref(
+  window.matchMedia('(display-mode: standalone)').matches ||
+  (navigator as any).standalone === true
+)
+
+const canGoBack = computed(() => window.history.length > 1)
+
 watch(
   () => route.fullPath,
   () => {
     sidebarOpen.value = false
   }
 )
+
+function goBack() {
+  router.back()
+}
+
+function goForward() {
+  router.forward()
+}
 
 function logout() {
   auth.clear()
@@ -23,7 +38,7 @@ function logout() {
 </script>
 
 <template>
-  <div class="app-shell">
+  <div class="app-shell" :class="{ 'app-shell--standalone': isStandalone }">
     <div
       class="mc-sidebar-overlay"
       :class="{ 'mc-sidebar-overlay--visible': sidebarOpen }"
@@ -61,6 +76,20 @@ function logout() {
     <div class="app-main">
       <header class="mc-topbar">
         <button type="button" class="mc-topbar__menu" aria-label="Open menu" @click="sidebarOpen = true">☰</button>
+        <button
+          type="button"
+          class="mc-topbar__nav-btn"
+          :class="{ 'mc-topbar__nav-btn--disabled': !canGoBack }"
+          :disabled="!canGoBack"
+          aria-label="Go back"
+          @click="goBack"
+        >◀</button>
+        <button
+          type="button"
+          class="mc-topbar__nav-btn"
+          aria-label="Go forward"
+          @click="goForward"
+        >▶</button>
         <span class="brand-wordmark" style="font-size: 0.95rem; color: #2a2a2d">MC Tactical</span>
       </header>
       <div class="app-main__inner">
