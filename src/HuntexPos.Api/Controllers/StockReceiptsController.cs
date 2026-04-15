@@ -113,10 +113,10 @@ public class StockReceiptsController : ControllerBase
                 .AsNoTracking()
                 .Include(r => r.Supplier)
                 .Where(r => r.ProductId == productId)
-                .OrderByDescending(r => r.CreatedAt)
                 .ToListAsync(ct);
 
-            return receipts.Select(r => MapReceipt(r, r.Supplier?.Name)).ToList();
+            return receipts.OrderByDescending(r => r.CreatedAt)
+                .Select(r => MapReceipt(r, r.Supplier?.Name)).ToList();
         }
         catch (Exception ex)
         {

@@ -92,9 +92,8 @@ public class ProductsController : ControllerBase
                 .Include(s => s.Product)
                 .Include(s => s.Promotion)
                 .Where(s => s.ProductId == productId)
-                .OrderByDescending(s => s.CreatedAt)
                 .ToListAsync(ct);
-            return specials.Select(s =>
+            return specials.OrderByDescending(s => s.CreatedAt).Select(s =>
             {
                 var basePrice = s.Product?.SellPrice ?? 0;
                 decimal effective;
