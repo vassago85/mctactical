@@ -432,6 +432,15 @@ async function saveStandaloneSpecial() {
   }
 }
 
+async function toggleSpecialActive(s: ProductSpecialItem) {
+  try {
+    await http.put(`/api/promotions/specials/${s.id}`, { isActive: !s.isActive })
+    toast.success(s.isActive ? 'Special deactivated' : 'Special activated')
+    if (specialProduct.value) await openSpecialModal(specialProduct.value)
+    await load()
+  } catch { toast.error('Update failed') }
+}
+
 async function removeSpecial(s: ProductSpecialItem) {
   try {
     await http.delete(`/api/promotions/specials/${s.id}`)
@@ -817,7 +826,7 @@ onMounted(() => {
         <div v-if="existingSpecials.length" style="margin-bottom:1rem">
           <h4 style="margin:0 0 0.5rem;font-size:0.85rem">Current specials</h4>
           <table class="mc-table" style="font-size:0.82rem">
-            <thead><tr><th>Type</th><th>Value</th><th>Effective</th><th></th></tr></thead>
+            <thead><tr><th>Type</th><th>Value</th><th>Effective</th><th>Status</th><th></th></tr></thead>
             <tbody>
               <tr v-for="s in existingSpecials" :key="s.id">
                 <td>
@@ -829,7 +838,15 @@ onMounted(() => {
                   <template v-else-if="s.discountPercent != null">{{ s.discountPercent }}% off</template>
                 </td>
                 <td><strong>{{ formatZAR(s.effectivePrice) }}</strong></td>
-                <td><McButton variant="ghost" dense type="button" @click="removeSpecial(s)">Remove</McButton></td>
+                <td>
+                  <McBadge :variant="s.isActive ? 'success' : 'neutral'">{{ s.isActive ? 'Active' : 'Inactive' }}</McBadge>
+                </td>
+                <td style="white-space:nowrap">
+                  <McButton variant="ghost" dense type="button" @click="toggleSpecialActive(s)">
+                    {{ s.isActive ? 'Deactivate' : 'Activate' }}
+                  </McButton>
+                  <McButton variant="ghost" dense type="button" @click="removeSpecial(s)">Remove</McButton>
+                </td>
               </tr>
             </tbody>
           </table>
