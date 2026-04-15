@@ -54,6 +54,7 @@ function logout() {
         <div class="mc-nav-group">
           <p class="mc-nav-group__label">Sell</p>
           <RouterLink class="mc-nav-link" to="/pos" @click="sidebarOpen = false">POS</RouterLink>
+          <RouterLink class="mc-nav-link" to="/price-lookup" @click="sidebarOpen = false">Price lookup</RouterLink>
         </div>
         <div class="mc-nav-group">
           <p class="mc-nav-group__label">Inventory</p>

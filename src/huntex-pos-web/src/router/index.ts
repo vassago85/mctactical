@@ -11,6 +11,7 @@ const router = createRouter({
       meta: { public: true, layout: 'public' }
     },
     { path: '/pos', component: () => import('@/views/PosView.vue'), meta: { layout: 'app' } },
+    { path: '/price-lookup', component: () => import('@/views/PriceLookupView.vue'), meta: { layout: 'app' } },
     { path: '/stock', component: () => import('@/views/StockListView.vue'), meta: { layout: 'app' } },
     { path: '/stocktake', component: () => import('@/views/StocktakeView.vue'), meta: { layout: 'app' } },
     { path: '/import', component: () => import('@/views/ImportView.vue'), meta: { layout: 'app' } },
