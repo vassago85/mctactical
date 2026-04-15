@@ -196,10 +196,6 @@ function openEdit(p: Product) {
   }
   formErr.value = null
   showForm.value = true
-  nextTick(() => {
-    sellPriceManual.value = false
-    computeSellFromCost(form.value.cost)
-  })
 }
 
 async function computeSellFromCost(cost: number) {
@@ -653,11 +649,11 @@ onMounted(() => {
               </McField>
             </div>
             <div class="stock-drawer__grid">
-              <McField label="Sell price (R)" for-id="f-sell" :hint="sellPriceManual ? '' : 'Auto-calculated from cost'">
-                <input id="f-sell" v-model.number="form.sellPrice" type="number" step="0.01" min="0" @input="sellPriceManual = true" />
-              </McField>
               <McField label="Cost ex VAT (R)" for-id="f-cost">
                 <input id="f-cost" v-model.number="form.cost" type="number" step="0.01" min="0" />
+              </McField>
+              <McField label="Sell price (R)" for-id="f-sell" :hint="!editId && !sellPriceManual ? 'Auto-calculated from cost' : ''">
+                <input id="f-sell" v-model.number="form.sellPrice" type="number" step="0.01" min="0" @input="sellPriceManual = true" />
               </McField>
               <McField label="Qty on hand" for-id="f-qty">
                 <input id="f-qty" v-model.number="form.qtyOnHand" type="number" step="1" min="0" />
