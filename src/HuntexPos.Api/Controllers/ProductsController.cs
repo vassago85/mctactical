@@ -58,6 +58,12 @@ public class ProductsController : ControllerBase
             query = query.Where(p => p.SupplierId == search.SupplierId);
         query = ApplyStocklistSearchFilter(query, search.Q);
 
+        if (search.HasSpecial == true)
+        {
+            var specialProductIds = await GetActiveSpecialProductIds(ct);
+            query = query.Where(p => specialProductIds.Contains(p.Id));
+        }
+
         var take = Math.Clamp(search.Take, 1, 10_000);
         var skip = Math.Max(0, search.Skip);
         var total = await query.CountAsync(ct);
@@ -431,6 +437,17 @@ public class ProductsController : ControllerBase
             .Where(p => !p.StartsAt.HasValue || p.StartsAt <= now)
             .Where(p => !p.EndsAt.HasValue || p.EndsAt >= now)
             .FirstOrDefault();
+    }
+
+    private async Task<HashSet<Guid>> GetActiveSpecialProductIds(CancellationToken ct)
+    {
+        var promo = await FindActivePromoAsync(ct);
+        var specialsQuery = _db.ProductSpecials.AsNoTracking().Where(s => s.IsActive);
+        specialsQuery = promo != null
+            ? specialsQuery.Where(s => s.PromotionId == null || s.PromotionId == promo.Id)
+            : specialsQuery.Where(s => s.PromotionId == null);
+        var ids = await specialsQuery.Select(s => s.ProductId).Distinct().ToListAsync(ct);
+        return ids.ToHashSet();
     }
 
     private record ActiveSpecialInfo(decimal EffectivePrice, string Label);

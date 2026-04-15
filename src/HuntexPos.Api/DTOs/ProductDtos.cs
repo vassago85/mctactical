@@ -39,6 +39,7 @@ public class ProductStocklistQuery
     public string? Q { get; set; }
     public Guid? SupplierId { get; set; }
     public bool IncludeInactive { get; set; }
+    public bool? HasSpecial { get; set; }
     public int Skip { get; set; }
     public int Take { get; set; } = 500;
 }

@@ -74,6 +74,7 @@ const suppliers = ref<Supplier[]>([])
 
 const canManage = computed(() => auth.hasRole('Admin', 'Owner', 'Dev'))
 const canExport = canManage
+const filterSpecials = ref(false)
 const pageLabel = computed(() => {
   if (!page.value) return ''
   const from = page.value.total === 0 ? 0 : page.value.skip + 1
@@ -86,6 +87,10 @@ watch([q, includeInactive], () => {
   skip.value = 0
   if (debounce) clearTimeout(debounce)
   debounce = setTimeout(() => void load(), 300)
+})
+watch(filterSpecials, () => {
+  skip.value = 0
+  void load()
 })
 
 watch([skip, pageSize], () => void load())
@@ -108,6 +113,7 @@ async function load() {
       params: {
         q: q.value.trim() || undefined,
         includeInactive: includeInactive.value,
+        hasSpecial: filterSpecials.value || undefined,
         skip: skip.value,
         take: pageSize.value
       }
@@ -553,6 +559,19 @@ onMounted(() => {
       </div>
     </McCard>
 
+    <div class="stock-specials-bar">
+      <button
+        type="button"
+        class="stock-specials-chip"
+        :class="{ 'stock-specials-chip--active': filterSpecials }"
+        @click="filterSpecials = !filterSpecials"
+      >
+        <span class="stock-specials-chip__icon">{{ filterSpecials ? '✕' : '★' }}</span>
+        {{ filterSpecials ? 'Showing specials only — click to clear' : 'Show products with specials' }}
+        <span v-if="filterSpecials && page" class="stock-specials-chip__count">({{ page.total }})</span>
+      </button>
+    </div>
+
     <McCard :padded="false" title="Products">
       <div class="stock-table-wrap">
         <table v-if="page?.items.length" class="stock-table mc-table">
@@ -877,6 +896,51 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.stock-specials-bar {
+  margin-bottom: 1rem;
+}
+
+.stock-specials-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  border: 2px solid var(--mc-app-border-soft, #ddd9d3);
+  background: var(--mc-app-surface, #fff);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--mc-app-text-muted, #5c5a56);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.stock-specials-chip:hover {
+  border-color: var(--mc-accent, #f47a20);
+  color: var(--mc-accent, #f47a20);
+}
+
+.stock-specials-chip--active {
+  border-color: var(--mc-accent, #f47a20);
+  background: var(--mc-accent, #f47a20);
+  color: #fff;
+}
+
+.stock-specials-chip--active:hover {
+  background: #d96a15;
+  border-color: #d96a15;
+  color: #fff;
+}
+
+.stock-specials-chip__icon {
+  font-size: 0.9rem;
+}
+
+.stock-specials-chip__count {
+  font-weight: 400;
+  opacity: 0.85;
+}
+
 .stock-page {
   min-height: 100%;
 }
