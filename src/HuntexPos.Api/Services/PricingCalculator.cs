@@ -12,18 +12,13 @@ public static class PricingCalculator
 
     /// <summary>
     /// Compute sell price from ex-VAT wholesale cost.
-    /// Normal:  cost × 1.5  → round up to nearest R10.
-    /// Huntex:  cost × 1.5 / 1.1  → round up to nearest R10.
+    /// cost × markup → round up to nearest R10.
     /// </summary>
     public static decimal ComputeSellPrice(decimal cost, PricingSettings settings)
     {
-        var normalSell = settings.UseMarginPercent
+        var sell = settings.UseMarginPercent
             ? Round2(cost * (1 + settings.DefaultMarginPercent / 100m))
             : Round2(cost + settings.DefaultFixedMarkup);
-
-        var sell = IsHuntex(settings)
-            ? Round2(normalSell / 1.1m)
-            : normalSell;
 
         return RoundToR10(sell);
     }
