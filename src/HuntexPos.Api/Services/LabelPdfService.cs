@@ -61,12 +61,15 @@ public static class LabelPdfService
     {
         var logoBytes = LoadLogo();
 
-        page.Size(LabelWidthMm, LabelHeightMm, Unit.Millimetre);
+        // Portrait page: swap width↔height so the PDF is tall & narrow.
+        // The Brother QL-800 driver auto-rotates to fit the 62 mm tape,
+        // resulting in content printed sideways (rotated 90°).
+        page.Size(LabelHeightMm, LabelWidthMm, Unit.Millimetre);
         page.MarginHorizontal(PaddingMm, Unit.Millimetre);
         page.MarginVertical(PaddingMm, Unit.Millimetre);
         page.DefaultTextStyle(x => x.FontSize(8).FontColor(Colors.Black));
 
-        page.Content().RotateRight().Column(col =>
+        page.Content().Column(col =>
         {
             if (logoBytes != null)
             {
