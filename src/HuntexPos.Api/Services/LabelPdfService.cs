@@ -16,8 +16,8 @@ namespace HuntexPos.Api.Services;
 public static class LabelPdfService
 {
     private const float LabelWidthMm = 62f;
-    private const float LabelHeightMm = 40f;
-    private const float PaddingMm = 1.5f;
+    private const float LabelHeightMm = 35f;
+    private const float PaddingMm = 2f;
 
     public record LabelPricing(decimal DisplayPrice, decimal? WasPrice, string? PromoName);
 
@@ -47,18 +47,14 @@ public static class LabelPdfService
     /// </summary>
     public static string EnsureEan13(Product product)
     {
-        if (!string.IsNullOrEmpty(product.Barcode))
-        {
-            var existingDigits = new string(product.Barcode.Where(char.IsDigit).ToArray());
-            if (existingDigits.Length == 13) return product.Barcode;
-        }
-        var ean = ToEan13(product.Barcode ?? product.Sku);
+        var source = product.Barcode ?? product.Sku;
+        var ean = ToEan13(source);
         if (ean != null)
         {
             product.Barcode = ean;
             return ean;
         }
-        return product.Barcode ?? product.Sku;
+        return source;
     }
 
     private static void ConfigureLabelPage(PageDescriptor page, Product product, byte[]? barcodeBytes, string barcodeText, LabelPricing pricing)
@@ -72,62 +68,55 @@ public static class LabelPdfService
 
         page.Content().Column(col =>
         {
-            // Row 1: Logo centered
+            // Row 1: Logo
             if (logoBytes != null)
             {
                 col.Item().AlignCenter()
-                    .Height(6, Unit.Millimetre)
+                    .Height(5, Unit.Millimetre)
                     .Image(logoBytes).FitArea();
             }
 
-            // Row 2: Barcode centered with number underneath
-            col.Item().PaddingTop(0.3f, Unit.Millimetre).AlignCenter().Column(bc =>
+            // Row 2: Barcode + number
+            if (barcodeBytes != null)
             {
-                if (barcodeBytes != null)
-                {
-                    bc.Item().AlignCenter()
-                        .Height(12, Unit.Millimetre)
-                        .Width(50, Unit.Millimetre)
-                        .Image(barcodeBytes).FitArea();
-                }
-                bc.Item().AlignCenter().PaddingTop(0.3f, Unit.Millimetre)
-                    .Text(barcodeText).FontSize(6.5f).FontColor("#444444").LetterSpacing(0.08f);
-            });
+                col.Item().PaddingTop(0.5f, Unit.Millimetre).AlignCenter()
+                    .Height(10, Unit.Millimetre)
+                    .Width(40, Unit.Millimetre)
+                    .Image(barcodeBytes).FitArea();
+            }
+            col.Item().AlignCenter()
+                .Text(barcodeText).FontSize(6).FontColor("#444444");
 
             // Row 3: Price
-            col.Item().PaddingTop(0.3f, Unit.Millimetre).AlignCenter().Column(priceCol =>
+            if (pricing.WasPrice.HasValue && pricing.WasPrice.Value != pricing.DisplayPrice)
             {
-                if (pricing.WasPrice.HasValue && pricing.WasPrice.Value != pricing.DisplayPrice)
+                col.Item().PaddingTop(0.5f, Unit.Millimetre).AlignCenter().Row(priceRow =>
                 {
-                    priceCol.Item().AlignCenter().Row(priceRow =>
-                    {
-                        priceRow.AutoItem()
-                            .Text($"R{pricing.DisplayPrice:N2}")
-                            .Bold().FontSize(14).FontColor("#CC0000");
-                        priceRow.AutoItem().PaddingLeft(2f, Unit.Millimetre).AlignBottom()
-                            .Text($"R{pricing.WasPrice.Value:N2}")
-                            .FontSize(9).FontColor("#999999").Strikethrough();
-                    });
-
-                    if (!string.IsNullOrWhiteSpace(pricing.PromoName))
-                    {
-                        priceCol.Item().AlignCenter()
-                            .Text(pricing.PromoName)
-                            .FontSize(6).FontColor("#CC0000").Bold();
-                    }
-                }
-                else
-                {
-                    priceCol.Item().AlignCenter()
+                    priceRow.AutoItem()
                         .Text($"R{pricing.DisplayPrice:N2}")
-                        .Bold().FontSize(14);
+                        .Bold().FontSize(11).FontColor("#CC0000");
+                    priceRow.AutoItem().PaddingLeft(1.5f, Unit.Millimetre).AlignBottom()
+                        .Text($"R{pricing.WasPrice.Value:N2}")
+                        .FontSize(7).FontColor("#999999").Strikethrough();
+                });
+                if (!string.IsNullOrWhiteSpace(pricing.PromoName))
+                {
+                    col.Item().AlignCenter()
+                        .Text(pricing.PromoName)
+                        .FontSize(5).FontColor("#CC0000").Bold();
                 }
-            });
+            }
+            else
+            {
+                col.Item().PaddingTop(0.5f, Unit.Millimetre).AlignCenter()
+                    .Text($"R{pricing.DisplayPrice:N2}")
+                    .Bold().FontSize(11);
+            }
 
-            // Row 4: Product name at bottom
-            col.Item().PaddingTop(0.3f, Unit.Millimetre).AlignCenter()
+            // Row 4: Product name
+            col.Item().AlignCenter()
                 .Text(product.Name)
-                .Bold().FontSize(6f).FontColor("#333333");
+                .Bold().FontSize(5.5f).FontColor("#333333");
         });
     }
 
@@ -138,6 +127,11 @@ public static class LabelPdfService
     public static string? ToEan13(string text)
     {
         var digits = new string(text.Where(char.IsDigit).ToArray());
+
+        // Already a valid EAN-13
+        if (digits.Length == 13) return digits;
+
+        // If no digits, convert letters to alphabet positions
         if (digits.Length == 0)
         {
             var sb = new System.Text.StringBuilder();
@@ -155,28 +149,28 @@ public static class LabelPdfService
         return digits + Ean13Renderer.CalculateCheck(digits);
     }
 
-    private static byte[]? RenderBarcode(string text)
+    private static (byte[]? Bytes, string DisplayText) RenderBarcodeWithText(string text)
     {
-        var ean = Ean13Renderer.RenderToPng(text, barHeight: 120, moduleWidth: 2);
-        if (ean != null) return ean;
-        var converted = ToEan13(text);
-        if (converted != null)
+        // Always try to get a clean 13-digit string for EAN-13
+        var ean13 = ToEan13(text);
+        if (ean13 != null)
         {
-            var eanConverted = Ean13Renderer.RenderToPng(converted, barHeight: 120, moduleWidth: 2);
-            if (eanConverted != null) return eanConverted;
+            var png = Ean13Renderer.RenderToPng(ean13, barHeight: 80, moduleWidth: 2);
+            if (png != null) return (png, ean13);
         }
-        return Code128Renderer.RenderToPng(text, barHeight: 120, moduleWidth: 2);
+        // Last resort: Code 128
+        return (Code128Renderer.RenderToPng(text, barHeight: 80, moduleWidth: 2), text);
     }
 
     public static byte[] BuildSingleLabel(Product product, LabelPricing pricing, int copies = 1)
     {
-        var barcodeText = EnsureEan13(product);
-        var barcodeBytes = RenderBarcode(barcodeText);
+        EnsureEan13(product);
+        var (barcodeBytes, displayText) = RenderBarcodeWithText(product.Barcode ?? product.Sku);
 
         return Document.Create(container =>
         {
             for (var i = 0; i < copies; i++)
-                container.Page(page => ConfigureLabelPage(page, product, barcodeBytes, barcodeText, pricing));
+                container.Page(page => ConfigureLabelPage(page, product, barcodeBytes, displayText, pricing));
         }).GeneratePdf();
     }
 
@@ -188,9 +182,9 @@ public static class LabelPdfService
         {
             foreach (var (product, pricing) in list)
             {
-                var barcodeText = EnsureEan13(product);
-                var barcodeBytes = RenderBarcode(barcodeText);
-                container.Page(page => ConfigureLabelPage(page, product, barcodeBytes, barcodeText, pricing));
+                EnsureEan13(product);
+                var (barcodeBytes, displayText) = RenderBarcodeWithText(product.Barcode ?? product.Sku);
+                container.Page(page => ConfigureLabelPage(page, product, barcodeBytes, displayText, pricing));
             }
         }).GeneratePdf();
     }
