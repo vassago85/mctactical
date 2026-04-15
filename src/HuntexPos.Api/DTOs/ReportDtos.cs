@@ -89,3 +89,50 @@ public class ProductSoldSummaryDto
     public decimal CostExVat { get; set; }
     public decimal CostInclVat { get; set; }
 }
+
+/* ── Consignment report DTOs ── */
+
+public class ConsignmentReportDto
+{
+    public List<ConsignmentSupplierReportDto> Suppliers { get; set; } = new();
+    public int TotalOnHand { get; set; }
+    public decimal TotalOnHandValue { get; set; }
+    public int TotalReceived { get; set; }
+    public decimal TotalReceivedValue { get; set; }
+    public int TotalSold { get; set; }
+    public decimal TotalSoldRevenue { get; set; }
+    public int TotalReturned { get; set; }
+    public int TotalMovedFromStock { get; set; }
+}
+
+public class ConsignmentSupplierReportDto
+{
+    public Guid SupplierId { get; set; }
+    public string SupplierName { get; set; } = string.Empty;
+    public int OnHand { get; set; }
+    public decimal OnHandValue { get; set; }
+    public int TotalReceived { get; set; }
+    public decimal TotalReceivedValue { get; set; }
+    public int TotalSold { get; set; }
+    public decimal TotalSoldRevenue { get; set; }
+    public int TotalMovedToStock { get; set; }
+    public int TotalReturned { get; set; }
+    public int TotalMovedFromStock { get; set; }
+    public List<ConsignmentProductReportDto> Products { get; set; } = new();
+}
+
+public class ConsignmentProductReportDto
+{
+    public string Sku { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public decimal SellPrice { get; set; }
+    public decimal Cost { get; set; }
+    public int OnHand { get; set; }
+    public decimal OnHandValue { get; set; }
+    public int Received { get; set; }
+    public int MovedToStock { get; set; }
+    public int Returned { get; set; }
+    public int MovedFromStock { get; set; }
+    public int Sold { get; set; }
+    public decimal SoldRevenue { get; set; }
+}

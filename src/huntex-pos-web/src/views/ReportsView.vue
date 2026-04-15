@@ -57,6 +57,30 @@ type StockReport = {
   soldInPeriod: ProductSoldLine[]
 }
 
+/* Consignment report types */
+type ConsignmentProductReport = {
+  sku: string; name: string; sellPrice: number; cost: number
+  onHand: number; onHandValue: number; received: number
+  movedToStock: number; returned: number; movedFromStock: number
+  sold: number; soldRevenue: number
+}
+type ConsignmentSupplierReport = {
+  supplierId: string; supplierName: string
+  onHand: number; onHandValue: number
+  totalReceived: number; totalReceivedValue: number
+  totalSold: number; totalSoldRevenue: number
+  totalMovedToStock: number; totalReturned: number; totalMovedFromStock: number
+  products: ConsignmentProductReport[]
+}
+type ConsignmentReport = {
+  suppliers: ConsignmentSupplierReport[]
+  totalOnHand: number; totalOnHandValue: number
+  totalReceived: number; totalReceivedValue: number
+  totalSold: number; totalSoldRevenue: number
+  totalReturned: number; totalMovedFromStock: number
+}
+type Supplier = { id: string; name: string }
+
 const auth = useAuthStore()
 const toast = useToast()
 const invoices = ref<Row[]>([])
@@ -70,7 +94,17 @@ const isDev = computed(() => auth.hasRole('Dev'))
 const stockReport = ref<StockReport | null>(null)
 const stockErr = ref<string | null>(null)
 const stockBusy = ref(false)
-const activeTab = ref<'sales' | 'stock'>('stock')
+const activeTab = ref<'sales' | 'stock' | 'consignment'>('stock')
+
+/* Consignment report state */
+const consignReport = ref<ConsignmentReport | null>(null)
+const consignErr = ref<string | null>(null)
+const consignBusy = ref(false)
+const consignFrom = ref(defaultFrom())
+const consignTo = ref(defaultTo())
+const consignSupplierId = ref('')
+const supplierList = ref<Supplier[]>([])
+const expandedConsignSuppliers = ref<Set<string>>(new Set())
 
 /* Purge state */
 const showPurgeConfirm = ref(false)
@@ -130,11 +164,20 @@ function applyStockPreset(p: DatePreset) {
   stockTo.value = p.to
   void loadStockReport()
 }
+function applyConsignPreset(p: DatePreset) {
+  consignFrom.value = p.from
+  consignTo.value = p.to
+  void loadConsignmentReport()
+}
 
 const expandedSuppliers = ref<Set<string>>(new Set())
 function toggleSupplier(id: string) {
   if (expandedSuppliers.value.has(id)) expandedSuppliers.value.delete(id)
   else expandedSuppliers.value.add(id)
+}
+function toggleConsignSupplier(id: string) {
+  if (expandedConsignSuppliers.value.has(id)) expandedConsignSuppliers.value.delete(id)
+  else expandedConsignSuppliers.value.add(id)
 }
 
 async function openPdf(id: string) {
@@ -218,6 +261,29 @@ function receiptTypeLabel(type: string) {
   }
 }
 
+async function loadSuppliers() {
+  try {
+    const { data } = await http.get<Supplier[]>('/api/suppliers')
+    supplierList.value = data
+  } catch { /* non-critical */ }
+}
+
+async function loadConsignmentReport() {
+  consignErr.value = null
+  consignBusy.value = true
+  try {
+    const params: Record<string, string> = { ...buildDateParams(consignFrom.value, consignTo.value) }
+    if (consignSupplierId.value) params.supplierId = consignSupplierId.value
+    const { data } = await http.get<ConsignmentReport>('/api/reports/consignment', { params })
+    consignReport.value = data
+  } catch (e: unknown) {
+    const ax = e as { response?: { data?: { error?: string } }; message?: string }
+    consignErr.value = ax.response?.data?.error ?? ax.message ?? 'Could not load consignment report'
+  } finally {
+    consignBusy.value = false
+  }
+}
+
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })
 }
@@ -225,6 +291,8 @@ function formatDate(iso: string) {
 onMounted(() => {
   void loadSales()
   void loadStockReport()
+  void loadSuppliers()
+  void loadConsignmentReport()
 })
 
 async function exportCsv() {
@@ -267,7 +335,7 @@ async function purgeData() {
   <div class="rep-page">
     <McPageHeader title="Reports">
       <template #actions>
-        <McButton variant="secondary" type="button" @click="activeTab === 'sales' ? loadSales() : loadStockReport()">Refresh</McButton>
+        <McButton variant="secondary" type="button" @click="activeTab === 'sales' ? loadSales() : activeTab === 'consignment' ? loadConsignmentReport() : loadStockReport()">Refresh</McButton>
         <McButton v-if="activeTab === 'sales'" variant="primary" type="button" @click="exportCsv">Export invoices CSV</McButton>
         <McButton v-if="isDev" variant="danger" type="button" @click="showPurgeConfirm = true">Purge all data</McButton>
       </template>
@@ -290,6 +358,7 @@ async function purgeData() {
 
     <div class="rep-tabs">
       <button type="button" class="rep-tab" :class="{ 'rep-tab--active': activeTab === 'stock' }" @click="activeTab = 'stock'">Stock report</button>
+      <button type="button" class="rep-tab" :class="{ 'rep-tab--active': activeTab === 'consignment' }" @click="activeTab = 'consignment'">Consignment</button>
       <button type="button" class="rep-tab" :class="{ 'rep-tab--active': activeTab === 'sales' }" @click="activeTab = 'sales'">Sales report</button>
     </div>
 
@@ -509,6 +578,159 @@ async function purgeData() {
       </template>
     </template>
 
+    <!-- ── CONSIGNMENT REPORT TAB ── -->
+    <template v-if="activeTab === 'consignment'">
+      <McCard title="Consignment report filters">
+        <div class="rep-preset-row">
+          <McButton v-for="p in presets" :key="p.label" variant="ghost" dense type="button" @click="applyConsignPreset(p)">{{ p.label }}</McButton>
+        </div>
+        <div class="rep-date-row">
+          <McField label="Supplier" for-id="cr-supplier">
+            <select id="cr-supplier" v-model="consignSupplierId" style="min-width: 180px">
+              <option value="">All suppliers</option>
+              <option v-for="s in supplierList" :key="s.id" :value="s.id">{{ s.name }}</option>
+            </select>
+          </McField>
+          <McField label="Sold from" for-id="cr-from">
+            <input id="cr-from" v-model="consignFrom" type="date" />
+          </McField>
+          <McField label="Sold to" for-id="cr-to">
+            <input id="cr-to" v-model="consignTo" type="date" />
+          </McField>
+          <McButton variant="primary" type="button" :disabled="consignBusy" @click="loadConsignmentReport">
+            <McSpinner v-if="consignBusy" />
+            <span v-else>Run report</span>
+          </McButton>
+        </div>
+      </McCard>
+
+      <McAlert v-if="consignErr" variant="error">{{ consignErr }}</McAlert>
+
+      <template v-if="consignReport">
+        <div class="rep-kpi-row">
+          <div class="rep-kpi">
+            <span class="rep-kpi__label">Consignment on hand</span>
+            <strong class="rep-kpi__value rep-kpi__value--blue">{{ consignReport.totalOnHand }}</strong>
+          </div>
+          <div class="rep-kpi">
+            <span class="rep-kpi__label">On hand value (sell)</span>
+            <strong class="rep-kpi__value rep-kpi__value--blue">{{ formatZAR(consignReport.totalOnHandValue) }}</strong>
+          </div>
+          <div class="rep-kpi">
+            <span class="rep-kpi__label">Total received</span>
+            <strong class="rep-kpi__value">{{ consignReport.totalReceived }}</strong>
+          </div>
+          <div class="rep-kpi">
+            <span class="rep-kpi__label">Received value (sell)</span>
+            <strong class="rep-kpi__value">{{ formatZAR(consignReport.totalReceivedValue) }}</strong>
+          </div>
+          <div class="rep-kpi">
+            <span class="rep-kpi__label">Sold in period (qty)</span>
+            <strong class="rep-kpi__value">{{ consignReport.totalSold }}</strong>
+          </div>
+          <div class="rep-kpi">
+            <span class="rep-kpi__label">Sold in period (revenue)</span>
+            <strong class="rep-kpi__value">{{ formatZAR(consignReport.totalSoldRevenue) }}</strong>
+          </div>
+          <div class="rep-kpi">
+            <span class="rep-kpi__label">Returned to supplier</span>
+            <strong class="rep-kpi__value">{{ consignReport.totalReturned }}</strong>
+          </div>
+        </div>
+
+        <McCard v-for="s in consignReport.suppliers" :key="s.supplierId" :title="s.supplierName">
+          <div class="rep-kpi-row" style="margin-bottom: 0.75rem">
+            <div class="rep-kpi rep-kpi--sm">
+              <span class="rep-kpi__label">On hand</span>
+              <strong class="rep-kpi__value rep-kpi__value--blue">{{ s.onHand }}</strong>
+            </div>
+            <div class="rep-kpi rep-kpi--sm">
+              <span class="rep-kpi__label">On hand value</span>
+              <strong class="rep-kpi__value rep-kpi__value--blue">{{ formatZAR(s.onHandValue) }}</strong>
+            </div>
+            <div class="rep-kpi rep-kpi--sm">
+              <span class="rep-kpi__label">Received</span>
+              <strong class="rep-kpi__value">{{ s.totalReceived }}</strong>
+            </div>
+            <div class="rep-kpi rep-kpi--sm">
+              <span class="rep-kpi__label">Moved to stock</span>
+              <strong class="rep-kpi__value">{{ s.totalMovedToStock }}</strong>
+            </div>
+            <div class="rep-kpi rep-kpi--sm">
+              <span class="rep-kpi__label">Returned</span>
+              <strong class="rep-kpi__value">{{ s.totalReturned }}</strong>
+            </div>
+            <div class="rep-kpi rep-kpi--sm">
+              <span class="rep-kpi__label">Sold (period)</span>
+              <strong class="rep-kpi__value">{{ s.totalSold }}</strong>
+            </div>
+            <div class="rep-kpi rep-kpi--sm">
+              <span class="rep-kpi__label">Revenue (period)</span>
+              <strong class="rep-kpi__value">{{ formatZAR(s.totalSoldRevenue) }}</strong>
+            </div>
+          </div>
+
+          <McButton variant="ghost" dense type="button" @click="toggleConsignSupplier(s.supplierId)" style="margin-bottom: 0.5rem">
+            {{ expandedConsignSuppliers.has(s.supplierId) ? 'Hide product detail' : 'Show product detail' }}
+          </McButton>
+
+          <div v-if="expandedConsignSuppliers.has(s.supplierId)" class="rep-table-wrap">
+            <table class="mc-table">
+              <thead>
+                <tr>
+                  <th>SKU</th>
+                  <th>Name</th>
+                  <th class="rep-num">Cost</th>
+                  <th class="rep-num">Sell</th>
+                  <th class="rep-num">Received</th>
+                  <th class="rep-num">Moved→Stock</th>
+                  <th class="rep-num">Stock→Consign</th>
+                  <th class="rep-num">Returned</th>
+                  <th class="rep-num">On hand</th>
+                  <th class="rep-num">On hand value</th>
+                  <th class="rep-num">Sold</th>
+                  <th class="rep-num">Revenue</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="p in s.products" :key="p.sku">
+                  <td class="rep-mono">{{ p.sku }}</td>
+                  <td>{{ p.name }}</td>
+                  <td class="rep-num">{{ formatZAR(p.cost) }}</td>
+                  <td class="rep-num">{{ formatZAR(p.sellPrice) }}</td>
+                  <td class="rep-num">{{ p.received }}</td>
+                  <td class="rep-num">{{ p.movedToStock }}</td>
+                  <td class="rep-num">{{ p.movedFromStock || '—' }}</td>
+                  <td class="rep-num">{{ p.returned }}</td>
+                  <td class="rep-num"><strong :class="{ 'rep-blue': p.onHand > 0 }">{{ p.onHand }}</strong></td>
+                  <td class="rep-num">{{ formatZAR(p.onHandValue) }}</td>
+                  <td class="rep-num">{{ p.sold }}</td>
+                  <td class="rep-num">{{ formatZAR(p.soldRevenue) }}</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr class="rep-total-row">
+                  <td colspan="4"><strong>Totals</strong></td>
+                  <td class="rep-num"><strong>{{ s.totalReceived }}</strong></td>
+                  <td class="rep-num"><strong>{{ s.totalMovedToStock }}</strong></td>
+                  <td class="rep-num"><strong>{{ s.totalMovedFromStock || '—' }}</strong></td>
+                  <td class="rep-num"><strong>{{ s.totalReturned }}</strong></td>
+                  <td class="rep-num"><strong>{{ s.onHand }}</strong></td>
+                  <td class="rep-num"><strong>{{ formatZAR(s.onHandValue) }}</strong></td>
+                  <td class="rep-num"><strong>{{ s.totalSold }}</strong></td>
+                  <td class="rep-num"><strong>{{ formatZAR(s.totalSoldRevenue) }}</strong></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </McCard>
+
+        <McCard v-if="!consignReport.suppliers.length" title="No consignment data">
+          <p>No consignment stock movements found{{ consignSupplierId ? ' for the selected supplier' : '' }}.</p>
+        </McCard>
+      </template>
+    </template>
+
     <!-- ── SALES REPORT TAB ── -->
     <template v-if="activeTab === 'sales'">
       <McCard title="Date range">
@@ -682,6 +904,14 @@ async function purgeData() {
 
 .rep-kpi__value--blue {
   color: #1565c0;
+}
+
+.rep-kpi--sm {
+  padding: 0.625rem 0.875rem;
+}
+
+.rep-kpi--sm .rep-kpi__value {
+  font-size: 1.15rem;
 }
 
 .rep-table-wrap {

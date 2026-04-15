@@ -325,6 +325,118 @@ public class ReportsController : ControllerBase
       }
     }
 
+    [HttpGet("consignment")]
+    public async Task<ActionResult<ConsignmentReportDto>> ConsignmentReport(
+        [FromQuery] DateTimeOffset? from,
+        [FromQuery] DateTimeOffset? to,
+        [FromQuery] Guid? supplierId,
+        CancellationToken ct)
+    {
+      try
+      {
+        var receiptsQuery = _db.StockReceipts.AsNoTracking()
+            .Include(r => r.Supplier)
+            .Include(r => r.Product)
+            .Where(r => r.SupplierId != null);
+        if (supplierId.HasValue)
+            receiptsQuery = receiptsQuery.Where(r => r.SupplierId == supplierId.Value);
+
+        var allReceipts = await receiptsQuery.ToListAsync(ct);
+
+        var allInvoices = await _db.Invoices.AsNoTracking()
+            .Include(i => i.Lines).ThenInclude(l => l.Product)
+            .ToListAsync(ct);
+        IEnumerable<Invoice> finalInvoices = allInvoices.Where(i => i.Status == InvoiceStatus.Final);
+        if (from.HasValue) finalInvoices = finalInvoices.Where(i => i.CreatedAt >= from.Value);
+        if (to.HasValue) finalInvoices = finalInvoices.Where(i => i.CreatedAt <= to.Value);
+        var soldLines = finalInvoices.SelectMany(i => i.Lines).ToList();
+
+        var soldByProduct = soldLines
+            .GroupBy(l => l.ProductId)
+            .ToDictionary(g => g.Key, g => new {
+                Qty = g.Sum(l => l.Quantity),
+                Revenue = g.Sum(l => l.LineTotal)
+            });
+
+        var supplierGroups = allReceipts
+            .GroupBy(r => r.SupplierId!.Value)
+            .Select(sg =>
+            {
+                var supplierName = sg.First().Supplier?.Name ?? "Unknown";
+                var productGroups = sg
+                    .GroupBy(r => r.ProductId)
+                    .Select(pg =>
+                    {
+                        var product = pg.First().Product;
+                        var consignIn = pg.Where(r => r.Type == StockReceiptType.ConsignmentIn).Sum(r => r.Quantity);
+                        var movedToStock = pg.Where(r => r.Type == StockReceiptType.ConsignmentToStock).Sum(r => r.Quantity);
+                        var returned = pg.Where(r => r.Type == StockReceiptType.ConsignmentReturn).Sum(r => r.Quantity);
+                        var movedFromStock = pg.Where(r => r.Type == StockReceiptType.StockToConsignment).Sum(r => r.Quantity);
+                        var onHand = consignIn + movedFromStock - movedToStock - returned;
+                        var sellPrice = product?.SellPrice ?? 0;
+                        var cost = product?.Cost ?? 0;
+
+                        var sold = soldByProduct.TryGetValue(pg.Key, out var s) ? s : null;
+
+                        return new ConsignmentProductReportDto
+                        {
+                            Sku = product?.Sku ?? "",
+                            Name = product?.Name ?? "",
+                            SellPrice = sellPrice,
+                            Cost = cost,
+                            OnHand = onHand,
+                            OnHandValue = onHand * sellPrice,
+                            Received = consignIn,
+                            MovedToStock = movedToStock,
+                            Returned = returned,
+                            MovedFromStock = movedFromStock,
+                            Sold = sold?.Qty ?? 0,
+                            SoldRevenue = sold?.Revenue ?? 0
+                        };
+                    })
+                    .Where(p => p.Received > 0 || p.MovedFromStock > 0)
+                    .OrderBy(p => p.Name)
+                    .ToList();
+
+                return new ConsignmentSupplierReportDto
+                {
+                    SupplierId = sg.Key,
+                    SupplierName = supplierName,
+                    OnHand = productGroups.Sum(p => p.OnHand),
+                    OnHandValue = productGroups.Sum(p => p.OnHandValue),
+                    TotalReceived = productGroups.Sum(p => p.Received),
+                    TotalReceivedValue = productGroups.Sum(p => p.Received * p.SellPrice),
+                    TotalSold = productGroups.Sum(p => p.Sold),
+                    TotalSoldRevenue = productGroups.Sum(p => p.SoldRevenue),
+                    TotalMovedToStock = productGroups.Sum(p => p.MovedToStock),
+                    TotalReturned = productGroups.Sum(p => p.Returned),
+                    TotalMovedFromStock = productGroups.Sum(p => p.MovedFromStock),
+                    Products = productGroups
+                };
+            })
+            .Where(s => s.TotalReceived > 0 || s.TotalMovedFromStock > 0)
+            .OrderBy(s => s.SupplierName)
+            .ToList();
+
+        return new ConsignmentReportDto
+        {
+            Suppliers = supplierGroups,
+            TotalOnHand = supplierGroups.Sum(s => s.OnHand),
+            TotalOnHandValue = supplierGroups.Sum(s => s.OnHandValue),
+            TotalReceived = supplierGroups.Sum(s => s.TotalReceived),
+            TotalReceivedValue = supplierGroups.Sum(s => s.TotalReceivedValue),
+            TotalSold = supplierGroups.Sum(s => s.TotalSold),
+            TotalSoldRevenue = supplierGroups.Sum(s => s.TotalSoldRevenue),
+            TotalReturned = supplierGroups.Sum(s => s.TotalReturned),
+            TotalMovedFromStock = supplierGroups.Sum(s => s.TotalMovedFromStock),
+        };
+      }
+      catch (Exception ex)
+      {
+          return StatusCode(500, new { error = ex.Message, detail = ex.InnerException?.Message });
+      }
+    }
+
     [HttpPost("purge")]
     [Authorize(Roles = Roles.Dev)]
     public async Task<IActionResult> PurgeData(CancellationToken ct)
