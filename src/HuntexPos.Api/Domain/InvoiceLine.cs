@@ -12,6 +12,8 @@ public class InvoiceLine
     public string Description { get; set; } = string.Empty;
     public int Quantity { get; set; }
     public decimal UnitPrice { get; set; }
+    /// <summary>Catalog SellPrice at time of sale (before any promotion discount).</summary>
+    public decimal OriginalUnitPrice { get; set; }
     public decimal LineDiscount { get; set; }
     public decimal LineTotal { get; set; }
 

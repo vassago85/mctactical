@@ -17,6 +17,9 @@ public class Invoice
     public decimal DiscountTotal { get; set; }
     public decimal GrandTotal { get; set; }
 
+    /// <summary>Name of the active promotion at time of sale (e.g. "Huntex Show 2026").</summary>
+    public string? PromotionName { get; set; }
+
     public Guid PublicToken { get; set; } = Guid.NewGuid();
     public string? PdfStorageKey { get; set; }
 

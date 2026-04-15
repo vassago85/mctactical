@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
@@ -194,6 +194,7 @@ function openEdit(p: Product) {
   }
   formErr.value = null
   showForm.value = true
+  nextTick(() => { sellPriceManual.value = false })
 }
 
 watch(() => form.value.cost, (cost) => {

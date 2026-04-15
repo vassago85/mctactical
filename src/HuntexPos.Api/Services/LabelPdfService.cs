@@ -11,12 +11,12 @@ namespace HuntexPos.Api.Services;
 
 /// <summary>
 /// Generates product labels sized for the Brother QL-800 with DK-22205 62mm continuous tape.
-/// 62mm wide × 29mm tall per label.
+/// 62mm wide × 40mm tall per label (continuous tape auto-cuts at this length).
 /// </summary>
 public static class LabelPdfService
 {
     private const float LabelWidthMm = 62f;
-    private const float LabelHeightMm = 29f;
+    private const float LabelHeightMm = 40f;
     private const float PaddingMm = 2f;
 
     public record LabelPricing(decimal DisplayPrice, decimal? WasPrice, string? PromoName);
@@ -103,10 +103,10 @@ public static class LabelPdfService
 
                 if (barcodeBytes != null)
                 {
-                    row.ConstantItem(26, Unit.Millimetre)
+                    row.ConstantItem(30, Unit.Millimetre)
                         .AlignRight()
                         .AlignBottom()
-                        .Height(11, Unit.Millimetre)
+                        .Height(16, Unit.Millimetre)
                         .Image(barcodeBytes).FitArea();
                 }
             });
@@ -115,7 +115,7 @@ public static class LabelPdfService
 
     public static byte[] BuildSingleLabel(Product product, LabelPricing pricing, int copies = 1)
     {
-        var barcodeBytes = Code128Renderer.RenderToPng(product.Barcode ?? product.Sku, barHeight: 80, moduleWidth: 2);
+        var barcodeBytes = Code128Renderer.RenderToPng(product.Barcode ?? product.Sku, barHeight: 120, moduleWidth: 3);
 
         return Document.Create(container =>
         {
@@ -132,7 +132,7 @@ public static class LabelPdfService
         {
             foreach (var (product, pricing) in list)
             {
-                var barcodeBytes = Code128Renderer.RenderToPng(product.Barcode ?? product.Sku, barHeight: 80, moduleWidth: 2);
+                var barcodeBytes = Code128Renderer.RenderToPng(product.Barcode ?? product.Sku, barHeight: 120, moduleWidth: 3);
                 container.Page(page => ConfigureLabelPage(page, product, barcodeBytes, pricing));
             }
         }).GeneratePdf();

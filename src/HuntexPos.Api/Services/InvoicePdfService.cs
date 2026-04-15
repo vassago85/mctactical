@@ -125,16 +125,52 @@ public class InvoicePdfService
                             var bg = odd ? "#F8F7F5" : "#FFFFFF";
                             odd = !odd;
 
+                            var hasPromoDisc = line.OriginalUnitPrice > 0 && line.OriginalUnitPrice != line.UnitPrice;
+                            var hasLineDisc = line.LineDiscount > 0;
+
                             table.Cell().Background(bg).BorderBottom(1).BorderColor(BorderLight)
-                                .Padding(6).Text(line.Description).FontSize(9.5f);
+                                .Padding(6).Column(itemCol =>
+                                {
+                                    itemCol.Item().Text(line.Description).FontSize(9.5f);
+                                    if (hasPromoDisc)
+                                    {
+                                        var promoAmt = (line.OriginalUnitPrice - line.UnitPrice) * line.Quantity;
+                                        var label = !string.IsNullOrWhiteSpace(invoice.PromotionName)
+                                            ? invoice.PromotionName : "Promotion";
+                                        itemCol.Item().PaddingTop(1)
+                                            .Text($"  {label}: -R{promoAmt:N2}")
+                                            .FontSize(7.5f).FontColor("#CC0000");
+                                    }
+                                    if (hasLineDisc)
+                                    {
+                                        itemCol.Item().PaddingTop(1)
+                                            .Text($"  Line discount: -R{line.LineDiscount:N2}")
+                                            .FontSize(7.5f).FontColor("#CC0000");
+                                    }
+                                });
 
                             table.Cell().Background(bg).BorderBottom(1).BorderColor(BorderLight)
                                 .Padding(6).AlignRight()
                                 .Text(line.Quantity.ToString()).FontSize(9.5f);
 
                             table.Cell().Background(bg).BorderBottom(1).BorderColor(BorderLight)
-                                .Padding(6).AlignRight()
-                                .Text($"R{line.UnitPrice:N2}").FontSize(9.5f);
+                                .Padding(6).AlignRight().Column(priceCol =>
+                                {
+                                    if (hasPromoDisc)
+                                    {
+                                        priceCol.Item().AlignRight()
+                                            .Text($"R{line.OriginalUnitPrice:N2}")
+                                            .FontSize(8).FontColor("#999999").Strikethrough();
+                                        priceCol.Item().AlignRight()
+                                            .Text($"R{line.UnitPrice:N2}")
+                                            .FontSize(9.5f).Bold().FontColor("#CC0000");
+                                    }
+                                    else
+                                    {
+                                        priceCol.Item().AlignRight()
+                                            .Text($"R{line.UnitPrice:N2}").FontSize(9.5f);
+                                    }
+                                });
 
                             table.Cell().Background(bg).BorderBottom(1).BorderColor(BorderLight)
                                 .Padding(6).AlignRight()
@@ -149,8 +185,12 @@ public class InvoicePdfService
                             .FontSize(10).FontColor(TextMuted);
 
                         if (invoice.DiscountTotal > 0)
-                            totals.Item().Text($"Discount:  -R{invoice.DiscountTotal:N2}")
-                                .FontSize(10).FontColor(TextMuted);
+                        {
+                            var discLabel = !string.IsNullOrWhiteSpace(invoice.PromotionName)
+                                ? $"{invoice.PromotionName} discount" : "Discount";
+                            totals.Item().Text($"{discLabel}:  -R{invoice.DiscountTotal:N2}")
+                                .FontSize(10).FontColor("#CC0000");
+                        }
 
                         if (invoice.TaxAmount > 0)
                             totals.Item().Text($"Tax ({invoice.TaxRate:F2}%):  R{invoice.TaxAmount:N2}")

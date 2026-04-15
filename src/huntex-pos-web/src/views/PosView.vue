@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { http } from '@/api/http'
-import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import { formatZAR } from '@/utils/format'
 import BarcodeScanner from '@/components/BarcodeScanner.vue'
@@ -35,7 +34,7 @@ type ActivePromotion = {
   specials: ActiveSpecial[]
 }
 
-type Line = { product: Product; qty: number; unitPrice: number; lineDiscount: number; originalPrice: number }
+type Line = { product: Product; qty: number; unitPrice: number; lineDiscount: number; originalPrice: number; discMode: 'R' | '%'; discInput: number }
 
 const q = ref('')
 const results = ref<Product[]>([])
@@ -50,7 +49,6 @@ const sendEmail = ref(true)
 const busy = ref(false)
 const err = ref<string | null>(null)
 const searchLoading = ref(false)
-const auth = useAuthStore()
 const toast = useToast()
 const isManager = ref(false)
 const posRules = ref<{
@@ -130,7 +128,7 @@ function addToCart(p: Product) {
   } else {
     if (p.qtyOnHand < 1) return
     const { price } = getEffectivePrice(p)
-    cart.value.push({ product: p, qty: 1, unitPrice: price, originalPrice: p.sellPrice, lineDiscount: 0 })
+    cart.value.push({ product: p, qty: 1, unitPrice: price, originalPrice: p.sellPrice, lineDiscount: 0, discMode: 'R', discInput: 0 })
   }
 }
 
@@ -156,8 +154,17 @@ function removeLine(l: Line) {
   cart.value = cart.value.filter((x) => x.product.id !== l.product.id)
 }
 
+function computedLineDiscount(l: Line): number {
+  if (l.discInput <= 0) return 0
+  if (l.discMode === '%') return Math.round(l.unitPrice * l.qty * l.discInput / 100 * 100) / 100
+  return l.discInput
+}
+
 const subTotal = computed(() =>
-  cart.value.reduce((s, l) => s + Math.max(0, l.unitPrice * l.qty - l.lineDiscount), 0)
+  cart.value.reduce((s, l) => {
+    const ld = computedLineDiscount(l)
+    return s + Math.max(0, l.unitPrice * l.qty - ld)
+  }, 0)
 )
 
 const grandPreview = computed(() => Math.max(0, subTotal.value - discountTotal.value))
@@ -183,12 +190,14 @@ async function doCheckout() {
       customerType: customerType.value || null,
       paymentMethod: paymentMethod.value,
       discountTotal: discountTotal.value,
+      promotionName: activePromo.value?.promotionName || null,
       sendEmail: sendEmail.value && !!customerEmail.value.trim(),
       lines: cart.value.map((l) => ({
         productId: l.product.id,
         quantity: l.qty,
         unitPriceOverride: l.unitPrice !== l.product.sellPrice ? l.unitPrice : null,
-        lineDiscount: l.lineDiscount
+        originalUnitPrice: l.product.sellPrice,
+        lineDiscount: computedLineDiscount(l)
       }))
     })
     cart.value = []
@@ -353,9 +362,15 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
                     <span v-else>{{ formatZAR(l.unitPrice) }}</span>
                   </td>
                   <td v-if="isManager">
-                    <input v-model.number="l.lineDiscount" type="number" class="pos-cart-input" step="0.01" min="0" />
+                    <div class="pos-disc-group">
+                      <select v-model="l.discMode" class="pos-disc-mode">
+                        <option value="R">R</option>
+                        <option value="%">%</option>
+                      </select>
+                      <input v-model.number="l.discInput" type="number" class="pos-cart-input" step="0.01" min="0" />
+                    </div>
                   </td>
-                  <td class="pos-cart-line-total">{{ formatZAR(Math.max(0, l.unitPrice * l.qty - l.lineDiscount)) }}</td>
+                  <td class="pos-cart-line-total">{{ formatZAR(Math.max(0, l.unitPrice * l.qty - computedLineDiscount(l))) }}</td>
                   <td>
                     <McButton variant="ghost" type="button" @click="removeLine(l)">Remove</McButton>
                   </td>
@@ -623,12 +638,41 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   box-shadow: inset 0 0 0 1px var(--mc-accent, #f47a20);
 }
 
+.pos-disc-group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.pos-disc-mode {
+  width: 2.5rem;
+  min-height: 38px;
+  padding: 0 0.2rem;
+  border-radius: 8px;
+  border: 1.5px solid var(--mc-app-border-subtle, #c8c5bd);
+  font-size: 0.8rem;
+  text-align: center;
+  background: var(--mc-app-surface-muted, #f0eeea);
+  cursor: pointer;
+}
+
+.pos-disc-group .pos-cart-input {
+  width: 3.5rem;
+}
+
 @media (min-width: 480px) {
   .pos-cart-input {
     width: 5.5rem;
     min-height: 44px;
     padding: 0.35rem 0.55rem;
     font-size: inherit;
+  }
+  .pos-disc-group .pos-cart-input {
+    width: 4rem;
+  }
+  .pos-disc-mode {
+    min-height: 44px;
+    font-size: 0.85rem;
   }
 }
 

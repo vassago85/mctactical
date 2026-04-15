@@ -156,10 +156,12 @@ public class ProductsController : ControllerBase
     {
         var promo = await FindActivePromoAsync(ct);
 
-        var special = await _db.ProductSpecials.AsNoTracking()
-            .Where(s => s.IsActive && s.ProductId == product.Id)
-            .Where(s => s.PromotionId == null || (promo != null && s.PromotionId == promo.Id))
-            .FirstOrDefaultAsync(ct);
+        var specialsQuery = _db.ProductSpecials.AsNoTracking()
+            .Where(s => s.IsActive && s.ProductId == product.Id);
+        specialsQuery = promo != null
+            ? specialsQuery.Where(s => s.PromotionId == null || s.PromotionId == promo.Id)
+            : specialsQuery.Where(s => s.PromotionId == null);
+        var special = await specialsQuery.FirstOrDefaultAsync(ct);
 
         return ComputeLabelPricing(product, promo, special);
     }
@@ -169,10 +171,12 @@ public class ProductsController : ControllerBase
         var promo = await FindActivePromoAsync(ct);
 
         var productIds = products.Select(p => p.Id).ToList();
-        var specials = await _db.ProductSpecials.AsNoTracking()
-            .Where(s => s.IsActive && productIds.Contains(s.ProductId))
-            .Where(s => s.PromotionId == null || (promo != null && s.PromotionId == promo.Id))
-            .ToListAsync(ct);
+        var specialsQuery = _db.ProductSpecials.AsNoTracking()
+            .Where(s => s.IsActive && productIds.Contains(s.ProductId));
+        specialsQuery = promo != null
+            ? specialsQuery.Where(s => s.PromotionId == null || s.PromotionId == promo.Id)
+            : specialsQuery.Where(s => s.PromotionId == null);
+        var specials = await specialsQuery.ToListAsync(ct);
         var specialMap = specials.GroupBy(s => s.ProductId).ToDictionary(g => g.Key, g => g.First());
 
         return products.ToDictionary(

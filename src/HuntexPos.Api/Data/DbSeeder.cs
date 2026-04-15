@@ -26,6 +26,7 @@ public static class DbSeeder
         await EnsureInvoiceLineColumnsAsync(db, ct);
         await EnsureStockReceiptsTableAsync(db, ct);
         await EnsurePromotionsTablesAsync(db, ct);
+        await EnsureInvoiceDiscountColumnsAsync(db, ct);
 
         foreach (var r in Roles.All)
         {
@@ -170,6 +171,13 @@ public static class DbSeeder
             """, ct);
         try { await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_ProductSpecials_ProductId" ON "ProductSpecials" ("ProductId");""", ct); } catch { }
         try { await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_ProductSpecials_PromotionId" ON "ProductSpecials" ("PromotionId");""", ct); } catch { }
+    }
+
+    private static async Task EnsureInvoiceDiscountColumnsAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "InvoiceLines" ADD COLUMN "OriginalUnitPrice" TEXT NOT NULL DEFAULT '0';""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "PromotionName" TEXT;""", ct); } catch { }
     }
 
     /// <summary>Upgrades SQLite DBs created before MailSettings existed (EnsureCreated does not alter schema).</summary>

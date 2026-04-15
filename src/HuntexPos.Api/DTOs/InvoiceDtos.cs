@@ -9,6 +9,7 @@ public class CreateInvoiceLineRequest
     [Range(1, 99999)]
     public int Quantity { get; set; }
     public decimal? UnitPriceOverride { get; set; }
+    public decimal OriginalUnitPrice { get; set; }
     public decimal LineDiscount { get; set; }
 }
 
@@ -20,6 +21,7 @@ public class CreateInvoiceRequest
     [Required]
     public string PaymentMethod { get; set; } = "Cash";
     public decimal DiscountTotal { get; set; }
+    public string? PromotionName { get; set; }
     public bool SendEmail { get; set; }
     [Required, MinLength(1)]
     public List<CreateInvoiceLineRequest> Lines { get; set; } = new();
@@ -51,6 +53,7 @@ public class InvoiceDto
     public decimal TaxAmount { get; set; }
     public decimal DiscountTotal { get; set; }
     public decimal GrandTotal { get; set; }
+    public string? PromotionName { get; set; }
     public Guid PublicToken { get; set; }
     public string? PdfUrl { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
@@ -70,6 +73,7 @@ public class InvoiceLineDto
     public string Description { get; set; } = string.Empty;
     public int Quantity { get; set; }
     public decimal UnitPrice { get; set; }
+    public decimal OriginalUnitPrice { get; set; }
     public decimal LineDiscount { get; set; }
     public decimal LineTotal { get; set; }
 }

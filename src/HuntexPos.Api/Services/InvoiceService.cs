@@ -85,6 +85,7 @@ public class InvoiceService
                 Description = p.Name,
                 Quantity = l.Quantity,
                 UnitPrice = unit,
+                OriginalUnitPrice = l.OriginalUnitPrice > 0 ? l.OriginalUnitPrice : p.SellPrice,
                 LineDiscount = l.LineDiscount,
                 LineTotal = lineTotal,
                 CostAtSale = p.Cost
@@ -102,9 +103,7 @@ public class InvoiceService
                     $"Cart discount exceeds allowed {_posRules.MaxCartDiscountPercent}% of the sale subtotal for sales staff.");
         }
 
-        subTotal -= req.DiscountTotal;
-        if (subTotal < 0) subTotal = 0;
-        var grandTotal = subTotal;
+        var grandTotal = Math.Max(0, subTotal - req.DiscountTotal);
 
         if (!managerBypassPosRules && _posRules.BlockZeroOrNegativeTotal && grandTotal <= 0)
             throw new InvalidOperationException("Sale total must be greater than zero.");
@@ -123,6 +122,7 @@ public class InvoiceService
             TaxAmount = taxAmount,
             DiscountTotal = req.DiscountTotal,
             GrandTotal = grandTotal,
+            PromotionName = req.PromotionName,
             CreatedByUserId = userId,
             Lines = lines
         };
@@ -208,6 +208,7 @@ public class InvoiceService
             TaxAmount = inv.TaxAmount,
             DiscountTotal = inv.DiscountTotal,
             GrandTotal = inv.GrandTotal,
+            PromotionName = inv.PromotionName,
             PublicToken = inv.PublicToken,
             PdfUrl = pdfUrl,
             CreatedAt = inv.CreatedAt,
@@ -217,6 +218,7 @@ public class InvoiceService
                 Description = l.Description,
                 Quantity = l.Quantity,
                 UnitPrice = l.UnitPrice,
+                OriginalUnitPrice = l.OriginalUnitPrice,
                 LineDiscount = l.LineDiscount,
                 LineTotal = l.LineTotal
             }).ToList(),
