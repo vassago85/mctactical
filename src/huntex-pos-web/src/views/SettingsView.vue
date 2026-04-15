@@ -28,10 +28,15 @@ const showRecalcModal = ref(false)
 
 async function load() {
   const { data } = await http.get('/api/settings/pricing')
-  dto.value = { ...data }
+  dto.value = { ...dto.value, ...data }
 }
 
 onMounted(() => void load().catch(() => (err.value = 'Load failed')))
+
+async function setPricingMode(mode: string) {
+  dto.value.pricingMode = mode
+  await save()
+}
 
 async function save() {
   err.value = null
@@ -83,14 +88,14 @@ async function runRecalculate() {
           value="normal"
           title="Normal retail"
           description="Cost × 1.5, rounded up to nearest R10"
-          @update:model-value="dto.pricingMode = $event"
+          @update:model-value="setPricingMode($event)"
         />
         <McRadioCard
           :model-value="dto.pricingMode"
           value="huntex"
           title="Huntex pricing"
           description="Normal sell ÷ 1.1, rounded up to nearest R10"
-          @update:model-value="dto.pricingMode = $event"
+          @update:model-value="setPricingMode($event)"
         />
       </div>
       <p class="set-hint">
