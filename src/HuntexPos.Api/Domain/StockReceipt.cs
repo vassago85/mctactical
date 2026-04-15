@@ -5,7 +5,8 @@ public enum StockReceiptType
     OwnedIn,
     ConsignmentIn,
     ConsignmentToStock,
-    ConsignmentReturn
+    ConsignmentReturn,
+    StockToConsignment
 }
 
 public class StockReceipt

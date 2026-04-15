@@ -263,7 +263,7 @@ async function toggleActive(p: Product) {
 
 const showReceiptModal = ref(false)
 const receiptProduct = ref<Product | null>(null)
-const receiptType = ref<'OwnedIn' | 'ConsignmentIn' | 'ConsignmentToStock' | 'ConsignmentReturn'>('OwnedIn')
+const receiptType = ref<'OwnedIn' | 'ConsignmentIn' | 'ConsignmentToStock' | 'ConsignmentReturn' | 'StockToConsignment'>('OwnedIn')
 const receiptSupplierId = ref('')
 const receiptQty = ref(1)
 const receiptCostPrice = ref(0)
@@ -282,7 +282,7 @@ function openReceiptModal(p: Product, type: typeof receiptType.value) {
   receiptErr.value = null
   consignmentSummary.value = []
   showReceiptModal.value = true
-  if (type === 'ConsignmentToStock' || type === 'ConsignmentReturn') {
+  if (type === 'ConsignmentToStock' || type === 'ConsignmentReturn' || type === 'StockToConsignment') {
     void loadConsignmentSummary(p.id)
   }
 }
@@ -298,6 +298,7 @@ async function loadConsignmentSummary(productId: string) {
 }
 
 const receiptMaxQty = computed(() => {
+  if (receiptType.value === 'StockToConsignment') return receiptProduct.value?.qtyOnHand ?? 0
   if (receiptType.value !== 'ConsignmentToStock' && receiptType.value !== 'ConsignmentReturn') return 999999
   const line = consignmentSummary.value.find(s => s.supplierId === receiptSupplierId.value)
   return line?.onHand ?? 0
@@ -307,7 +308,8 @@ const receiptTypeLabel = computed(() => {
   switch (receiptType.value) {
     case 'OwnedIn': return 'Receive owned stock'
     case 'ConsignmentIn': return 'Receive consignment'
-    case 'ConsignmentToStock': return 'Move to owned stock'
+    case 'ConsignmentToStock': return 'Move consignment → owned stock'
+    case 'StockToConsignment': return 'Move owned stock → consignment'
     case 'ConsignmentReturn': return 'Return to supplier'
     default: return 'Stock movement'
   }
@@ -355,8 +357,9 @@ async function openHistory(p: Product) {
   try {
     const { data } = await http.get<StockReceipt[]>(`/api/products/${p.id}/stock-receipts`)
     historyReceipts.value = data
-  } catch {
-    toast.error('Could not load history')
+  } catch (e: unknown) {
+    const ax = e as { response?: { data?: { error?: string } } }
+    toast.error(ax.response?.data?.error ?? 'Could not load history')
   } finally {
     historyBusy.value = false
   }
@@ -366,7 +369,8 @@ function receiptTypeBadge(type: string): { label: string; variant: 'success' | '
   switch (type) {
     case 'OwnedIn': return { label: 'Received (owned)', variant: 'success' }
     case 'ConsignmentIn': return { label: 'Received (consignment)', variant: 'warning' }
-    case 'ConsignmentToStock': return { label: 'Moved to stock', variant: 'success' }
+    case 'ConsignmentToStock': return { label: 'Consign → Stock', variant: 'success' }
+    case 'StockToConsignment': return { label: 'Stock → Consign', variant: 'warning' }
     case 'ConsignmentReturn': return { label: 'Returned', variant: 'error' }
     default: return { label: type, variant: 'neutral' }
   }
@@ -596,7 +600,8 @@ onMounted(() => {
                 <McButton variant="secondary" dense type="button" @click="openEdit(p)">Edit</McButton>
                 <McButton variant="secondary" dense type="button" @click="openReceiptModal(p, 'OwnedIn')">+ Owned</McButton>
                 <McButton variant="secondary" dense type="button" @click="openReceiptModal(p, 'ConsignmentIn')">+ Consign</McButton>
-                <McButton v-if="p.qtyConsignment > 0" variant="secondary" dense type="button" @click="openReceiptModal(p, 'ConsignmentToStock')">Move</McButton>
+                <McButton v-if="p.qtyConsignment > 0" variant="secondary" dense type="button" @click="openReceiptModal(p, 'ConsignmentToStock')">Consign→Stock</McButton>
+                <McButton v-if="p.qtyOnHand > 0" variant="secondary" dense type="button" @click="openReceiptModal(p, 'StockToConsignment')">Stock→Consign</McButton>
                 <McButton v-if="p.qtyConsignment > 0" variant="ghost" dense type="button" @click="openReceiptModal(p, 'ConsignmentReturn')">Return</McButton>
                 <McButton variant="secondary" dense type="button" @click="openSpecialModal(p)">Special</McButton>
                 <McButton variant="secondary" dense type="button" @click="openLabelModal(p)">Label</McButton>
@@ -717,7 +722,10 @@ onMounted(() => {
         <input id="r-qty" v-model.number="receiptQty" type="number" min="1" :max="receiptMaxQty" step="1" required />
       </McField>
       <p v-if="(receiptType === 'ConsignmentToStock' || receiptType === 'ConsignmentReturn') && receiptSupplierId" class="receipt-max-hint">
-        Max: {{ receiptMaxQty }} units from this supplier
+        Max: {{ receiptMaxQty }} consignment units from this supplier
+      </p>
+      <p v-if="receiptType === 'StockToConsignment'" class="receipt-max-hint">
+        Max: {{ receiptMaxQty }} owned units available
       </p>
 
       <McField label="Purchase price / Cost ex VAT (R)" for-id="r-cost" hint="Updates the product cost price. Leave unchanged if price hasn't changed.">

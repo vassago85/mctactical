@@ -27,15 +27,15 @@ public class StockReceiptsController : ControllerBase
             return NotFound(new { error = "Product not found." });
 
         if (!Enum.TryParse<StockReceiptType>(req.Type, ignoreCase: true, out var type))
-            return BadRequest(new { error = $"Invalid type '{req.Type}'. Valid: OwnedIn, ConsignmentIn, ConsignmentToStock, ConsignmentReturn." });
+            return BadRequest(new { error = $"Invalid type '{req.Type}'. Valid: OwnedIn, ConsignmentIn, ConsignmentToStock, ConsignmentReturn, StockToConsignment." });
 
         if (req.Quantity < 1)
             return BadRequest(new { error = "Quantity must be at least 1." });
 
-        if (type is StockReceiptType.ConsignmentIn or StockReceiptType.ConsignmentToStock or StockReceiptType.ConsignmentReturn)
+        if (type is StockReceiptType.ConsignmentIn or StockReceiptType.ConsignmentToStock or StockReceiptType.ConsignmentReturn or StockReceiptType.StockToConsignment)
         {
             if (!req.SupplierId.HasValue)
-                return BadRequest(new { error = "SupplierId is required for consignment movements." });
+                return BadRequest(new { error = "SupplierId is required for consignment/stock movements." });
             if (!await _db.Suppliers.AnyAsync(s => s.Id == req.SupplierId.Value, ct))
                 return BadRequest(new { error = "Supplier not found." });
         }
@@ -45,6 +45,12 @@ public class StockReceiptsController : ControllerBase
             var supplierBalance = await GetSupplierConsignmentBalance(productId, req.SupplierId!.Value, ct);
             if (req.Quantity > supplierBalance)
                 return BadRequest(new { error = $"Only {supplierBalance} consignment units available from this supplier." });
+        }
+
+        if (type is StockReceiptType.StockToConsignment)
+        {
+            if (req.Quantity > product.QtyOnHand)
+                return BadRequest(new { error = $"Only {product.QtyOnHand} owned units available to move." });
         }
 
         switch (type)
@@ -61,6 +67,10 @@ public class StockReceiptsController : ControllerBase
                 break;
             case StockReceiptType.ConsignmentReturn:
                 product.QtyConsignment -= req.Quantity;
+                break;
+            case StockReceiptType.StockToConsignment:
+                product.QtyOnHand -= req.Quantity;
+                product.QtyConsignment += req.Quantity;
                 break;
         }
 
@@ -94,17 +104,24 @@ public class StockReceiptsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<List<StockReceiptDto>>> List(Guid productId, CancellationToken ct)
     {
-        if (!await _db.Products.AnyAsync(p => p.Id == productId, ct))
-            return NotFound(new { error = "Product not found." });
+        try
+        {
+            if (!await _db.Products.AnyAsync(p => p.Id == productId, ct))
+                return NotFound(new { error = "Product not found." });
 
-        var receipts = await _db.StockReceipts
-            .AsNoTracking()
-            .Include(r => r.Supplier)
-            .Where(r => r.ProductId == productId)
-            .OrderByDescending(r => r.CreatedAt)
-            .ToListAsync(ct);
+            var receipts = await _db.StockReceipts
+                .AsNoTracking()
+                .Include(r => r.Supplier)
+                .Where(r => r.ProductId == productId)
+                .OrderByDescending(r => r.CreatedAt)
+                .ToListAsync(ct);
 
-        return receipts.Select(r => MapReceipt(r, r.Supplier?.Name)).ToList();
+            return receipts.Select(r => MapReceipt(r, r.Supplier?.Name)).ToList();
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message, detail = ex.InnerException?.Message });
+        }
     }
 
     [HttpGet("/api/products/{productId:guid}/consignment-summary")]
