@@ -386,7 +386,7 @@ async function confirmPost() {
   gap: 1.25rem;
 }
 
-@media (min-width: 900px) {
+@media (min-width: 1100px) {
   .st-grid {
     grid-template-columns: 1fr 1fr;
   }

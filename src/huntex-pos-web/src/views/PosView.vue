@@ -391,8 +391,6 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 .pos-page {
   max-width: 100%;
   overflow: hidden;
-  padding: 0 0.5rem;
-  box-sizing: border-box;
 }
 
 .pos-col {
@@ -408,9 +406,9 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   max-width: 100%;
 }
 
-@media (min-width: 960px) {
+@media (min-width: 1200px) {
   .pos-grid {
-    grid-template-columns: 1fr min(440px, 40vw);
+    grid-template-columns: 1fr min(440px, 36vw);
   }
 }
 

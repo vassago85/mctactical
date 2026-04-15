@@ -40,7 +40,8 @@
   box-sizing: border-box;
 }
 
-html {
+html,
+body {
   overflow-x: hidden;
 }
 
@@ -352,6 +353,8 @@ body.mc-body-app .app-main tbody tr:hover {
 .app-shell {
   display: flex;
   min-height: 100dvh;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .mc-sidebar {
@@ -470,6 +473,7 @@ body.mc-body-app .app-main tbody tr:hover {
 }
 
 .app-main__inner {
+  width: 100%;
   max-width: min(1400px, 100%);
   min-width: 0;
   margin: 0 auto;
@@ -477,6 +481,7 @@ body.mc-body-app .app-main tbody tr:hover {
     var(--mc-space-8);
   color: var(--mc-app-text, inherit);
   overflow: hidden;
+  overflow-wrap: break-word;
 }
 
 .mc-topbar {
