@@ -541,6 +541,7 @@ onMounted(() => {
               <th>Supplier</th>
               <th>Cost</th>
               <th>Sell</th>
+              <th>Promo / Special</th>
               <th>Owned</th>
               <th>Consign</th>
               <th>Status</th>
@@ -558,15 +559,15 @@ onMounted(() => {
               <td>{{ p.supplierName ?? '—' }}</td>
               <td>{{ p.cost != null ? formatZAR(p.cost) : '—' }}</td>
               <td :class="{ 'stock-warn': !!p.warning }">
+                {{ formatZAR(p.sellPrice) }}
+                <span v-if="p.warning" :title="p.warning" class="stock-warn-icon">⚠</span>
+              </td>
+              <td>
                 <template v-if="p.specialPrice != null && p.specialPrice !== p.sellPrice">
                   <span class="stock-special-price">{{ formatZAR(p.specialPrice) }}</span>
-                  <span class="stock-was-price">{{ formatZAR(p.sellPrice) }}</span>
                   <span class="stock-special-label">{{ p.specialLabel }}</span>
                 </template>
-                <template v-else>
-                  {{ formatZAR(p.sellPrice) }}
-                </template>
-                <span v-if="p.warning" :title="p.warning" class="stock-warn-icon">⚠</span>
+                <span v-else class="stock-qty--none">—</span>
               </td>
               <td>
                 <strong :class="{ 'stock-qty--low': p.qtyOnHand <= 3 }">{{ p.qtyOnHand }}</strong>
@@ -939,13 +940,6 @@ onMounted(() => {
   display: block;
   font-weight: 700;
   color: #cc0000;
-}
-
-.stock-was-price {
-  display: block;
-  font-size: 0.8em;
-  color: #999;
-  text-decoration: line-through;
 }
 
 .stock-special-label {
