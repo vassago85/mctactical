@@ -278,14 +278,15 @@ public class ReportsController : ControllerBase
             })
             .ToList();
 
-        // Sold in period
-        var invoiceQuery = _db.Invoices.AsNoTracking()
+        // Sold in period (load all then filter — SQLite can't translate DateTimeOffset comparisons)
+        var allInvoices = await _db.Invoices.AsNoTracking()
             .Include(i => i.Lines).ThenInclude(l => l.Product)
-            .Where(i => i.Status == InvoiceStatus.Final);
-        if (from.HasValue) invoiceQuery = invoiceQuery.Where(i => i.CreatedAt >= from.Value);
-        if (to.HasValue) invoiceQuery = invoiceQuery.Where(i => i.CreatedAt <= to.Value);
+            .ToListAsync(ct);
+        IEnumerable<Invoice> filteredInvoices = allInvoices.Where(i => i.Status == InvoiceStatus.Final);
+        if (from.HasValue) filteredInvoices = filteredInvoices.Where(i => i.CreatedAt >= from.Value);
+        if (to.HasValue) filteredInvoices = filteredInvoices.Where(i => i.CreatedAt <= to.Value);
 
-        var invoices = await invoiceQuery.ToListAsync(ct);
+        var invoices = filteredInvoices.ToList();
         var allSoldLines = invoices.SelectMany(i => i.Lines).ToList();
 
         var soldInPeriod = allSoldLines
