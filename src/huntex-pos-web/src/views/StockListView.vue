@@ -606,30 +606,34 @@ onMounted(() => {
           </header>
           <div class="stock-drawer__body">
             <McAlert v-if="formErr" variant="error">{{ formErr }}</McAlert>
-            <McField label="SKU" for-id="f-sku">
-              <input id="f-sku" v-model="form.sku" required />
-            </McField>
-            <McField label="Barcode" for-id="f-bc">
-              <input id="f-bc" v-model="form.barcode" />
-            </McField>
+            <div class="stock-drawer__grid">
+              <McField label="SKU" for-id="f-sku">
+                <input id="f-sku" v-model="form.sku" required />
+              </McField>
+              <McField label="Barcode" for-id="f-bc">
+                <input id="f-bc" v-model="form.barcode" />
+              </McField>
+            </div>
             <McField label="Name" for-id="f-name">
               <input id="f-name" v-model="form.name" required />
             </McField>
-            <McField label="Default supplier" for-id="f-supplier" hint="Primary supplier for this product">
-              <select id="f-supplier" v-model="form.supplierId">
-                <option value="">— None —</option>
-                <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
-              </select>
-            </McField>
             <div class="stock-drawer__grid">
-              <McField label="Category" for-id="f-cat">
-                <input id="f-cat" v-model="form.category" />
-              </McField>
               <McField label="Manufacturer" for-id="f-mfr">
                 <input id="f-mfr" v-model="form.manufacturer" placeholder="e.g. Hornady" />
               </McField>
               <McField label="Item type" for-id="f-type">
                 <input id="f-type" v-model="form.itemType" placeholder="e.g. Bullet, Cap" />
+              </McField>
+            </div>
+            <div class="stock-drawer__grid">
+              <McField label="Category" for-id="f-cat">
+                <input id="f-cat" v-model="form.category" />
+              </McField>
+              <McField label="Supplier" for-id="f-supplier">
+                <select id="f-supplier" v-model="form.supplierId">
+                  <option value="">— None —</option>
+                  <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+                </select>
               </McField>
             </div>
             <div class="stock-drawer__grid">
