@@ -138,7 +138,7 @@ async function runRecalculate() {
 .set-page {
   min-height: 100%;
   max-width: 100%;
-  overflow: hidden;
+  overflow-x: clip;
 }
 
 .set-radio-group {

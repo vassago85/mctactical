@@ -390,7 +390,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 <style scoped>
 .pos-page {
   max-width: 100%;
-  overflow: hidden;
+  overflow-x: clip;
 }
 
 .pos-col {
