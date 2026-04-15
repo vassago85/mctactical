@@ -40,10 +40,30 @@ public static class LabelPdfService
         return _logoCached;
     }
 
-    private static void ConfigureLabelPage(PageDescriptor page, Product product, byte[]? barcodeBytes, LabelPricing pricing)
+    /// <summary>
+    /// Ensures the product has an EAN-13 barcode. If the barcode field is empty or not a valid EAN-13,
+    /// generates one from the SKU digits. Returns the EAN-13 string (or original barcode/SKU if generation fails).
+    /// Mutates product.Barcode if a new EAN is generated.
+    /// </summary>
+    public static string EnsureEan13(Product product)
+    {
+        if (!string.IsNullOrEmpty(product.Barcode))
+        {
+            var existingDigits = new string(product.Barcode.Where(char.IsDigit).ToArray());
+            if (existingDigits.Length == 13) return product.Barcode;
+        }
+        var ean = ToEan13(product.Barcode ?? product.Sku);
+        if (ean != null)
+        {
+            product.Barcode = ean;
+            return ean;
+        }
+        return product.Barcode ?? product.Sku;
+    }
+
+    private static void ConfigureLabelPage(PageDescriptor page, Product product, byte[]? barcodeBytes, string barcodeText, LabelPricing pricing)
     {
         var logoBytes = LoadLogo();
-        var barcodeText = product.Barcode ?? product.Sku;
 
         page.Size(LabelWidthMm, LabelHeightMm, Unit.Millimetre);
         page.MarginHorizontal(PaddingMm, Unit.Millimetre);
@@ -111,21 +131,41 @@ public static class LabelPdfService
         });
     }
 
+    /// <summary>
+    /// Converts any string to an EAN-13 by extracting digits, padding to 12, and adding check digit.
+    /// Returns null only if there are no digits at all.
+    /// </summary>
+    public static string? ToEan13(string text)
+    {
+        var digits = new string(text.Where(char.IsDigit).ToArray());
+        if (digits.Length == 0) return null;
+        if (digits.Length > 12) digits = digits[..12];
+        digits = digits.PadLeft(12, '0');
+        return digits + Ean13Renderer.CalculateCheck(digits);
+    }
+
     private static byte[]? RenderBarcode(string text)
     {
         var ean = Ean13Renderer.RenderToPng(text, barHeight: 120, moduleWidth: 2);
         if (ean != null) return ean;
+        var converted = ToEan13(text);
+        if (converted != null)
+        {
+            var eanConverted = Ean13Renderer.RenderToPng(converted, barHeight: 120, moduleWidth: 2);
+            if (eanConverted != null) return eanConverted;
+        }
         return Code128Renderer.RenderToPng(text, barHeight: 120, moduleWidth: 2);
     }
 
     public static byte[] BuildSingleLabel(Product product, LabelPricing pricing, int copies = 1)
     {
-        var barcodeBytes = RenderBarcode(product.Barcode ?? product.Sku);
+        var barcodeText = EnsureEan13(product);
+        var barcodeBytes = RenderBarcode(barcodeText);
 
         return Document.Create(container =>
         {
             for (var i = 0; i < copies; i++)
-                container.Page(page => ConfigureLabelPage(page, product, barcodeBytes, pricing));
+                container.Page(page => ConfigureLabelPage(page, product, barcodeBytes, barcodeText, pricing));
         }).GeneratePdf();
     }
 
@@ -137,8 +177,9 @@ public static class LabelPdfService
         {
             foreach (var (product, pricing) in list)
             {
-                var barcodeBytes = RenderBarcode(product.Barcode ?? product.Sku);
-                container.Page(page => ConfigureLabelPage(page, product, barcodeBytes, pricing));
+                var barcodeText = EnsureEan13(product);
+                var barcodeBytes = RenderBarcode(barcodeText);
+                container.Page(page => ConfigureLabelPage(page, product, barcodeBytes, barcodeText, pricing));
             }
         }).GeneratePdf();
     }
@@ -316,6 +357,8 @@ internal static class Ean13Renderer
     {
         foreach (var c in pattern) modules.Add(c == '1');
     }
+
+    public static char CalculateCheck(string digits12) => CalculateCheckDigit(digits12);
 
     private static char CalculateCheckDigit(string digits12)
     {

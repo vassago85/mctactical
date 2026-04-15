@@ -131,17 +131,22 @@ public class ProductsController : ControllerBase
     [Authorize(Roles = $"{Roles.Admin},{Roles.Owner},{Roles.Dev}")]
     public async Task<IActionResult> GetLabel(Guid productId, [FromQuery] int copies = 1, [FromQuery] bool promo = false, CancellationToken ct = default)
     {
-        var product = await _db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == productId, ct);
+        var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == productId, ct);
         if (product == null) return NotFound();
         copies = Math.Clamp(copies, 1, 50);
 
         try
         {
+            var oldBarcode = product.Barcode;
             var pricing = promo
                 ? await ResolvePromoPricing(product, ct)
                 : new LabelPdfService.LabelPricing(product.SellPrice, null, null);
 
             var pdf = LabelPdfService.BuildSingleLabel(product, pricing, copies);
+
+            if (product.Barcode != oldBarcode)
+                await _db.SaveChangesAsync(ct);
+
             return File(pdf, "application/pdf", $"label-{product.Sku}.pdf");
         }
         catch (Exception ex)
@@ -159,7 +164,7 @@ public class ProductsController : ControllerBase
             return BadRequest(new { error = "At least one productId is required." });
 
         var ids = req.ProductIds.Take(200).ToList();
-        var products = await _db.Products.AsNoTracking().Where(p => ids.Contains(p.Id)).ToListAsync(ct);
+        var products = await _db.Products.Where(p => ids.Contains(p.Id)).ToListAsync(ct);
         if (products.Count == 0) return NotFound();
 
         try
@@ -174,6 +179,9 @@ public class ProductsController : ControllerBase
                 .Select(p => (p!, pricingMap.GetValueOrDefault(p!.Id, new LabelPdfService.LabelPricing(p.SellPrice, null, null))));
 
             var pdf = LabelPdfService.BuildMultipleLabels(items);
+
+            await _db.SaveChangesAsync(ct);
+
             return File(pdf, "application/pdf", "labels.pdf");
         }
         catch (Exception ex)
