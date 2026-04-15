@@ -48,7 +48,7 @@ type StockMovementLine = {
 }
 type ProductSoldLine = {
   sku: string; name: string
-  qtySold: number; revenue: number; cost: number
+  qtySold: number; revenue: number; costExVat: number; costInclVat: number
 }
 type StockReport = {
   onHand: StockOnHandSummary
@@ -402,7 +402,8 @@ async function purgeData() {
                   <th>Name</th>
                   <th class="rep-num">Qty sold</th>
                   <th class="rep-num">Revenue</th>
-                  <th class="rep-num">Cost</th>
+                  <th class="rep-num">Cost ex VAT</th>
+                  <th class="rep-num">Cost incl VAT</th>
                   <th class="rep-num">GP</th>
                 </tr>
               </thead>
@@ -412,8 +413,9 @@ async function purgeData() {
                   <td>{{ p.name }}</td>
                   <td class="rep-num">{{ p.qtySold }}</td>
                   <td class="rep-num">{{ formatZAR(p.revenue) }}</td>
-                  <td class="rep-num">{{ formatZAR(p.cost) }}</td>
-                  <td class="rep-num">{{ formatZAR(p.revenue - p.cost) }}</td>
+                  <td class="rep-num">{{ formatZAR(p.costExVat) }}</td>
+                  <td class="rep-num">{{ formatZAR(p.costInclVat) }}</td>
+                  <td class="rep-num">{{ formatZAR(p.revenue - p.costInclVat) }}</td>
                 </tr>
               </tbody>
               <tfoot>
@@ -421,8 +423,9 @@ async function purgeData() {
                   <td colspan="2"><strong>Totals</strong></td>
                   <td class="rep-num"><strong>{{ totalSoldQty }}</strong></td>
                   <td class="rep-num"><strong>{{ formatZAR(totalSoldRevenue) }}</strong></td>
-                  <td class="rep-num"><strong>{{ formatZAR(stockReport.soldInPeriod.reduce((s, p) => s + p.cost, 0)) }}</strong></td>
-                  <td class="rep-num"><strong>{{ formatZAR(totalSoldRevenue - stockReport.soldInPeriod.reduce((s, p) => s + p.cost, 0)) }}</strong></td>
+                  <td class="rep-num"><strong>{{ formatZAR(stockReport.soldInPeriod.reduce((s, p) => s + p.costExVat, 0)) }}</strong></td>
+                  <td class="rep-num"><strong>{{ formatZAR(stockReport.soldInPeriod.reduce((s, p) => s + p.costInclVat, 0)) }}</strong></td>
+                  <td class="rep-num"><strong>{{ formatZAR(totalSoldRevenue - stockReport.soldInPeriod.reduce((s, p) => s + p.costInclVat, 0)) }}</strong></td>
                 </tr>
               </tfoot>
             </table>

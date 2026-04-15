@@ -296,13 +296,16 @@ public class ReportsController : ControllerBase
             .Select(g =>
             {
                 var first = g.First();
+                var costEx = g.Sum(l => (l.CostAtSale > 0 ? l.CostAtSale : (l.Product?.Cost ?? 0)) * l.Quantity);
+                var costIncl = g.Sum(l => Math.Round((l.CostAtSale > 0 ? l.CostAtSale : (l.Product?.Cost ?? 0)) * 1.15m, 2) * l.Quantity);
                 return new ProductSoldSummaryDto
                 {
                     Sku = first.Product?.Sku ?? "",
                     Name = first.Description,
                     QtySold = g.Sum(l => l.Quantity),
                     Revenue = g.Sum(l => l.LineTotal),
-                    Cost = g.Sum(l => l.CostAtSale * l.Quantity)
+                    CostExVat = costEx,
+                    CostInclVat = costIncl
                 };
             })
             .OrderByDescending(p => p.QtySold)
