@@ -107,6 +107,7 @@ public static class LabelPdfService
                         row.RelativeItem().AlignLeft().AlignBottom().Column(nameCol =>
                         {
                             nameCol.Item().Text(product.Name).Bold().FontSize(6);
+                            nameCol.Item().Text(product.Sku).FontSize(5).FontColor(Colors.Grey.Medium);
                             if (hasPromo && !string.IsNullOrWhiteSpace(pricing.PromoName))
                                 nameCol.Item().Text(pricing.PromoName).FontSize(5).Bold();
                         });

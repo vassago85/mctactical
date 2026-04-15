@@ -21,6 +21,8 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<Promotion> Promotions => Set<Promotion>();
     public DbSet<ProductSpecial> ProductSpecials => Set<ProductSpecial>();
     public DbSet<Customer> Customers => Set<Customer>();
+    public DbSet<ConsignmentBatch> ConsignmentBatches => Set<ConsignmentBatch>();
+    public DbSet<ConsignmentBatchLine> ConsignmentBatchLines => Set<ConsignmentBatchLine>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -109,6 +111,18 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
         modelBuilder.Entity<Customer>(e =>
         {
             e.HasIndex(c => c.Email).IsUnique();
+        });
+
+        modelBuilder.Entity<ConsignmentBatch>(e =>
+        {
+            e.HasIndex(b => b.SupplierId);
+            e.HasIndex(b => b.Status);
+            e.Property(b => b.Type).HasConversion<string>().HasMaxLength(20);
+            e.Property(b => b.Status).HasConversion<string>().HasMaxLength(20);
+            e.HasMany(b => b.Lines)
+                .WithOne(l => l.Batch)
+                .HasForeignKey(l => l.BatchId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

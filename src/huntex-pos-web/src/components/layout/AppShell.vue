@@ -60,6 +60,7 @@ function logout() {
           <p class="mc-nav-group__label">Inventory</p>
           <RouterLink class="mc-nav-link" to="/stock" @click="sidebarOpen = false">Stock list</RouterLink>
           <RouterLink class="mc-nav-link" to="/stocktake" @click="sidebarOpen = false">Stocktake</RouterLink>
+          <RouterLink class="mc-nav-link" to="/consignment" @click="sidebarOpen = false">Consignment</RouterLink>
         </div>
         <div v-if="auth.hasRole('Admin', 'Owner', 'Dev')" class="mc-nav-group">
           <p class="mc-nav-group__label">Office</p>
