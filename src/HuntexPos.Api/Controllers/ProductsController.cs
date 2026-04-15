@@ -352,12 +352,14 @@ public class ProductsController : ControllerBase
         if (await _db.Products.AnyAsync(p => p.Sku == req.Sku.Trim(), ct))
             return BadRequest(new { error = $"SKU \"{req.Sku.Trim()}\" already exists." });
 
-        var settings = await _db.PricingSettings.AsNoTracking().FirstOrDefaultAsync(ct) ?? new PricingSettings();
         var sell = req.SellPrice > 0
-            ? PricingCalculator.ApplyRounding(req.SellPrice, settings)
-            : req.Cost > 0
-                ? PricingCalculator.ComputeSellPrice(req.Cost, settings)
-                : 0m;
+            ? req.SellPrice
+            : 0m;
+        if (sell == 0 && req.Cost > 0)
+        {
+            var settings = await _db.PricingSettings.AsNoTracking().FirstOrDefaultAsync(ct) ?? new PricingSettings();
+            sell = PricingCalculator.ComputeSellPrice(req.Cost, settings);
+        }
 
         var product = new Product
         {
@@ -413,12 +415,9 @@ public class ProductsController : ControllerBase
         if (req.Cost.HasValue) p.Cost = req.Cost.Value;
         if (req.SellPrice.HasValue)
         {
-            var settings = await _db.PricingSettings.AsNoTracking().FirstOrDefaultAsync(ct) ?? new PricingSettings();
             p.SellPrice = req.SellPrice.Value > 0
-                ? PricingCalculator.ApplyRounding(req.SellPrice.Value, settings)
-                : p.Cost > 0
-                    ? PricingCalculator.ComputeSellPrice(p.Cost, settings)
-                    : 0m;
+                ? req.SellPrice.Value
+                : 0m;
         }
         else if (req.Cost.HasValue && p.Cost > 0)
         {
