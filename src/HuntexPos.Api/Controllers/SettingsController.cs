@@ -101,31 +101,6 @@ public class SettingsController : ControllerBase
         return Ok(new { sellPrice = sell });
     }
 
-    /// <summary>Recalculate all active product sell prices from cost using current pricing settings.</summary>
-    [HttpPost("pricing/recalculate")]
-    [Authorize(Roles = $"{Roles.Owner},{Roles.Admin},{Roles.Dev}")]
-    public async Task<IActionResult> RecalculateAllProducts(CancellationToken ct)
-    {
-        var settings = await _db.PricingSettings.AsNoTracking().FirstOrDefaultAsync(ct) ?? new PricingSettings();
-        var products = await _db.Products.Where(p => p.Active).ToListAsync(ct);
-        var updated = 0;
-        var warnings = 0;
-        foreach (var p in products)
-        {
-            var newSell = PricingCalculator.ComputeSellPrice(p.Cost, settings);
-            if (newSell != p.SellPrice)
-            {
-                p.SellPrice = newSell;
-                p.UpdatedAt = DateTimeOffset.UtcNow;
-                updated++;
-            }
-            if (PricingCalculator.IsBelowDistributorCost(p.SellPrice, p.Cost))
-                warnings++;
-        }
-        await _db.SaveChangesAsync(ct);
-        return Ok(new { updated, total = products.Count, belowDistributorCost = warnings });
-    }
-
     [HttpGet("mail")]
     [Authorize(Roles = $"{Roles.Owner},{Roles.Admin},{Roles.Dev}")]
     public async Task<MailSettingsDto> GetMail(CancellationToken ct)

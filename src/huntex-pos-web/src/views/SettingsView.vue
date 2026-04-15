@@ -25,10 +25,6 @@ const dto = ref({
 })
 const err = ref<string | null>(null)
 const ok = ref<string | null>(null)
-const recalcBusy = ref(false)
-const recalcMsg = ref<string | null>(null)
-const showRecalcModal = ref(false)
-
 async function load() {
   const { data } = await http.get('/api/settings/pricing')
   dto.value = { ...dto.value, ...data }
@@ -49,25 +45,6 @@ async function save() {
   } catch {
     err.value = 'Save failed'
     toast.error('Save failed')
-  }
-}
-
-async function runRecalculate() {
-  recalcBusy.value = true
-  recalcMsg.value = null
-  try {
-    const { data } = await http.post('/api/settings/pricing/recalculate')
-    let msg = `Done — ${data.updated} of ${data.total} products recalculated.`
-    if (data.belowDistributorCost > 0) msg += ` ${data.belowDistributorCost} products below distributor cost.`
-    recalcMsg.value = msg
-    toast.success('Recalculation finished')
-  } catch (e: unknown) {
-    const ax = e as { response?: { data?: { error?: string } } }
-    recalcMsg.value = ax.response?.data?.error ?? 'Recalculate failed'
-    toast.error(recalcMsg.value)
-  } finally {
-    recalcBusy.value = false
-    showRecalcModal.value = false
   }
 }
 
@@ -275,7 +252,7 @@ async function toggleSpecialActive(s: ProductSpecial) {
   <div class="set-page">
     <McPageHeader
       title="Pricing"
-      description="List prices and rounding rules. Invoices remain VAT-free for customers. Recalculate applies current rules to all active products from cost."
+      description="Default markup rules for new products. Promotions and specials apply discounted prices at point of sale without changing the base sell price."
     />
 
     <McAlert v-if="err" variant="error">{{ err }}</McAlert>
@@ -298,22 +275,7 @@ async function toggleSpecialActive(s: ProductSpecial) {
 
     <McActionBar>
       <McButton variant="primary" type="button" @click="save">Save settings</McButton>
-      <McButton variant="secondary" type="button" :disabled="recalcBusy" @click="showRecalcModal = true">
-        Recalculate all product prices
-      </McButton>
     </McActionBar>
-    <p v-if="recalcMsg" class="set-recalc-msg">{{ recalcMsg }}</p>
-
-    <McModal v-model="showRecalcModal" title="Recalculate all prices?">
-      <p>
-        This updates every <strong>active</strong> product’s sell price from its cost using the current margin / mode. It
-        cannot be undone automatically.
-      </p>
-      <template #footer>
-        <McButton variant="secondary" type="button" @click="showRecalcModal = false">Cancel</McButton>
-        <McButton variant="primary" type="button" :disabled="recalcBusy" @click="runRecalculate">Recalculate</McButton>
-      </template>
-    </McModal>
 
     <!-- Promotions & Specials -->
     <McCard title="Promotions &amp; specials">
@@ -471,12 +433,6 @@ async function toggleSpecialActive(s: ProductSpecial) {
   font-size: 0.88rem;
   color: var(--mc-app-text-muted, #5c5a56);
   line-height: 1.5;
-}
-
-.set-recalc-msg {
-  margin: 0.75rem 0 0;
-  font-size: 0.88rem;
-  color: var(--mc-app-text-muted, #5c5a56);
 }
 
 .set-grid-2 {
