@@ -16,8 +16,8 @@ namespace HuntexPos.Api.Services;
 public static class LabelPdfService
 {
     private const float LabelWidthMm = 62f;
-    private const float LabelHeightMm = 45f;
-    private const float PaddingMm = 2f;
+    private const float LabelHeightMm = 40f;
+    private const float PaddingMm = 1.5f;
 
     public record LabelPricing(decimal DisplayPrice, decimal? WasPrice, string? PromoName);
 
@@ -56,26 +56,26 @@ public static class LabelPdfService
             if (logoBytes != null)
             {
                 col.Item().AlignCenter()
-                    .Height(8, Unit.Millimetre)
+                    .Height(6, Unit.Millimetre)
                     .Image(logoBytes).FitArea();
             }
 
-            // Row 2: Barcode centered with SKU underneath
-            col.Item().PaddingTop(0.5f, Unit.Millimetre).AlignCenter().Column(bc =>
+            // Row 2: Barcode centered with number underneath
+            col.Item().PaddingTop(0.3f, Unit.Millimetre).AlignCenter().Column(bc =>
             {
                 if (barcodeBytes != null)
                 {
                     bc.Item().AlignCenter()
-                        .Height(16, Unit.Millimetre)
-                        .Width(54, Unit.Millimetre)
+                        .Height(12, Unit.Millimetre)
+                        .Width(50, Unit.Millimetre)
                         .Image(barcodeBytes).FitArea();
                 }
-                bc.Item().AlignCenter().PaddingTop(0.5f, Unit.Millimetre)
-                    .Text(barcodeText).FontSize(7).FontColor("#444444").LetterSpacing(0.08f);
+                bc.Item().AlignCenter().PaddingTop(0.3f, Unit.Millimetre)
+                    .Text(barcodeText).FontSize(6.5f).FontColor("#444444").LetterSpacing(0.08f);
             });
 
             // Row 3: Price
-            col.Item().PaddingTop(0.5f, Unit.Millimetre).AlignCenter().Column(priceCol =>
+            col.Item().PaddingTop(0.3f, Unit.Millimetre).AlignCenter().Column(priceCol =>
             {
                 if (pricing.WasPrice.HasValue && pricing.WasPrice.Value != pricing.DisplayPrice)
                 {
@@ -105,15 +105,22 @@ public static class LabelPdfService
             });
 
             // Row 4: Product name at bottom
-            col.Item().PaddingTop(0.5f, Unit.Millimetre).AlignCenter()
+            col.Item().PaddingTop(0.3f, Unit.Millimetre).AlignCenter()
                 .Text(product.Name)
-                .Bold().FontSize(6.5f).FontColor("#333333");
+                .Bold().FontSize(6f).FontColor("#333333");
         });
+    }
+
+    private static byte[]? RenderBarcode(string text)
+    {
+        var ean = Ean13Renderer.RenderToPng(text, barHeight: 120, moduleWidth: 2);
+        if (ean != null) return ean;
+        return Code128Renderer.RenderToPng(text, barHeight: 120, moduleWidth: 2);
     }
 
     public static byte[] BuildSingleLabel(Product product, LabelPricing pricing, int copies = 1)
     {
-        var barcodeBytes = Code128Renderer.RenderToPng(product.Barcode ?? product.Sku, barHeight: 140, moduleWidth: 3);
+        var barcodeBytes = RenderBarcode(product.Barcode ?? product.Sku);
 
         return Document.Create(container =>
         {
@@ -130,7 +137,7 @@ public static class LabelPdfService
         {
             foreach (var (product, pricing) in list)
             {
-                var barcodeBytes = Code128Renderer.RenderToPng(product.Barcode ?? product.Sku, barHeight: 140, moduleWidth: 3);
+                var barcodeBytes = RenderBarcode(product.Barcode ?? product.Sku);
                 container.Page(page => ConfigureLabelPage(page, product, barcodeBytes, pricing));
             }
         }).GeneratePdf();
@@ -230,5 +237,92 @@ internal static class Code128Renderer
         values.Add((int)(sum % 103));
         values.Add(106); // Stop
         return values;
+    }
+}
+
+/// <summary>
+/// EAN-13 barcode renderer. Accepts 12 digits (auto-calculates check) or 13 digits.
+/// Returns null if the input is not a valid EAN-13 candidate.
+/// </summary>
+internal static class Ean13Renderer
+{
+    private static readonly string[] LPatterns = { "0001101","0011001","0010011","0111101","0100011","0110001","0101111","0111011","0110111","0001011" };
+    private static readonly string[] GPatterns = { "0100111","0110011","0011011","0100001","0011101","0111001","0000101","0010001","0001001","0010111" };
+    private static readonly string[] RPatterns = { "1110010","1100110","1101100","1000010","1011100","1001110","1010000","1000100","1001000","1110100" };
+    private static readonly int[][] ParityPatterns =
+    {
+        new[]{0,0,0,0,0,0}, new[]{0,0,1,0,1,1}, new[]{0,0,1,1,0,1}, new[]{0,0,1,1,1,0},
+        new[]{0,1,0,0,1,1}, new[]{0,1,1,0,0,1}, new[]{0,1,1,1,0,0}, new[]{0,1,0,1,0,1},
+        new[]{0,1,0,1,1,0}, new[]{0,1,1,0,1,0}
+    };
+
+    public static byte[]? RenderToPng(string text, int barHeight = 100, int moduleWidth = 2)
+    {
+        if (string.IsNullOrEmpty(text)) return null;
+        var digits = new string(text.Where(char.IsDigit).ToArray());
+        if (digits.Length == 12)
+            digits += CalculateCheckDigit(digits);
+        else if (digits.Length != 13)
+            return null;
+
+        try
+        {
+            var modules = BuildModules(digits);
+            var imgWidth = modules.Count * moduleWidth;
+
+            using var image = new Image<L8>(imgWidth, barHeight);
+            for (var y = 0; y < barHeight; y++)
+                for (var x = 0; x < imgWidth; x++)
+                {
+                    var idx = x / moduleWidth;
+                    var isBar = idx < modules.Count && modules[idx];
+                    image[x, y] = new L8(isBar ? (byte)0 : (byte)255);
+                }
+
+            using var ms = new MemoryStream();
+            image.Save(ms, new PngEncoder());
+            return ms.ToArray();
+        }
+        catch { return null; }
+    }
+
+    private static List<bool> BuildModules(string digits)
+    {
+        var d = digits.Select(c => c - '0').ToArray();
+        var modules = new List<bool>();
+
+        for (var q = 0; q < 9; q++) modules.Add(false); // quiet zone
+        AddPattern(modules, "101"); // start guard
+
+        var parity = ParityPatterns[d[0]];
+        for (var i = 0; i < 6; i++)
+        {
+            var pattern = parity[i] == 0 ? LPatterns[d[i + 1]] : GPatterns[d[i + 1]];
+            AddPattern(modules, pattern);
+        }
+
+        AddPattern(modules, "01010"); // centre guard
+
+        for (var i = 0; i < 6; i++)
+            AddPattern(modules, RPatterns[d[i + 7]]);
+
+        AddPattern(modules, "101"); // end guard
+        for (var q = 0; q < 9; q++) modules.Add(false); // quiet zone
+
+        return modules;
+    }
+
+    private static void AddPattern(List<bool> modules, string pattern)
+    {
+        foreach (var c in pattern) modules.Add(c == '1');
+    }
+
+    private static char CalculateCheckDigit(string digits12)
+    {
+        var sum = 0;
+        for (var i = 0; i < 12; i++)
+            sum += (digits12[i] - '0') * (i % 2 == 0 ? 1 : 3);
+        var check = (10 - sum % 10) % 10;
+        return (char)('0' + check);
     }
 }
