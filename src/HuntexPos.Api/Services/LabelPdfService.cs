@@ -16,7 +16,7 @@ namespace HuntexPos.Api.Services;
 public static class LabelPdfService
 {
     private const float LabelWidthMm = 62f;
-    private const float LabelHeightMm = 30f;
+    private const float LabelHeightMm = 38f;
     private const float PaddingMm = 1.5f;
 
     public record LabelPricing(decimal DisplayPrice, decimal? WasPrice, string? PromoName);
