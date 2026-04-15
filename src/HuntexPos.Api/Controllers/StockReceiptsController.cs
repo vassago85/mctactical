@@ -51,13 +51,9 @@ public class StockReceiptsController : ControllerBase
         {
             case StockReceiptType.OwnedIn:
                 product.QtyOnHand += req.Quantity;
-                if (req.CostPrice.HasValue && req.CostPrice.Value > 0)
-                    product.Cost = req.CostPrice.Value;
                 break;
             case StockReceiptType.ConsignmentIn:
                 product.QtyConsignment += req.Quantity;
-                if (req.CostPrice.HasValue && req.CostPrice.Value > 0)
-                    product.Cost = req.CostPrice.Value;
                 break;
             case StockReceiptType.ConsignmentToStock:
                 product.QtyConsignment -= req.Quantity;
@@ -67,6 +63,9 @@ public class StockReceiptsController : ControllerBase
                 product.QtyConsignment -= req.Quantity;
                 break;
         }
+
+        if (req.CostPrice.HasValue && req.CostPrice.Value > 0)
+            product.Cost = req.CostPrice.Value;
 
         product.UpdatedAt = DateTimeOffset.UtcNow;
 

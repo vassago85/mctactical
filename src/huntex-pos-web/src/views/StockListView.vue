@@ -326,7 +326,7 @@ async function submitReceipt() {
       type: receiptType.value,
       supplierId: receiptSupplierId.value || null,
       quantity: receiptQty.value,
-      costPrice: (receiptType.value === 'OwnedIn' || receiptType.value === 'ConsignmentIn') && receiptCostPrice.value > 0 ? receiptCostPrice.value : null,
+      costPrice: receiptCostPrice.value > 0 ? receiptCostPrice.value : null,
       notes: receiptNotes.value || null
     })
     toast.success(`${receiptTypeLabel.value}: ${receiptQty.value} units`)
@@ -720,7 +720,7 @@ onMounted(() => {
         Max: {{ receiptMaxQty }} units from this supplier
       </p>
 
-      <McField v-if="receiptType === 'OwnedIn' || receiptType === 'ConsignmentIn'" label="Purchase price / Cost ex VAT (R)" for-id="r-cost" hint="Updates the product cost price. Leave unchanged if price hasn't changed.">
+      <McField label="Purchase price / Cost ex VAT (R)" for-id="r-cost" hint="Updates the product cost price. Leave unchanged if price hasn't changed.">
         <input id="r-cost" v-model.number="receiptCostPrice" type="number" step="0.01" min="0" />
       </McField>
 
