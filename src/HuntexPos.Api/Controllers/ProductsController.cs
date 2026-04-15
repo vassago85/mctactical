@@ -274,13 +274,6 @@ public class ProductsController : ControllerBase
             .Where(t => t.Length > 0)
             .ToList();
 
-    private static string EscapeForLike(string s) =>
-        s.Replace("\\", "\\\\", StringComparison.Ordinal)
-            .Replace("%", "\\%", StringComparison.Ordinal)
-            .Replace("_", "\\_", StringComparison.Ordinal);
-
-    private const string LikeEscapeChar = "\\";
-
     /// <summary>POS / stocktake product search: name, SKU, barcode, description, supplier.</summary>
     private static IQueryable<Product> ApplyPosSearchFilter(IQueryable<Product> query, string? q)
     {
@@ -290,13 +283,13 @@ public class ProductsController : ControllerBase
 
         foreach (var term in terms)
         {
-            var pattern = $"%{EscapeForLike(term)}%";
+            var pattern = $"%{term}%";
             query = query.Where(p =>
-                EF.Functions.Like(p.Name, pattern, LikeEscapeChar) ||
-                EF.Functions.Like(p.Sku, pattern, LikeEscapeChar) ||
-                (p.Barcode != null && EF.Functions.Like(p.Barcode, pattern, LikeEscapeChar)) ||
-                (p.Description != null && EF.Functions.Like(p.Description, pattern, LikeEscapeChar)) ||
-                (p.Supplier != null && EF.Functions.Like(p.Supplier.Name, pattern, LikeEscapeChar)));
+                EF.Functions.Like(p.Name, pattern) ||
+                EF.Functions.Like(p.Sku, pattern) ||
+                (p.Barcode != null && EF.Functions.Like(p.Barcode, pattern)) ||
+                (p.Description != null && EF.Functions.Like(p.Description, pattern)) ||
+                (p.Supplier != null && EF.Functions.Like(p.Supplier.Name, pattern)));
         }
 
         return query;
@@ -311,16 +304,16 @@ public class ProductsController : ControllerBase
 
         foreach (var term in terms)
         {
-            var pattern = $"%{EscapeForLike(term)}%";
+            var pattern = $"%{term}%";
             query = query.Where(p =>
-                EF.Functions.Like(p.Name, pattern, LikeEscapeChar) ||
-                EF.Functions.Like(p.Sku, pattern, LikeEscapeChar) ||
-                (p.Barcode != null && EF.Functions.Like(p.Barcode, pattern, LikeEscapeChar)) ||
-                (p.Category != null && EF.Functions.Like(p.Category, pattern, LikeEscapeChar)) ||
-                (p.Manufacturer != null && EF.Functions.Like(p.Manufacturer, pattern, LikeEscapeChar)) ||
-                (p.ItemType != null && EF.Functions.Like(p.ItemType, pattern, LikeEscapeChar)) ||
-                (p.Description != null && EF.Functions.Like(p.Description, pattern, LikeEscapeChar)) ||
-                (p.Supplier != null && EF.Functions.Like(p.Supplier.Name, pattern, LikeEscapeChar)));
+                EF.Functions.Like(p.Name, pattern) ||
+                EF.Functions.Like(p.Sku, pattern) ||
+                (p.Barcode != null && EF.Functions.Like(p.Barcode, pattern)) ||
+                (p.Category != null && EF.Functions.Like(p.Category, pattern)) ||
+                (p.Manufacturer != null && EF.Functions.Like(p.Manufacturer, pattern)) ||
+                (p.ItemType != null && EF.Functions.Like(p.ItemType, pattern)) ||
+                (p.Description != null && EF.Functions.Like(p.Description, pattern)) ||
+                (p.Supplier != null && EF.Functions.Like(p.Supplier.Name, pattern)));
         }
 
         return query;
