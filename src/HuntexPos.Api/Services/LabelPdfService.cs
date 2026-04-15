@@ -16,8 +16,8 @@ namespace HuntexPos.Api.Services;
 public static class LabelPdfService
 {
     private const float LabelWidthMm = 62f;
-    private const float LabelHeightMm = 38f;
-    private const float PaddingMm = 1.5f;
+    private const float LabelHeightMm = 40f;
+    private const float PaddingMm = 2f;
 
     public record LabelPricing(decimal DisplayPrice, decimal? WasPrice, string? PromoName);
 
@@ -68,55 +68,43 @@ public static class LabelPdfService
 
         page.Content().Column(col =>
         {
-            // Row 1: Logo (small strip)
             if (logoBytes != null)
             {
                 col.Item().AlignCenter()
-                    .Height(4, Unit.Millimetre)
+                    .MaxHeight(5, Unit.Millimetre)
                     .Image(logoBytes).FitArea();
             }
 
-            // Row 2: Barcode spanning full width
             if (barcodeBytes != null)
             {
-                col.Item().PaddingTop(0.5f, Unit.Millimetre)
-                    .Height(12, Unit.Millimetre)
-                    .Image(barcodeBytes).FitWidth();
+                col.Item().PaddingTop(1, Unit.Millimetre).AlignCenter()
+                    .MaxHeight(14, Unit.Millimetre)
+                    .Image(barcodeBytes).FitArea();
             }
 
-            // Row 3: EAN number centred under barcode
             col.Item().AlignCenter()
                 .Text(barcodeText).FontSize(6);
 
-            // Row 4: Product name (left) + Price (right)
             var hasPromo = pricing.WasPrice.HasValue && pricing.WasPrice.Value != pricing.DisplayPrice;
-            col.Item().PaddingTop(0.5f, Unit.Millimetre).Row(row =>
+            col.Item().PaddingTop(1, Unit.Millimetre).Row(row =>
             {
                 row.RelativeItem().AlignLeft().AlignBottom().Column(nameCol =>
                 {
                     nameCol.Item().Text(product.Name).Bold().FontSize(6);
                     if (hasPromo && !string.IsNullOrWhiteSpace(pricing.PromoName))
-                    {
                         nameCol.Item().Text(pricing.PromoName).FontSize(5).Bold();
-                    }
                 });
 
                 row.AutoItem().PaddingLeft(2, Unit.Millimetre).AlignRight().Column(priceCol =>
                 {
+                    priceCol.Item().AlignRight()
+                        .Text($"R{pricing.DisplayPrice:N2}")
+                        .Bold().FontSize(11);
                     if (hasPromo)
                     {
                         priceCol.Item().AlignRight()
-                            .Text($"R{pricing.DisplayPrice:N2}")
-                            .Bold().FontSize(11);
-                        priceCol.Item().AlignRight()
                             .Text($"was R{pricing.WasPrice!.Value:N2}")
                             .FontSize(5.5f).Strikethrough();
-                    }
-                    else
-                    {
-                        priceCol.Item().AlignRight()
-                            .Text($"R{pricing.DisplayPrice:N2}")
-                            .Bold().FontSize(11);
                     }
                 });
             });
