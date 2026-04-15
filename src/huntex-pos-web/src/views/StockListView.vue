@@ -412,7 +412,10 @@ async function openSpecialModal(p: Product) {
   try {
     const { data } = await http.get<ProductSpecialItem[]>(`/api/products/${p.id}/specials`)
     existingSpecials.value = data
-  } catch { /* may not exist yet */ }
+  } catch (e: unknown) {
+    const ax = e as { response?: { data?: { error?: string } } }
+    specialFormErr.value = ax.response?.data?.error ?? 'Could not load specials'
+  }
   specialBusy.value = false
 }
 
@@ -842,33 +845,26 @@ onMounted(() => {
     <McModal v-model="showSpecialModal" :title="`Specials — ${specialProduct?.name ?? ''}`">
       <div v-if="specialBusy" style="padding:1rem;text-align:center"><McSpinner /></div>
       <template v-else>
-        <div v-if="existingSpecials.length" style="margin-bottom:1rem">
+        <div v-if="existingSpecials.length" style="margin-bottom:1.25rem">
           <h4 style="margin:0 0 0.5rem;font-size:0.85rem">Current specials</h4>
-          <table class="mc-table" style="font-size:0.82rem">
-            <thead><tr><th>Type</th><th>Value</th><th>Effective</th><th>Status</th><th></th></tr></thead>
-            <tbody>
-              <tr v-for="s in existingSpecials" :key="s.id">
-                <td>
-                  <McBadge v-if="s.promotionName" variant="accent">{{ s.promotionName }}</McBadge>
-                  <McBadge v-else variant="neutral">Standalone</McBadge>
-                </td>
-                <td>
-                  <template v-if="s.specialPrice != null">{{ formatZAR(s.specialPrice) }}</template>
-                  <template v-else-if="s.discountPercent != null">{{ s.discountPercent }}% off</template>
-                </td>
-                <td><strong>{{ formatZAR(s.effectivePrice) }}</strong></td>
-                <td>
-                  <McBadge :variant="s.isActive ? 'success' : 'neutral'">{{ s.isActive ? 'Active' : 'Inactive' }}</McBadge>
-                </td>
-                <td style="white-space:nowrap">
-                  <McButton variant="ghost" dense type="button" @click="toggleSpecialActive(s)">
-                    {{ s.isActive ? 'Deactivate' : 'Activate' }}
-                  </McButton>
-                  <McButton variant="ghost" dense type="button" @click="removeSpecial(s)">Remove</McButton>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <div v-for="s in existingSpecials" :key="s.id" class="special-card" :class="{ 'special-card--inactive': !s.isActive }">
+            <div class="special-card__row">
+              <McBadge v-if="s.promotionName" variant="accent">{{ s.promotionName }}</McBadge>
+              <McBadge v-else variant="neutral">Standalone</McBadge>
+              <McBadge :variant="s.isActive ? 'success' : 'neutral'">{{ s.isActive ? 'Active' : 'Inactive' }}</McBadge>
+            </div>
+            <div class="special-card__price">
+              <span v-if="s.specialPrice != null">Special price: <strong>{{ formatZAR(s.specialPrice) }}</strong></span>
+              <span v-else-if="s.discountPercent != null">Discount: <strong>{{ s.discountPercent }}%</strong></span>
+              <span> → Effective: <strong>{{ formatZAR(s.effectivePrice) }}</strong></span>
+            </div>
+            <div class="special-card__actions">
+              <McButton :variant="s.isActive ? 'secondary' : 'primary'" dense type="button" @click="toggleSpecialActive(s)">
+                {{ s.isActive ? 'Deactivate' : 'Activate' }}
+              </McButton>
+              <McButton variant="ghost" dense type="button" @click="removeSpecial(s)">Remove</McButton>
+            </div>
+          </div>
         </div>
         <McAlert v-if="specialFormErr" variant="error">{{ specialFormErr }}</McAlert>
         <h4 style="margin:0 0 0.5rem;font-size:0.85rem">Add standalone special</h4>
@@ -896,6 +892,35 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.special-card {
+  border: 1px solid var(--mc-app-border-soft, #ddd9d3);
+  border-radius: 10px;
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  background: var(--mc-app-surface-2, #f9f8f6);
+}
+
+.special-card--inactive {
+  opacity: 0.6;
+}
+
+.special-card__row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+
+.special-card__price {
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.special-card__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .stock-specials-bar {
   margin-bottom: 1rem;
 }

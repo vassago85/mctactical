@@ -84,40 +84,47 @@ public class ProductsController : ControllerBase
     /// <summary>Get all specials for a product (standalone + promotion-linked).</summary>
     [HttpGet("{productId:guid}/specials")]
     [Authorize(Roles = $"{Roles.Admin},{Roles.Owner},{Roles.Dev}")]
-    public async Task<List<ProductSpecialDto>> GetProductSpecials(Guid productId, CancellationToken ct)
+    public async Task<ActionResult<List<ProductSpecialDto>>> GetProductSpecials(Guid productId, CancellationToken ct)
     {
-        var specials = await _db.ProductSpecials.AsNoTracking()
-            .Include(s => s.Product)
-            .Include(s => s.Promotion)
-            .Where(s => s.ProductId == productId)
-            .OrderByDescending(s => s.CreatedAt)
-            .ToListAsync(ct);
-        return specials.Select(s =>
+        try
         {
-            var basePrice = s.Product?.SellPrice ?? 0;
-            decimal effective;
-            if (s.SpecialPrice.HasValue)
-                effective = s.SpecialPrice.Value;
-            else if (s.DiscountPercent.HasValue)
-                effective = Math.Round(basePrice * (1 - s.DiscountPercent.Value / 100m), 2);
-            else
-                effective = basePrice;
-
-            return new ProductSpecialDto
+            var specials = await _db.ProductSpecials.AsNoTracking()
+                .Include(s => s.Product)
+                .Include(s => s.Promotion)
+                .Where(s => s.ProductId == productId)
+                .OrderByDescending(s => s.CreatedAt)
+                .ToListAsync(ct);
+            return specials.Select(s =>
             {
-                Id = s.Id,
-                ProductId = s.ProductId,
-                ProductSku = s.Product?.Sku ?? "",
-                ProductName = s.Product?.Name ?? "",
-                BaseSellPrice = basePrice,
-                PromotionId = s.PromotionId,
-                PromotionName = s.Promotion?.Name,
-                SpecialPrice = s.SpecialPrice,
-                DiscountPercent = s.DiscountPercent,
-                EffectivePrice = effective,
-                IsActive = s.IsActive
-            };
-        }).ToList();
+                var basePrice = s.Product?.SellPrice ?? 0;
+                decimal effective;
+                if (s.SpecialPrice.HasValue)
+                    effective = s.SpecialPrice.Value;
+                else if (s.DiscountPercent.HasValue)
+                    effective = Math.Round(basePrice * (1 - s.DiscountPercent.Value / 100m), 2);
+                else
+                    effective = basePrice;
+
+                return new ProductSpecialDto
+                {
+                    Id = s.Id,
+                    ProductId = s.ProductId,
+                    ProductSku = s.Product?.Sku ?? "",
+                    ProductName = s.Product?.Name ?? "",
+                    BaseSellPrice = basePrice,
+                    PromotionId = s.PromotionId,
+                    PromotionName = s.Promotion?.Name,
+                    SpecialPrice = s.SpecialPrice,
+                    DiscountPercent = s.DiscountPercent,
+                    EffectivePrice = effective,
+                    IsActive = s.IsActive
+                };
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message, detail = ex.InnerException?.Message });
+        }
     }
 
     /// <summary>Generate a 62mm label PDF for one product (Brother QL-800 / DK-22205).</summary>
