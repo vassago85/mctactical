@@ -28,38 +28,38 @@ public class ProductsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<List<ProductDto>>> Search([FromQuery] ProductSearchQuery q, CancellationToken ct)
+    public async Task<ActionResult<List<ProductDto>>> Search([FromQuery] ProductSearchQuery search, CancellationToken ct)
     {
         var hideCost = await ShouldHideCostAsync(ct);
         var query = _db.Products.AsNoTracking().Include(p => p.Supplier).Where(p => p.Active);
 
-        if (q.SupplierId.HasValue)
-            query = query.Where(p => p.SupplierId == q.SupplierId);
-        if (!string.IsNullOrWhiteSpace(q.Barcode))
+        if (search.SupplierId.HasValue)
+            query = query.Where(p => p.SupplierId == search.SupplierId);
+        if (!string.IsNullOrWhiteSpace(search.Barcode))
         {
-            var b = q.Barcode.Trim();
+            var b = search.Barcode.Trim();
             query = query.Where(p => p.Barcode == b || p.Sku == b);
         }
-        query = ApplyPosSearchFilter(query, q.Q);
+        query = ApplyPosSearchFilter(query, search.Q);
 
-        var list = await query.OrderBy(p => p.Name).Take(Math.Clamp(q.Take, 1, 200)).ToListAsync(ct);
+        var list = await query.OrderBy(p => p.Name).Take(Math.Clamp(search.Take, 1, 200)).ToListAsync(ct);
         return list.Select(p => Map(p, hideCost)).ToList();
     }
 
     /// <summary>Browse the full inventory with pagination (POS / stock screen).</summary>
     [HttpGet("stocklist")]
-    public async Task<ActionResult<StocklistPageDto>> Stocklist([FromQuery] ProductStocklistQuery q, CancellationToken ct)
+    public async Task<ActionResult<StocklistPageDto>> Stocklist([FromQuery] ProductStocklistQuery search, CancellationToken ct)
     {
         var hideCost = await ShouldHideCostAsync(ct);
         var query = _db.Products.AsNoTracking().Include(p => p.Supplier).AsQueryable();
-        if (!q.IncludeInactive)
+        if (!search.IncludeInactive)
             query = query.Where(p => p.Active);
-        if (q.SupplierId.HasValue)
-            query = query.Where(p => p.SupplierId == q.SupplierId);
-        query = ApplyStocklistSearchFilter(query, q.Q);
+        if (search.SupplierId.HasValue)
+            query = query.Where(p => p.SupplierId == search.SupplierId);
+        query = ApplyStocklistSearchFilter(query, search.Q);
 
-        var take = Math.Clamp(q.Take, 1, 10_000);
-        var skip = Math.Max(0, q.Skip);
+        var take = Math.Clamp(search.Take, 1, 10_000);
+        var skip = Math.Max(0, search.Skip);
         var total = await query.CountAsync(ct);
         var list = await query.OrderBy(p => p.Name).Skip(skip).Take(take).ToListAsync(ct);
         return new StocklistPageDto
@@ -154,12 +154,7 @@ public class ProductsController : ControllerBase
 
     private async Task<LabelPdfService.LabelPricing> ResolvePromoPricing(Product product, CancellationToken ct)
     {
-        var now = DateTimeOffset.UtcNow;
-        var promo = await _db.Promotions.AsNoTracking()
-            .Where(p => p.IsActive)
-            .Where(p => !p.StartsAt.HasValue || p.StartsAt <= now)
-            .Where(p => !p.EndsAt.HasValue || p.EndsAt >= now)
-            .FirstOrDefaultAsync(ct);
+        var promo = await FindActivePromoAsync(ct);
 
         var special = await _db.ProductSpecials.AsNoTracking()
             .Where(s => s.IsActive && s.ProductId == product.Id)
@@ -171,12 +166,7 @@ public class ProductsController : ControllerBase
 
     private async Task<Dictionary<Guid, LabelPdfService.LabelPricing>> ResolvePromoPricingBatch(List<Product> products, CancellationToken ct)
     {
-        var now = DateTimeOffset.UtcNow;
-        var promo = await _db.Promotions.AsNoTracking()
-            .Where(p => p.IsActive)
-            .Where(p => !p.StartsAt.HasValue || p.StartsAt <= now)
-            .Where(p => !p.EndsAt.HasValue || p.EndsAt >= now)
-            .FirstOrDefaultAsync(ct);
+        var promo = await FindActivePromoAsync(ct);
 
         var productIds = products.Select(p => p.Id).ToList();
         var specials = await _db.ProductSpecials.AsNoTracking()
@@ -417,6 +407,16 @@ public class ProductsController : ControllerBase
 
         await _db.SaveChangesAsync(ct);
         return Map(p, false);
+    }
+
+    private async Task<Promotion?> FindActivePromoAsync(CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var active = await _db.Promotions.AsNoTracking().Where(p => p.IsActive).ToListAsync(ct);
+        return active
+            .Where(p => !p.StartsAt.HasValue || p.StartsAt <= now)
+            .Where(p => !p.EndsAt.HasValue || p.EndsAt >= now)
+            .FirstOrDefault();
     }
 
     private async Task<bool> ShouldHideCostAsync(CancellationToken ct)

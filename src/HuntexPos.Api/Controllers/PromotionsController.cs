@@ -179,11 +179,13 @@ public class PromotionsController : ControllerBase
     public async Task<ActivePromotionDto> GetActive(CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
-        var promo = await _db.Promotions.AsNoTracking()
+        var allActive = await _db.Promotions.AsNoTracking()
             .Where(p => p.IsActive)
+            .ToListAsync(ct);
+        var promo = allActive
             .Where(p => !p.StartsAt.HasValue || p.StartsAt <= now)
             .Where(p => !p.EndsAt.HasValue || p.EndsAt >= now)
-            .FirstOrDefaultAsync(ct);
+            .FirstOrDefault();
 
         var specials = await _db.ProductSpecials.AsNoTracking()
             .Where(s => s.IsActive)
