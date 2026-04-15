@@ -29,6 +29,7 @@ public static class DbSeeder
         await EnsureInvoiceDiscountColumnsAsync(db, ct);
         await EnsureStockReceiptCostColumnAsync(db, ct);
         await EnsureInvoiceBusinessColumnsAsync(db, ct);
+        await EnsureCustomersTableAsync(db, ct);
 
         foreach (var r in Roles.All)
         {
@@ -186,6 +187,26 @@ public static class DbSeeder
     {
         if (!db.Database.IsSqlite()) return;
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "StockReceipts" ADD COLUMN "CostPrice" TEXT;""", ct); } catch { }
+    }
+
+    private static async Task EnsureCustomersTableAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "Customers" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_Customers" PRIMARY KEY,
+                "Email" TEXT NOT NULL,
+                "Name" TEXT,
+                "Phone" TEXT,
+                "Company" TEXT,
+                "Address" TEXT,
+                "VatNumber" TEXT,
+                "CustomerType" TEXT,
+                "CreatedAt" TEXT NOT NULL,
+                "UpdatedAt" TEXT NOT NULL
+            );
+            """, ct);
+        try { await db.Database.ExecuteSqlRawAsync("""CREATE UNIQUE INDEX IF NOT EXISTS "IX_Customers_Email" ON "Customers" ("Email");""", ct); } catch { }
     }
 
     private static async Task EnsureInvoiceBusinessColumnsAsync(HuntexDbContext db, CancellationToken ct)

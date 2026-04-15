@@ -20,6 +20,7 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<StockReceipt> StockReceipts => Set<StockReceipt>();
     public DbSet<Promotion> Promotions => Set<Promotion>();
     public DbSet<ProductSpecial> ProductSpecials => Set<ProductSpecial>();
+    public DbSet<Customer> Customers => Set<Customer>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -103,6 +104,11 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
             e.HasIndex(s => s.PromotionId);
             e.Property(s => s.SpecialPrice).HasPrecision(18, 2);
             e.Property(s => s.DiscountPercent).HasPrecision(18, 4);
+        });
+
+        modelBuilder.Entity<Customer>(e =>
+        {
+            e.HasIndex(c => c.Email).IsUnique();
         });
     }
 }

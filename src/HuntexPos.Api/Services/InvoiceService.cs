@@ -134,6 +134,8 @@ public class InvoiceService
         _db.Invoices.Add(invoice);
         await _db.SaveChangesAsync(ct);
 
+        await UpsertCustomerAsync(req, ct);
+
         var pdfBytes = _pdf.BuildPdf(invoice);
         var key = await _pdf.SavePdfAsync(invoice, pdfBytes, ct);
         invoice.PdfStorageKey = key;
@@ -302,5 +304,39 @@ public class InvoiceService
         if (last != null && last.Length > prefix.Length && int.TryParse(last[prefix.Length..], out var n))
             next = n + 1;
         return $"{prefix}{next:D4}";
+    }
+
+    private async Task UpsertCustomerAsync(CreateInvoiceRequest req, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(req.CustomerEmail)) return;
+        var email = req.CustomerEmail.Trim().ToLower();
+        try
+        {
+            var existing = await _db.Customers.FirstOrDefaultAsync(c => c.Email == email, ct);
+            if (existing != null)
+            {
+                if (!string.IsNullOrWhiteSpace(req.CustomerName)) existing.Name = req.CustomerName;
+                if (!string.IsNullOrWhiteSpace(req.CustomerCompany)) existing.Company = req.CustomerCompany;
+                if (!string.IsNullOrWhiteSpace(req.CustomerAddress)) existing.Address = req.CustomerAddress;
+                if (!string.IsNullOrWhiteSpace(req.CustomerVatNumber)) existing.VatNumber = req.CustomerVatNumber;
+                if (!string.IsNullOrWhiteSpace(req.CustomerType)) existing.CustomerType = req.CustomerType;
+                existing.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+            else
+            {
+                _db.Customers.Add(new Customer
+                {
+                    Id = Guid.NewGuid(),
+                    Email = email,
+                    Name = req.CustomerName,
+                    Company = req.CustomerCompany,
+                    Address = req.CustomerAddress,
+                    VatNumber = req.CustomerVatNumber,
+                    CustomerType = req.CustomerType
+                });
+            }
+            await _db.SaveChangesAsync(ct);
+        }
+        catch { /* non-critical — don't fail the invoice */ }
     }
 }

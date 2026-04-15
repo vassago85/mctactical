@@ -47,6 +47,8 @@ const customerCompany = ref('')
 const customerAddress = ref('')
 const customerVatNumber = ref('')
 const showBusinessFields = ref(false)
+const customerLoading = ref(false)
+const customerMatch = ref(false)
 const paymentMethod = ref('Cash')
 const discountTotal = ref(0)
 const sendEmail = ref(true)
@@ -203,6 +205,26 @@ const belowCostWarning = computed(() => {
   return null
 })
 
+async function lookupCustomer() {
+  const email = customerEmail.value.trim()
+  if (!email || email.length < 3) return
+  customerLoading.value = true
+  customerMatch.value = false
+  try {
+    const { data } = await http.get('/api/customers/by-email', { params: { email } })
+    if (data) {
+      customerName.value = data.name || customerName.value
+      customerType.value = data.customerType || customerType.value
+      customerCompany.value = data.company || ''
+      customerAddress.value = data.address || ''
+      customerVatNumber.value = data.vatNumber || ''
+      if (data.company || data.vatNumber) showBusinessFields.value = true
+      customerMatch.value = true
+    }
+  } catch { /* 404 = new customer, that's fine */ }
+  finally { customerLoading.value = false }
+}
+
 async function doCheckout() {
   err.value = null
   busy.value = true
@@ -251,6 +273,7 @@ async function doCheckout() {
     customerAddress.value = ''
     customerVatNumber.value = ''
     showBusinessFields.value = false
+    customerMatch.value = false
     paymentMethod.value = 'Cash'
     showSaleSummary.value = true
     results.value = []
@@ -435,7 +458,11 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
               <input id="cust-name" v-model="customerName" type="text" autocomplete="name" />
             </McField>
             <McField label="Email (receipt link)" for-id="cust-email">
-              <input id="cust-email" v-model="customerEmail" type="email" autocomplete="email" />
+              <div style="position:relative">
+                <input id="cust-email" v-model="customerEmail" type="email" autocomplete="email" @blur="lookupCustomer" />
+                <McSpinner v-if="customerLoading" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:16px;height:16px" />
+              </div>
+              <small v-if="customerMatch" style="color:var(--mc-accent, #f47a20)">Existing customer loaded</small>
             </McField>
             <McField label="Customer type" for-id="cust-type" hint="Optional">
               <input id="cust-type" v-model="customerType" placeholder="e.g. ENT" />
