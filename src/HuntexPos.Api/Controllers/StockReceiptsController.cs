@@ -56,6 +56,8 @@ public class StockReceiptsController : ControllerBase
                 break;
             case StockReceiptType.ConsignmentIn:
                 product.QtyConsignment += req.Quantity;
+                if (req.CostPrice.HasValue && req.CostPrice.Value > 0)
+                    product.Cost = req.CostPrice.Value;
                 break;
             case StockReceiptType.ConsignmentToStock:
                 product.QtyConsignment -= req.Quantity;
