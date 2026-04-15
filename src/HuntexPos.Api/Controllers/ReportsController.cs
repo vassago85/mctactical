@@ -3,9 +3,11 @@ using System.Text;
 using HuntexPos.Api.Data;
 using HuntexPos.Api.Domain;
 using HuntexPos.Api.DTOs;
+using HuntexPos.Api.Options;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace HuntexPos.Api.Controllers;
 
@@ -15,8 +17,13 @@ namespace HuntexPos.Api.Controllers;
 public class ReportsController : ControllerBase
 {
     private readonly HuntexDbContext _db;
+    private readonly AppOptions _app;
 
-    public ReportsController(HuntexDbContext db) => _db = db;
+    public ReportsController(HuntexDbContext db, IOptions<AppOptions> app)
+    {
+        _db = db;
+        _app = app.Value;
+    }
 
     [HttpGet("invoices")]
     public async Task<List<InvoiceListItemDto>> ListInvoices(
@@ -46,12 +53,27 @@ public class ReportsController : ControllerBase
     }
 
     [HttpGet("daily")]
-    public async Task<List<DailySummaryDto>> Daily(CancellationToken ct, [FromQuery] int days = 14)
+    public async Task<List<DailySummaryDto>> Daily(
+        CancellationToken ct,
+        [FromQuery] int days = 14,
+        [FromQuery] DateTimeOffset? from = null,
+        [FromQuery] DateTimeOffset? to = null)
     {
-        var from = DateTimeOffset.UtcNow.AddDays(-Math.Clamp(days, 1, 90));
         var all = await _db.Invoices.AsNoTracking().ToListAsync(ct);
-        return all
-            .Where(i => i.Status == InvoiceStatus.Final && i.CreatedAt >= from)
+        IEnumerable<Invoice> rows = all.Where(i => i.Status == InvoiceStatus.Final);
+
+        if (from.HasValue || to.HasValue)
+        {
+            if (from.HasValue) rows = rows.Where(i => i.CreatedAt >= from.Value);
+            if (to.HasValue) rows = rows.Where(i => i.CreatedAt <= to.Value);
+        }
+        else
+        {
+            var cutoff = DateTimeOffset.UtcNow.AddDays(-Math.Clamp(days, 1, 365));
+            rows = rows.Where(i => i.CreatedAt >= cutoff);
+        }
+
+        return rows
             .GroupBy(i => DateOnly.FromDateTime(i.CreatedAt.UtcDateTime))
             .Select(g => new DailySummaryDto
             {
@@ -290,6 +312,27 @@ public class ReportsController : ControllerBase
             ReceivedInPeriod = receivedInPeriod,
             SoldInPeriod = soldInPeriod
         };
+    }
+
+    [HttpPost("purge")]
+    [Authorize(Roles = Roles.Dev)]
+    public async Task<IActionResult> PurgeData(CancellationToken ct)
+    {
+        await _db.Database.ExecuteSqlRawAsync("DELETE FROM InvoiceLines", ct);
+        await _db.Database.ExecuteSqlRawAsync("DELETE FROM Invoices", ct);
+        await _db.Database.ExecuteSqlRawAsync("DELETE FROM StocktakeLines", ct);
+        await _db.Database.ExecuteSqlRawAsync("DELETE FROM StocktakeSessions", ct);
+        await _db.Database.ExecuteSqlRawAsync("DELETE FROM StockReceipts", ct);
+        await _db.Database.ExecuteSqlRawAsync("UPDATE Products SET QtyOnHand = 0, QtyConsignment = 0", ct);
+
+        var pdfDir = Path.Combine(Directory.GetCurrentDirectory(), _app.PdfStoragePath);
+        if (Directory.Exists(pdfDir))
+        {
+            foreach (var file in Directory.GetFiles(pdfDir, "*.pdf"))
+                System.IO.File.Delete(file);
+        }
+
+        return Ok(new { message = "All sales, stock receipts, stocktakes and PDFs purged. Product quantities reset to zero." });
     }
 
     private static string Csv(string s)

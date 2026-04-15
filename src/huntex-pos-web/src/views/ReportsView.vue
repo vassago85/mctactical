@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { http } from '@/api/http'
+import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 import { formatZAR } from '@/utils/format'
 import McPageHeader from '@/components/ui/McPageHeader.vue'
@@ -56,10 +57,14 @@ type StockReport = {
   soldInPeriod: ProductSoldLine[]
 }
 
+const auth = useAuthStore()
 const toast = useToast()
 const invoices = ref<Row[]>([])
 const daily = ref<Daily[]>([])
 const err = ref<string | null>(null)
+const salesBusy = ref(false)
+
+const isDev = computed(() => auth.hasRole('Dev'))
 
 /* Stock report state */
 const stockReport = ref<StockReport | null>(null)
@@ -67,17 +72,64 @@ const stockErr = ref<string | null>(null)
 const stockBusy = ref(false)
 const activeTab = ref<'sales' | 'stock'>('stock')
 
+/* Purge state */
+const showPurgeConfirm = ref(false)
+const purging = ref(false)
+
+function toDateStr(d: Date) {
+  return d.toISOString().slice(0, 10)
+}
 function defaultFrom() {
   const d = new Date()
   d.setDate(d.getDate() - 30)
-  return d.toISOString().slice(0, 10)
+  return toDateStr(d)
 }
 function defaultTo() {
-  return new Date().toISOString().slice(0, 10)
+  return toDateStr(new Date())
 }
 
 const stockFrom = ref(defaultFrom())
 const stockTo = ref(defaultTo())
+const salesFrom = ref(defaultFrom())
+const salesTo = ref(defaultTo())
+
+type DatePreset = { label: string; from: string; to: string }
+function getPresets(): DatePreset[] {
+  const now = new Date()
+  const today = toDateStr(now)
+
+  const d7 = new Date(now); d7.setDate(d7.getDate() - 7)
+  const d30 = new Date(now); d30.setDate(d30.getDate() - 30)
+
+  const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0)
+  const lastMonthStart = new Date(lastMonthEnd.getFullYear(), lastMonthEnd.getMonth(), 1)
+
+  const curQ = Math.floor(now.getMonth() / 3)
+  const lastQEnd = new Date(now.getFullYear(), curQ * 3, 0)
+  const lastQStart = new Date(lastQEnd.getFullYear(), lastQEnd.getMonth() - 2, 1)
+
+  const ytdStart = new Date(now.getFullYear(), 0, 1)
+
+  return [
+    { label: 'Last 7 days', from: toDateStr(d7), to: today },
+    { label: 'Last 30 days', from: toDateStr(d30), to: today },
+    { label: 'Last month', from: toDateStr(lastMonthStart), to: toDateStr(lastMonthEnd) },
+    { label: 'Last quarter', from: toDateStr(lastQStart), to: toDateStr(lastQEnd) },
+    { label: 'Year to date', from: toDateStr(ytdStart), to: today },
+  ]
+}
+const presets = getPresets()
+
+function applySalesPreset(p: DatePreset) {
+  salesFrom.value = p.from
+  salesTo.value = p.to
+  void loadSales()
+}
+function applyStockPreset(p: DatePreset) {
+  stockFrom.value = p.from
+  stockTo.value = p.to
+  void loadStockReport()
+}
 
 const expandedSuppliers = ref<Set<string>>(new Set())
 function toggleSupplier(id: string) {
@@ -95,12 +147,25 @@ async function openPdf(id: string) {
   }
 }
 
-async function load() {
+function buildDateParams(from: string, to: string): Record<string, string> {
+  const params: Record<string, string> = {}
+  if (from) params.from = new Date(from).toISOString()
+  if (to) {
+    const end = new Date(to)
+    end.setHours(23, 59, 59, 999)
+    params.to = end.toISOString()
+  }
+  return params
+}
+
+async function loadSales() {
   err.value = null
+  salesBusy.value = true
   try {
+    const params = buildDateParams(salesFrom.value, salesTo.value)
     const [inv, d] = await Promise.all([
-      http.get<Row[]>('/api/reports/invoices'),
-      http.get<Daily[]>('/api/reports/daily?days=21')
+      http.get<Row[]>('/api/reports/invoices', { params }),
+      http.get<Daily[]>('/api/reports/daily', { params })
     ])
     invoices.value = inv.data
     daily.value = d.data
@@ -118,6 +183,8 @@ async function load() {
     } else {
       err.value = `Cannot reach the API: ${ax.message || 'Network error'}`
     }
+  } finally {
+    salesBusy.value = false
   }
 }
 
@@ -125,13 +192,7 @@ async function loadStockReport() {
   stockErr.value = null
   stockBusy.value = true
   try {
-    const params: Record<string, string> = {}
-    if (stockFrom.value) params.from = new Date(stockFrom.value).toISOString()
-    if (stockTo.value) {
-      const end = new Date(stockTo.value)
-      end.setHours(23, 59, 59, 999)
-      params.to = end.toISOString()
-    }
+    const params = buildDateParams(stockFrom.value, stockTo.value)
     const { data } = await http.get<StockReport>('/api/reports/stock', { params })
     stockReport.value = data
   } catch (e: unknown) {
@@ -141,6 +202,9 @@ async function loadStockReport() {
     stockBusy.value = false
   }
 }
+
+const salesGrandTotal = computed(() => daily.value.reduce((s, d) => s + d.grandTotal, 0))
+const salesInvoiceCount = computed(() => daily.value.reduce((s, d) => s + d.invoiceCount, 0))
 
 const totalSoldQty = computed(() => stockReport.value?.soldInPeriod.reduce((s, p) => s + p.qtySold, 0) ?? 0)
 const totalSoldRevenue = computed(() => stockReport.value?.soldInPeriod.reduce((s, p) => s + p.revenue, 0) ?? 0)
@@ -159,13 +223,14 @@ function formatDate(iso: string) {
 }
 
 onMounted(() => {
-  void load()
+  void loadSales()
   void loadStockReport()
 })
 
 async function exportCsv() {
   try {
-    const res = await http.get('/api/reports/invoices/export', { responseType: 'blob' })
+    const params = buildDateParams(salesFrom.value, salesTo.value)
+    const res = await http.get('/api/reports/invoices/export', { params, responseType: 'blob' })
     const url = URL.createObjectURL(res.data)
     const a = document.createElement('a')
     a.href = url
@@ -177,16 +242,51 @@ async function exportCsv() {
     toast.error('Export failed')
   }
 }
+
+async function purgeData() {
+  purging.value = true
+  try {
+    await http.post('/api/reports/purge')
+    toast.success('All transactional data purged')
+    showPurgeConfirm.value = false
+    invoices.value = []
+    daily.value = []
+    stockReport.value = null
+    void loadSales()
+    void loadStockReport()
+  } catch (e: unknown) {
+    const ax = e as { response?: { data?: { error?: string } }; message?: string }
+    toast.error(ax.response?.data?.error ?? ax.message ?? 'Purge failed')
+  } finally {
+    purging.value = false
+  }
+}
 </script>
 
 <template>
   <div class="rep-page">
     <McPageHeader title="Reports">
       <template #actions>
-        <McButton variant="secondary" type="button" @click="activeTab === 'sales' ? load() : loadStockReport()">Refresh</McButton>
+        <McButton variant="secondary" type="button" @click="activeTab === 'sales' ? loadSales() : loadStockReport()">Refresh</McButton>
         <McButton v-if="activeTab === 'sales'" variant="primary" type="button" @click="exportCsv">Export invoices CSV</McButton>
+        <McButton v-if="isDev" variant="danger" type="button" @click="showPurgeConfirm = true">Purge all data</McButton>
       </template>
     </McPageHeader>
+
+    <!-- Purge confirmation dialog -->
+    <div v-if="showPurgeConfirm" class="rep-overlay" @click.self="showPurgeConfirm = false">
+      <McCard title="Purge all transactional data?" class="rep-dialog">
+        <p>This will <strong>permanently delete</strong> all invoices, stock receipts, stocktake sessions, and invoice PDFs. Product quantities will be reset to zero.</p>
+        <p style="margin-top: 0.5rem; color: var(--mc-app-text-muted, #5c5a56);">Products, suppliers, users, and settings are not affected.</p>
+        <div class="rep-dialog__actions">
+          <McButton variant="secondary" type="button" @click="showPurgeConfirm = false">Cancel</McButton>
+          <McButton variant="danger" type="button" :disabled="purging" @click="purgeData">
+            <McSpinner v-if="purging" />
+            <span v-else>Yes, purge everything</span>
+          </McButton>
+        </div>
+      </McCard>
+    </div>
 
     <div class="rep-tabs">
       <button type="button" class="rep-tab" :class="{ 'rep-tab--active': activeTab === 'stock' }" @click="activeTab = 'stock'">Stock report</button>
@@ -196,6 +296,9 @@ async function exportCsv() {
     <!-- ── STOCK REPORT TAB ── -->
     <template v-if="activeTab === 'stock'">
       <McCard title="Date range">
+        <div class="rep-preset-row">
+          <McButton v-for="p in presets" :key="p.label" variant="ghost" dense type="button" @click="applyStockPreset(p)">{{ p.label }}</McButton>
+        </div>
         <div class="rep-date-row">
           <McField label="From" for-id="sr-from">
             <input id="sr-from" v-model="stockFrom" type="date" />
@@ -405,7 +508,36 @@ async function exportCsv() {
 
     <!-- ── SALES REPORT TAB ── -->
     <template v-if="activeTab === 'sales'">
+      <McCard title="Date range">
+        <div class="rep-preset-row">
+          <McButton v-for="p in presets" :key="p.label" variant="ghost" dense type="button" @click="applySalesPreset(p)">{{ p.label }}</McButton>
+        </div>
+        <div class="rep-date-row">
+          <McField label="From" for-id="sl-from">
+            <input id="sl-from" v-model="salesFrom" type="date" />
+          </McField>
+          <McField label="To" for-id="sl-to">
+            <input id="sl-to" v-model="salesTo" type="date" />
+          </McField>
+          <McButton variant="primary" type="button" :disabled="salesBusy" @click="loadSales">
+            <McSpinner v-if="salesBusy" />
+            <span v-else>Run report</span>
+          </McButton>
+        </div>
+      </McCard>
+
       <McAlert v-if="err" variant="error">{{ err }}</McAlert>
+
+      <div class="rep-kpi-row">
+        <div class="rep-kpi">
+          <span class="rep-kpi__label">Invoices</span>
+          <strong class="rep-kpi__value">{{ salesInvoiceCount }}</strong>
+        </div>
+        <div class="rep-kpi">
+          <span class="rep-kpi__label">Total sales</span>
+          <strong class="rep-kpi__value">{{ formatZAR(salesGrandTotal) }}</strong>
+        </div>
+      </div>
 
       <McCard title="Daily totals (final invoices)">
         <div class="rep-table-wrap">
@@ -424,11 +556,18 @@ async function exportCsv() {
                 <td class="rep-num">{{ formatZAR(d.grandTotal) }}</td>
               </tr>
             </tbody>
+            <tfoot v-if="daily.length">
+              <tr class="rep-total-row">
+                <td><strong>Total</strong></td>
+                <td class="rep-num"><strong>{{ salesInvoiceCount }}</strong></td>
+                <td class="rep-num"><strong>{{ formatZAR(salesGrandTotal) }}</strong></td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </McCard>
 
-      <McCard title="Recent invoices">
+      <McCard title="Invoices">
         <div class="rep-table-wrap">
           <table class="mc-table">
             <thead>
@@ -578,5 +717,35 @@ async function exportCsv() {
 .rep-total-row td {
   border-top: 2px solid var(--mc-app-border-subtle, #c8c5bd);
   background: var(--mc-app-surface-2, #f9f8f6);
+}
+
+.rep-preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-bottom: 0.75rem;
+}
+
+.rep-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.rep-dialog {
+  max-width: 480px;
+  width: 100%;
+}
+
+.rep-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
 }
 </style>

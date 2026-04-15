@@ -11,7 +11,6 @@ import McAlert from '@/components/ui/McAlert.vue'
 import McModal from '@/components/ui/McModal.vue'
 import McBadge from '@/components/ui/McBadge.vue'
 import McCheckbox from '@/components/ui/McCheckbox.vue'
-import McRadioCard from '@/components/ui/McRadioCard.vue'
 import McActionBar from '@/components/ui/McActionBar.vue'
 import McEmptyState from '@/components/ui/McEmptyState.vue'
 import McSpinner from '@/components/ui/McSpinner.vue'
@@ -39,11 +38,6 @@ onMounted(() => {
   void load().catch(() => (err.value = 'Load failed'))
   void loadPromotions()
 })
-
-async function setPricingMode(mode: string) {
-  dto.value.pricingMode = mode
-  await save()
-}
 
 async function save() {
   err.value = null
@@ -165,13 +159,22 @@ async function savePromo() {
   }
 }
 
+const toggleBusy = ref<string | null>(null)
+
 async function togglePromoActive(p: Promotion) {
+  toggleBusy.value = p.id
   try {
-    await http.put(`/api/promotions/${p.id}`, { isActive: !p.isActive })
-    toast.success(p.isActive ? 'Promotion deactivated' : 'Promotion activated')
+    const activating = !p.isActive
+    await http.put(`/api/promotions/${p.id}`, { isActive: activating })
+    const { data } = await http.post('/api/settings/pricing/recalculate')
+    let msg = activating ? 'Promotion activated' : 'Promotion deactivated'
+    msg += ` — ${data.updated} product prices recalculated.`
+    toast.success(msg)
     await loadPromotions()
   } catch {
     toast.error('Update failed')
+  } finally {
+    toggleBusy.value = null
   }
 }
 
@@ -278,28 +281,6 @@ async function toggleSpecialActive(s: ProductSpecial) {
     <McAlert v-if="err" variant="error">{{ err }}</McAlert>
     <McAlert v-if="ok" variant="success">{{ ok }}</McAlert>
 
-    <McCard title="Retail mode">
-      <div class="set-radio-group">
-        <McRadioCard
-          :model-value="dto.pricingMode"
-          value="normal"
-          title="Normal retail"
-          description="Cost × 1.5, rounded up to nearest R10"
-          @update:model-value="setPricingMode($event)"
-        />
-        <McRadioCard
-          :model-value="dto.pricingMode"
-          value="huntex"
-          title="Huntex pricing"
-          description="Normal sell ÷ 1.1, rounded up to nearest R10"
-          @update:model-value="setPricingMode($event)"
-        />
-      </div>
-      <p class="set-hint">
-        Sell prices round up to R10. Warnings appear if sell is below distributor cost (ex-VAT + 15%).
-      </p>
-    </McCard>
-
     <McCard title="Default cost markup">
       <McCheckbox v-model="dto.useMarginPercent" label="Use margin %" hint="Otherwise a fixed markup in Rands is applied" />
       <McField label="Default margin % (50 = 1.5× cost)" for-id="set-margin">
@@ -361,11 +342,18 @@ async function toggleSpecialActive(s: ProductSpecial) {
             <span>{{ p.specialsCount }} product special{{ p.specialsCount !== 1 ? 's' : '' }}</span>
           </div>
           <div class="promo-card__actions">
+            <McButton
+              :variant="p.isActive ? 'danger' : 'primary'"
+              dense
+              type="button"
+              :disabled="toggleBusy === p.id"
+              @click="togglePromoActive(p)"
+            >
+              <McSpinner v-if="toggleBusy === p.id" />
+              <span v-else>{{ p.isActive ? 'Deactivate & recalculate' : 'Activate & recalculate' }}</span>
+            </McButton>
             <McButton variant="secondary" dense type="button" @click="openEditPromo(p)">Edit</McButton>
             <McButton variant="secondary" dense type="button" @click="openSpecials(p)">Specials</McButton>
-            <McButton variant="secondary" dense type="button" @click="togglePromoActive(p)">
-              {{ p.isActive ? 'Deactivate' : 'Activate' }}
-            </McButton>
             <McButton variant="ghost" dense type="button" @click="deletePromo(p)">Delete</McButton>
           </div>
         </div>
@@ -476,12 +464,6 @@ async function toggleSpecialActive(s: ProductSpecial) {
 <style scoped>
 .set-page {
   min-height: 100%;
-}
-
-.set-radio-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
 }
 
 .set-hint {
