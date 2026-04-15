@@ -169,11 +169,13 @@ public class ReportsController : ControllerBase
     }
 
     [HttpGet("stock")]
-    public async Task<StockReportDto> StockReport(
+    public async Task<ActionResult<StockReportDto>> StockReport(
         [FromQuery] DateTimeOffset? from,
         [FromQuery] DateTimeOffset? to,
         CancellationToken ct)
     {
+      try
+      {
         var products = await _db.Products.AsNoTracking()
             .Include(p => p.Supplier)
             .Where(p => p.Active)
@@ -313,6 +315,11 @@ public class ReportsController : ControllerBase
             ReceivedInPeriod = receivedInPeriod,
             SoldInPeriod = soldInPeriod
         };
+      }
+      catch (Exception ex)
+      {
+          return StatusCode(500, new { error = ex.Message, detail = ex.InnerException?.Message });
+      }
     }
 
     [HttpPost("purge")]
