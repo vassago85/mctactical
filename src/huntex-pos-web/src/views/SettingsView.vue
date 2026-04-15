@@ -108,7 +108,10 @@ async function loadPromotions() {
   try {
     const { data } = await http.get<Promotion[]>('/api/promotions')
     promotions.value = data
-  } catch { /* non-critical */ }
+  } catch (e) {
+    console.error('Failed to load promotions', e)
+    toast.error('Failed to load promotions')
+  }
 }
 
 function openAddPromo() {
