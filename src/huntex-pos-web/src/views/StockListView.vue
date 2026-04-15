@@ -583,7 +583,7 @@ onMounted(() => {
           <thead>
             <tr>
               <th>SKU</th>
-              <th>Barcode</th>
+              <th>EAN-13 SKU</th>
               <th>Name</th>
               <th>Mfr</th>
               <th>Type</th>
@@ -674,7 +674,7 @@ onMounted(() => {
               <McField label="SKU" for-id="f-sku">
                 <input id="f-sku" v-model="form.sku" required />
               </McField>
-              <McField label="Barcode" for-id="f-bc">
+              <McField label="EAN-13 SKU" for-id="f-bc" hint="Auto-generated on first label print if left blank">
                 <input id="f-bc" v-model="form.barcode" />
               </McField>
             </div>
