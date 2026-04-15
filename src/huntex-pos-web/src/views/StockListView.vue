@@ -194,19 +194,25 @@ function openEdit(p: Product) {
   }
   formErr.value = null
   showForm.value = true
-  nextTick(() => { sellPriceManual.value = false })
+  nextTick(() => {
+    sellPriceManual.value = false
+    computeSellFromCost(form.value.cost)
+  })
+}
+
+async function computeSellFromCost(cost: number) {
+  if (!cost || cost <= 0) { form.value.sellPrice = 0; return }
+  try {
+    const { data } = await http.get<{ sellPrice: number }>('/api/settings/pricing/compute-sell', { params: { cost } })
+    if (!sellPriceManual.value) form.value.sellPrice = data.sellPrice
+  } catch { /* keep current value */ }
 }
 
 watch(() => form.value.cost, (cost) => {
   if (sellPriceManual.value) return
   if (computeTimer) clearTimeout(computeTimer)
   if (!cost || cost <= 0) { form.value.sellPrice = 0; return }
-  computeTimer = setTimeout(async () => {
-    try {
-      const { data } = await http.get<{ sellPrice: number }>('/api/settings/pricing/compute-sell', { params: { cost } })
-      if (!sellPriceManual.value) form.value.sellPrice = data.sellPrice
-    } catch { /* keep current value */ }
-  }, 300)
+  computeTimer = setTimeout(() => computeSellFromCost(cost), 300)
 })
 
 async function saveProduct() {
@@ -638,11 +644,11 @@ onMounted(() => {
               </McField>
             </div>
             <div class="stock-drawer__grid">
-              <McField label="Cost (R)" for-id="f-cost">
-                <input id="f-cost" v-model.number="form.cost" type="number" step="0.01" min="0" />
-              </McField>
               <McField label="Sell price (R)" for-id="f-sell" :hint="sellPriceManual ? '' : 'Auto-calculated from cost'">
                 <input id="f-sell" v-model.number="form.sellPrice" type="number" step="0.01" min="0" @input="sellPriceManual = true" />
+              </McField>
+              <McField label="Cost ex VAT (R)" for-id="f-cost">
+                <input id="f-cost" v-model.number="form.cost" type="number" step="0.01" min="0" />
               </McField>
               <McField label="Qty on hand" for-id="f-qty">
                 <input id="f-qty" v-model.number="form.qtyOnHand" type="number" step="1" min="0" />
