@@ -6,6 +6,7 @@ using QuestPDF.Infrastructure;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
 
 namespace HuntexPos.Api.Services;
 
@@ -61,57 +62,90 @@ public static class LabelPdfService
     {
         var logoBytes = LoadLogo();
 
-        // Portrait page: swap width↔height so the PDF is tall & narrow.
-        // The Brother QL-800 driver auto-rotates to fit the 62 mm tape,
-        // resulting in content printed sideways (rotated 90°).
-        page.Size(LabelHeightMm, LabelWidthMm, Unit.Millimetre);
-        page.MarginHorizontal(PaddingMm, Unit.Millimetre);
-        page.MarginVertical(PaddingMm, Unit.Millimetre);
+        page.Size(LabelWidthMm, LabelHeightMm, Unit.Millimetre);
         page.DefaultTextStyle(x => x.FontSize(8).FontColor(Colors.Black));
 
-        page.Content().Column(col =>
+        // Render the label content to an image, rotate it 90° CW, then embed it.
+        // This guarantees the text, barcode, and logo are all physically rotated
+        // regardless of how the PDF viewer or printer driver handles layout.
+        var contentImage = RenderLabelContentImage(product, logoBytes, barcodeBytes, barcodeText, pricing);
+        var rotatedImage = RotateImageCW(contentImage);
+
+        page.Content().Image(rotatedImage).FitArea();
+    }
+
+    private static byte[] RenderLabelContentImage(Product product, byte[]? logoBytes, byte[]? barcodeBytes, string barcodeText, LabelPricing pricing)
+    {
+        var doc = Document.Create(container =>
         {
-            if (logoBytes != null)
+            container.Page(p =>
             {
-                col.Item().AlignCenter()
-                    .MaxHeight(5, Unit.Millimetre)
-                    .Image(logoBytes).FitArea();
-            }
+                p.Size(LabelHeightMm, LabelWidthMm, Unit.Millimetre);
+                p.MarginHorizontal(PaddingMm, Unit.Millimetre);
+                p.MarginVertical(PaddingMm, Unit.Millimetre);
+                p.DefaultTextStyle(x => x.FontSize(8).FontColor(Colors.Black));
 
-            if (barcodeBytes != null)
-            {
-                col.Item().PaddingTop(1, Unit.Millimetre).AlignCenter()
-                    .MaxHeight(14, Unit.Millimetre)
-                    .Image(barcodeBytes).FitArea();
-            }
-
-            col.Item().AlignCenter()
-                .Text(barcodeText).FontSize(6);
-
-            var hasPromo = pricing.WasPrice.HasValue && pricing.WasPrice.Value != pricing.DisplayPrice;
-            col.Item().PaddingTop(1, Unit.Millimetre).Row(row =>
-            {
-                row.RelativeItem().AlignLeft().AlignBottom().Column(nameCol =>
+                p.Content().Column(col =>
                 {
-                    nameCol.Item().Text(product.Name).Bold().FontSize(6);
-                    if (hasPromo && !string.IsNullOrWhiteSpace(pricing.PromoName))
-                        nameCol.Item().Text(pricing.PromoName).FontSize(5).Bold();
-                });
-
-                row.AutoItem().PaddingLeft(2, Unit.Millimetre).AlignRight().Column(priceCol =>
-                {
-                    priceCol.Item().AlignRight()
-                        .Text($"R{pricing.DisplayPrice:N2}")
-                        .Bold().FontSize(11);
-                    if (hasPromo)
+                    if (logoBytes != null)
                     {
-                        priceCol.Item().AlignRight()
-                            .Text($"was R{pricing.WasPrice!.Value:N2}")
-                            .FontSize(5.5f).Strikethrough();
+                        col.Item().AlignCenter()
+                            .MaxHeight(5, Unit.Millimetre)
+                            .Image(logoBytes).FitArea();
                     }
+
+                    if (barcodeBytes != null)
+                    {
+                        col.Item().PaddingTop(1, Unit.Millimetre).AlignCenter()
+                            .MaxHeight(14, Unit.Millimetre)
+                            .Image(barcodeBytes).FitArea();
+                    }
+
+                    col.Item().AlignCenter()
+                        .Text(barcodeText).FontSize(6);
+
+                    var hasPromo = pricing.WasPrice.HasValue && pricing.WasPrice.Value != pricing.DisplayPrice;
+                    col.Item().PaddingTop(1, Unit.Millimetre).Row(row =>
+                    {
+                        row.RelativeItem().AlignLeft().AlignBottom().Column(nameCol =>
+                        {
+                            nameCol.Item().Text(product.Name).Bold().FontSize(6);
+                            if (hasPromo && !string.IsNullOrWhiteSpace(pricing.PromoName))
+                                nameCol.Item().Text(pricing.PromoName).FontSize(5).Bold();
+                        });
+
+                        row.AutoItem().PaddingLeft(2, Unit.Millimetre).AlignRight().Column(priceCol =>
+                        {
+                            priceCol.Item().AlignRight()
+                                .Text($"R{pricing.DisplayPrice:N2}")
+                                .Bold().FontSize(11);
+                            if (hasPromo)
+                            {
+                                priceCol.Item().AlignRight()
+                                    .Text($"was R{pricing.WasPrice!.Value:N2}")
+                                    .FontSize(5.5f).Strikethrough();
+                            }
+                        });
+                    });
                 });
             });
         });
+
+        return doc.GenerateImages(new ImageGenerationSettings
+        {
+            ImageFormat = ImageFormat.Png,
+            ImageCompressionQuality = ImageCompressionQuality.Best,
+            RasterDpi = 300
+        }).First();
+    }
+
+    private static byte[] RotateImageCW(byte[] pngBytes)
+    {
+        using var img = SixLabors.ImageSharp.Image.Load(pngBytes);
+        img.Mutate(x => x.Rotate(RotateMode.Rotate90));
+        using var ms = new MemoryStream();
+        img.Save(ms, new PngEncoder());
+        return ms.ToArray();
     }
 
     /// <summary>
