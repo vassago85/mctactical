@@ -86,7 +86,7 @@ public static class LabelPdfService
 
             // Row 3: EAN number centred under barcode
             col.Item().AlignCenter()
-                .Text(barcodeText).FontSize(6).FontColor("#444444");
+                .Text(barcodeText).FontSize(6);
 
             // Row 4: Product name (left) + Price (right)
             var hasPromo = pricing.WasPrice.HasValue && pricing.WasPrice.Value != pricing.DisplayPrice;
@@ -94,11 +94,10 @@ public static class LabelPdfService
             {
                 row.RelativeItem().AlignLeft().AlignBottom().Column(nameCol =>
                 {
-                    nameCol.Item().Text(product.Name).Bold().FontSize(6).FontColor("#333333");
+                    nameCol.Item().Text(product.Name).Bold().FontSize(6);
                     if (hasPromo && !string.IsNullOrWhiteSpace(pricing.PromoName))
                     {
-                        nameCol.Item().Text(pricing.PromoName)
-                            .FontSize(5).FontColor("#CC0000").Bold();
+                        nameCol.Item().Text(pricing.PromoName).FontSize(5).Bold();
                     }
                 });
 
@@ -108,10 +107,10 @@ public static class LabelPdfService
                     {
                         priceCol.Item().AlignRight()
                             .Text($"R{pricing.DisplayPrice:N2}")
-                            .Bold().FontSize(11).FontColor("#CC0000");
+                            .Bold().FontSize(11);
                         priceCol.Item().AlignRight()
                             .Text($"was R{pricing.WasPrice!.Value:N2}")
-                            .FontSize(5.5f).FontColor("#999999").Strikethrough();
+                            .FontSize(5.5f).Strikethrough();
                     }
                     else
                     {
