@@ -297,8 +297,6 @@ async function confirmPost() {
 <style scoped>
 .st-page {
   min-height: 100%;
-  max-width: 100%;
-  overflow-x: clip;
 }
 
 .st-steps {

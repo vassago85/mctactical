@@ -214,8 +214,6 @@ async function applyReset() {
 <style scoped>
 .team-page {
   min-height: 100%;
-  max-width: 100%;
-  overflow-x: clip;
 }
 
 .team-lead {

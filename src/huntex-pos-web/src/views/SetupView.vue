@@ -137,8 +137,6 @@ async function sendTest() {
 <style scoped>
 .mail-page {
   min-height: 100%;
-  max-width: 100%;
-  overflow-x: clip;
 }
 
 .mail-key-note {

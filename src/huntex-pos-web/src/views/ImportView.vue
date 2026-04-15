@@ -379,8 +379,6 @@ async function commitWholesaler() {
 <style scoped>
 .imp-page {
   min-height: 100%;
-  max-width: 100%;
-  overflow-x: clip;
 }
 
 .imp-steps {

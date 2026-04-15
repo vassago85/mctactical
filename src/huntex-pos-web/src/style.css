@@ -480,7 +480,6 @@ body.mc-body-app .app-main tbody tr:hover {
   padding: var(--mc-app-pad-page-y, 1.5rem) var(--mc-app-pad-page-x, 2rem)
     var(--mc-space-8);
   color: var(--mc-app-text, inherit);
-  overflow-x: clip;
   overflow-wrap: break-word;
 }
 

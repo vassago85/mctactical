@@ -27,7 +27,6 @@ defineProps<{
   margin-bottom: 1.5rem;
   max-width: 100%;
   min-width: 0;
-  overflow: hidden;
 }
 .mc-card--tight .mc-card__body {
   padding: 0;
