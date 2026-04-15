@@ -33,6 +33,8 @@ type Product = {
   qtyConsignment: number
   active: boolean
   warning?: string | null
+  specialPrice?: number | null
+  specialLabel?: string | null
 }
 
 type Page = { total: number; skip: number; take: number; items: Product[] }
@@ -560,7 +562,14 @@ onMounted(() => {
               <td>{{ p.supplierName ?? '—' }}</td>
               <td>{{ p.cost != null ? formatZAR(p.cost) : '—' }}</td>
               <td :class="{ 'stock-warn': !!p.warning }">
-                {{ formatZAR(p.sellPrice) }}
+                <template v-if="p.specialPrice != null && p.specialPrice !== p.sellPrice">
+                  <span class="stock-special-price">{{ formatZAR(p.specialPrice) }}</span>
+                  <span class="stock-was-price">{{ formatZAR(p.sellPrice) }}</span>
+                  <span class="stock-special-label">{{ p.specialLabel }}</span>
+                </template>
+                <template v-else>
+                  {{ formatZAR(p.sellPrice) }}
+                </template>
                 <span v-if="p.warning" :title="p.warning" class="stock-warn-icon">⚠</span>
               </td>
               <td>
@@ -928,6 +937,26 @@ onMounted(() => {
 .stock-warn-icon {
   cursor: help;
   margin-left: 0.2rem;
+}
+
+.stock-special-price {
+  display: block;
+  font-weight: 700;
+  color: #cc0000;
+}
+
+.stock-was-price {
+  display: block;
+  font-size: 0.8em;
+  color: #999;
+  text-decoration: line-through;
+}
+
+.stock-special-label {
+  display: block;
+  font-size: 0.7em;
+  color: #cc0000;
+  font-weight: 600;
 }
 
 .stock-qty--low {

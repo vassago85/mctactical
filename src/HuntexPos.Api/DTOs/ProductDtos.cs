@@ -19,6 +19,11 @@ public class ProductDto
     public bool Active { get; set; }
     /// <summary>Non-null if sell price is below distributor cost (ex-VAT + 15%).</summary>
     public string? Warning { get; set; }
+
+    /// <summary>Effective price after special/promotion (null = no active special).</summary>
+    public decimal? SpecialPrice { get; set; }
+    /// <summary>Name of the special's promotion, or "Standalone" for non-promo specials.</summary>
+    public string? SpecialLabel { get; set; }
 }
 
 public class ProductSearchQuery

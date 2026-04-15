@@ -62,12 +62,16 @@ public class ProductsController : ControllerBase
         var skip = Math.Max(0, search.Skip);
         var total = await query.CountAsync(ct);
         var list = await query.OrderBy(p => p.Name).Skip(skip).Take(take).ToListAsync(ct);
+
+        var productIds = list.Select(p => p.Id).ToList();
+        var specialMap = await LoadActiveSpecialsMap(productIds, ct);
+
         return new StocklistPageDto
         {
             Total = total,
             Skip = skip,
             Take = take,
-            Items = list.Select(p => Map(p, hideCost)).ToList()
+            Items = list.Select(p => Map(p, hideCost, specialMap.GetValueOrDefault(p.Id))).ToList()
         };
     }
 
@@ -423,6 +427,50 @@ public class ProductsController : ControllerBase
             .FirstOrDefault();
     }
 
+    private record ActiveSpecialInfo(decimal EffectivePrice, string Label);
+
+    private async Task<Dictionary<Guid, ActiveSpecialInfo>> LoadActiveSpecialsMap(List<Guid> productIds, CancellationToken ct)
+    {
+        if (productIds.Count == 0) return new();
+        var promo = await FindActivePromoAsync(ct);
+
+        var specialsQuery = _db.ProductSpecials.AsNoTracking()
+            .Include(s => s.Promotion)
+            .Include(s => s.Product)
+            .Where(s => s.IsActive && productIds.Contains(s.ProductId));
+        specialsQuery = promo != null
+            ? specialsQuery.Where(s => s.PromotionId == null || s.PromotionId == promo.Id)
+            : specialsQuery.Where(s => s.PromotionId == null);
+
+        var specials = await specialsQuery.ToListAsync(ct);
+        var result = new Dictionary<Guid, ActiveSpecialInfo>();
+        foreach (var s in specials)
+        {
+            var baseSell = s.Product?.SellPrice ?? 0;
+            decimal effective;
+            if (s.SpecialPrice.HasValue) effective = s.SpecialPrice.Value;
+            else if (s.DiscountPercent.HasValue) effective = Math.Round(baseSell * (1 - s.DiscountPercent.Value / 100m), 2);
+            else continue;
+            var label = s.Promotion?.Name ?? "Special";
+            result.TryAdd(s.ProductId, new ActiveSpecialInfo(effective, label));
+        }
+
+        if (promo != null && promo.DiscountPercent > 0)
+        {
+            var allProducts = await _db.Products.AsNoTracking()
+                .Where(p => productIds.Contains(p.Id))
+                .ToListAsync(ct);
+            foreach (var p in allProducts)
+            {
+                if (result.ContainsKey(p.Id)) continue;
+                var effective = Math.Round(p.SellPrice * (1 - promo.DiscountPercent / 100m), 2);
+                result[p.Id] = new ActiveSpecialInfo(effective, promo.Name);
+            }
+        }
+
+        return result;
+    }
+
     private async Task<bool> ShouldHideCostAsync(CancellationToken ct)
     {
         if (!User.IsInRole(Roles.Sales)) return false;
@@ -431,7 +479,7 @@ public class ProductsController : ControllerBase
         return hide;
     }
 
-    private static ProductDto Map(Domain.Product p, bool hideCost) => new()
+    private static ProductDto Map(Domain.Product p, bool hideCost, ActiveSpecialInfo? special = null) => new()
     {
         Id = p.Id,
         SupplierId = p.SupplierId,
@@ -450,6 +498,8 @@ public class ProductsController : ControllerBase
         Active = p.Active,
         Warning = !hideCost && PricingCalculator.IsBelowDistributorCost(p.SellPrice, p.Cost)
             ? $"Sell R{p.SellPrice:0} < distributor R{PricingCalculator.DistributorFloor(p.Cost):0.00}"
-            : null
+            : null,
+        SpecialPrice = special?.EffectivePrice,
+        SpecialLabel = special?.Label
     };
 }
