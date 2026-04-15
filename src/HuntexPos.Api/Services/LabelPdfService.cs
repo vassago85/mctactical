@@ -89,21 +89,29 @@ public static class LabelPdfService
                 .Text(barcodeText).FontSize(6).FontColor("#444444");
 
             // Row 4: Product name (left) + Price (right)
+            var hasPromo = pricing.WasPrice.HasValue && pricing.WasPrice.Value != pricing.DisplayPrice;
             col.Item().PaddingTop(0.5f, Unit.Millimetre).Row(row =>
             {
-                row.RelativeItem().AlignLeft().AlignBottom()
-                    .Text(product.Name).Bold().FontSize(6).FontColor("#333333");
-
-                row.AutoItem().AlignRight().Column(priceCol =>
+                row.RelativeItem().AlignLeft().AlignBottom().Column(nameCol =>
                 {
-                    if (pricing.WasPrice.HasValue && pricing.WasPrice.Value != pricing.DisplayPrice)
+                    nameCol.Item().Text(product.Name).Bold().FontSize(6).FontColor("#333333");
+                    if (hasPromo && !string.IsNullOrWhiteSpace(pricing.PromoName))
+                    {
+                        nameCol.Item().Text(pricing.PromoName)
+                            .FontSize(5).FontColor("#CC0000").Bold();
+                    }
+                });
+
+                row.AutoItem().PaddingLeft(2, Unit.Millimetre).AlignRight().Column(priceCol =>
+                {
+                    if (hasPromo)
                     {
                         priceCol.Item().AlignRight()
                             .Text($"R{pricing.DisplayPrice:N2}")
                             .Bold().FontSize(11).FontColor("#CC0000");
                         priceCol.Item().AlignRight()
-                            .Text($"R{pricing.WasPrice.Value:N2}")
-                            .FontSize(6.5f).FontColor("#999999").Strikethrough();
+                            .Text($"was R{pricing.WasPrice!.Value:N2}")
+                            .FontSize(5.5f).FontColor("#999999").Strikethrough();
                     }
                     else
                     {
