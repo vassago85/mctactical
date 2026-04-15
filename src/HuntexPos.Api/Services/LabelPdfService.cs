@@ -52,31 +52,21 @@ public static class LabelPdfService
 
         page.Content().Column(col =>
         {
-            // Row 1: Logo + Product name
-            col.Item().Row(header =>
+            // Row 1: Logo centered
+            if (logoBytes != null)
             {
-                if (logoBytes != null)
-                {
-                    header.ConstantItem(14, Unit.Millimetre)
-                        .AlignMiddle()
-                        .Height(5, Unit.Millimetre)
-                        .Image(logoBytes).FitArea();
-                }
-
-                header.RelativeItem().AlignRight().AlignMiddle().Column(right =>
-                {
-                    right.Item().Text(product.Name)
-                        .Bold().FontSize(7.5f).ClampLines(2).LineHeight(1.1f);
-                });
-            });
+                col.Item().AlignCenter()
+                    .Height(8, Unit.Millimetre)
+                    .Image(logoBytes).FitArea();
+            }
 
             // Row 2: Barcode centered with SKU underneath
-            col.Item().PaddingTop(1f, Unit.Millimetre).AlignCenter().Column(bc =>
+            col.Item().PaddingTop(0.5f, Unit.Millimetre).AlignCenter().Column(bc =>
             {
                 if (barcodeBytes != null)
                 {
                     bc.Item().AlignCenter()
-                        .Height(18, Unit.Millimetre)
+                        .Height(16, Unit.Millimetre)
                         .Width(54, Unit.Millimetre)
                         .Image(barcodeBytes).FitArea();
                 }
@@ -85,7 +75,7 @@ public static class LabelPdfService
             });
 
             // Row 3: Price
-            col.Item().PaddingTop(1f, Unit.Millimetre).AlignCenter().Column(priceCol =>
+            col.Item().PaddingTop(0.5f, Unit.Millimetre).AlignCenter().Column(priceCol =>
             {
                 if (pricing.WasPrice.HasValue && pricing.WasPrice.Value != pricing.DisplayPrice)
                 {
@@ -113,6 +103,11 @@ public static class LabelPdfService
                         .Bold().FontSize(14);
                 }
             });
+
+            // Row 4: Product name at bottom
+            col.Item().PaddingTop(0.5f, Unit.Millimetre).AlignCenter()
+                .Text(product.Name)
+                .Bold().FontSize(6.5f).FontColor("#333333");
         });
     }
 
