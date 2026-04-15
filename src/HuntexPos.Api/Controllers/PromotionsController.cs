@@ -202,14 +202,19 @@ public class PromotionsController : ControllerBase
         else
             specialsQuery = specialsQuery.Where(s => s.PromotionId == null);
 
-        var specials = await specialsQuery
+        var rawSpecials = await specialsQuery.ToListAsync(ct);
+
+        // Deduplicate per product: promotion-linked specials take priority over standalone ones
+        var specials = rawSpecials
+            .GroupBy(s => s.ProductId)
+            .Select(g => g.OrderByDescending(s => s.PromotionId.HasValue).First())
             .Select(s => new ActiveSpecialDto
             {
                 ProductId = s.ProductId,
                 SpecialPrice = s.SpecialPrice,
                 DiscountPercent = s.DiscountPercent
             })
-            .ToListAsync(ct);
+            .ToList();
 
         return new ActivePromotionDto
         {
