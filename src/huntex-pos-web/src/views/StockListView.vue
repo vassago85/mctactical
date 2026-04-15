@@ -461,8 +461,17 @@ async function printLabel() {
       win.addEventListener('load', () => { win.print() })
     }
     showLabelModal.value = false
-  } catch {
-    toast.error('Label generation failed')
+  } catch (e: unknown) {
+    const ax = e as { response?: { data?: Blob | Record<string, string> } }
+    let msg = 'Label generation failed'
+    try {
+      if (ax.response?.data instanceof Blob) {
+        const text = await ax.response.data.text()
+        const json = JSON.parse(text)
+        if (json.error) msg += ': ' + json.error
+      }
+    } catch { /* ignore parse errors */ }
+    toast.error(msg)
   } finally {
     labelBusy.value = false
   }

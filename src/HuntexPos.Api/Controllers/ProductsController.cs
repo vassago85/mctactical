@@ -123,12 +123,19 @@ public class ProductsController : ControllerBase
         if (product == null) return NotFound();
         copies = Math.Clamp(copies, 1, 50);
 
-        var pricing = promo
-            ? await ResolvePromoPricing(product, ct)
-            : new LabelPdfService.LabelPricing(product.SellPrice, null, null);
+        try
+        {
+            var pricing = promo
+                ? await ResolvePromoPricing(product, ct)
+                : new LabelPdfService.LabelPricing(product.SellPrice, null, null);
 
-        var pdf = LabelPdfService.BuildSingleLabel(product, pricing, copies);
-        return File(pdf, "application/pdf", $"label-{product.Sku}.pdf");
+            var pdf = LabelPdfService.BuildSingleLabel(product, pricing, copies);
+            return File(pdf, "application/pdf", $"label-{product.Sku}.pdf");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message, detail = ex.InnerException?.Message });
+        }
     }
 
     /// <summary>Generate a multi-product label PDF (one label per product).</summary>
@@ -143,17 +150,24 @@ public class ProductsController : ControllerBase
         var products = await _db.Products.AsNoTracking().Where(p => ids.Contains(p.Id)).ToListAsync(ct);
         if (products.Count == 0) return NotFound();
 
-        var pricingMap = req.UsePromo
-            ? await ResolvePromoPricingBatch(products, ct)
-            : products.ToDictionary(p => p.Id, p => new LabelPdfService.LabelPricing(p.SellPrice, null, null));
+        try
+        {
+            var pricingMap = req.UsePromo
+                ? await ResolvePromoPricingBatch(products, ct)
+                : products.ToDictionary(p => p.Id, p => new LabelPdfService.LabelPricing(p.SellPrice, null, null));
 
-        var items = ids
-            .Select(id => products.FirstOrDefault(x => x.Id == id))
-            .Where(p => p != null)
-            .Select(p => (p!, pricingMap.GetValueOrDefault(p!.Id, new LabelPdfService.LabelPricing(p.SellPrice, null, null))));
+            var items = ids
+                .Select(id => products.FirstOrDefault(x => x.Id == id))
+                .Where(p => p != null)
+                .Select(p => (p!, pricingMap.GetValueOrDefault(p!.Id, new LabelPdfService.LabelPricing(p.SellPrice, null, null))));
 
-        var pdf = LabelPdfService.BuildMultipleLabels(items);
-        return File(pdf, "application/pdf", "labels.pdf");
+            var pdf = LabelPdfService.BuildMultipleLabels(items);
+            return File(pdf, "application/pdf", "labels.pdf");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message, detail = ex.InnerException?.Message });
+        }
     }
 
     private async Task<LabelPdfService.LabelPricing> ResolvePromoPricing(Product product, CancellationToken ct)

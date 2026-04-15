@@ -11,12 +11,12 @@ namespace HuntexPos.Api.Services;
 
 /// <summary>
 /// Generates product labels sized for the Brother QL-800 with DK-22205 62mm continuous tape.
-/// 62mm wide × 40mm tall per label (continuous tape auto-cuts at this length).
+/// Layout: logo + name top row, then barcode centered with SKU below, then price at bottom.
 /// </summary>
 public static class LabelPdfService
 {
     private const float LabelWidthMm = 62f;
-    private const float LabelHeightMm = 40f;
+    private const float LabelHeightMm = 45f;
     private const float PaddingMm = 2f;
 
     public record LabelPricing(decimal DisplayPrice, decimal? WasPrice, string? PromoName);
@@ -43,6 +43,7 @@ public static class LabelPdfService
     private static void ConfigureLabelPage(PageDescriptor page, Product product, byte[]? barcodeBytes, LabelPricing pricing)
     {
         var logoBytes = LoadLogo();
+        var barcodeText = product.Barcode ?? product.Sku;
 
         page.Size(LabelWidthMm, LabelHeightMm, Unit.Millimetre);
         page.MarginHorizontal(PaddingMm, Unit.Millimetre);
@@ -51,6 +52,7 @@ public static class LabelPdfService
 
         page.Content().Column(col =>
         {
+            // Row 1: Logo + Product name
             col.Item().Row(header =>
             {
                 if (logoBytes != null)
@@ -64,50 +66,51 @@ public static class LabelPdfService
                 header.RelativeItem().AlignRight().AlignMiddle().Column(right =>
                 {
                     right.Item().Text(product.Name)
-                        .Bold().FontSize(8).ClampLines(2).LineHeight(1.1f);
+                        .Bold().FontSize(7.5f).ClampLines(2).LineHeight(1.1f);
                 });
             });
 
-            col.Item().PaddingTop(0.5f, Unit.Millimetre).Row(row =>
+            // Row 2: Barcode centered with SKU underneath
+            col.Item().PaddingTop(1f, Unit.Millimetre).AlignCenter().Column(bc =>
             {
-                row.RelativeItem().Column(left =>
-                {
-                    left.Item().Text(product.Sku)
-                        .FontSize(6.5f).FontColor("#555555");
-
-                    if (pricing.WasPrice.HasValue && pricing.WasPrice.Value != pricing.DisplayPrice)
-                    {
-                        left.Item().PaddingTop(0.3f, Unit.Millimetre).Row(priceRow =>
-                        {
-                            priceRow.AutoItem()
-                                .Text($"R{pricing.DisplayPrice:N2}")
-                                .Bold().FontSize(13).FontColor("#CC0000");
-                            priceRow.AutoItem().PaddingLeft(1.5f, Unit.Millimetre).AlignBottom()
-                                .Text($"R{pricing.WasPrice.Value:N2}")
-                                .FontSize(8).FontColor("#999999").Strikethrough();
-                        });
-
-                        if (!string.IsNullOrWhiteSpace(pricing.PromoName))
-                        {
-                            left.Item().Text(pricing.PromoName)
-                                .FontSize(5.5f).FontColor("#CC0000").Bold();
-                        }
-                    }
-                    else
-                    {
-                        left.Item().PaddingTop(0.3f, Unit.Millimetre)
-                            .Text($"R{pricing.DisplayPrice:N2}")
-                            .Bold().FontSize(13);
-                    }
-                });
-
                 if (barcodeBytes != null)
                 {
-                    row.ConstantItem(30, Unit.Millimetre)
-                        .AlignRight()
-                        .AlignBottom()
-                        .Height(16, Unit.Millimetre)
+                    bc.Item().AlignCenter()
+                        .Height(18, Unit.Millimetre)
+                        .Width(54, Unit.Millimetre)
                         .Image(barcodeBytes).FitArea();
+                }
+                bc.Item().AlignCenter().PaddingTop(0.5f, Unit.Millimetre)
+                    .Text(barcodeText).FontSize(7).FontColor("#444444").LetterSpacing(0.08f);
+            });
+
+            // Row 3: Price
+            col.Item().PaddingTop(1f, Unit.Millimetre).AlignCenter().Column(priceCol =>
+            {
+                if (pricing.WasPrice.HasValue && pricing.WasPrice.Value != pricing.DisplayPrice)
+                {
+                    priceCol.Item().AlignCenter().Row(priceRow =>
+                    {
+                        priceRow.AutoItem()
+                            .Text($"R{pricing.DisplayPrice:N2}")
+                            .Bold().FontSize(14).FontColor("#CC0000");
+                        priceRow.AutoItem().PaddingLeft(2f, Unit.Millimetre).AlignBottom()
+                            .Text($"R{pricing.WasPrice.Value:N2}")
+                            .FontSize(9).FontColor("#999999").Strikethrough();
+                    });
+
+                    if (!string.IsNullOrWhiteSpace(pricing.PromoName))
+                    {
+                        priceCol.Item().AlignCenter()
+                            .Text(pricing.PromoName)
+                            .FontSize(6).FontColor("#CC0000").Bold();
+                    }
+                }
+                else
+                {
+                    priceCol.Item().AlignCenter()
+                        .Text($"R{pricing.DisplayPrice:N2}")
+                        .Bold().FontSize(14);
                 }
             });
         });
@@ -115,7 +118,7 @@ public static class LabelPdfService
 
     public static byte[] BuildSingleLabel(Product product, LabelPricing pricing, int copies = 1)
     {
-        var barcodeBytes = Code128Renderer.RenderToPng(product.Barcode ?? product.Sku, barHeight: 120, moduleWidth: 3);
+        var barcodeBytes = Code128Renderer.RenderToPng(product.Barcode ?? product.Sku, barHeight: 140, moduleWidth: 3);
 
         return Document.Create(container =>
         {
@@ -132,7 +135,7 @@ public static class LabelPdfService
         {
             foreach (var (product, pricing) in list)
             {
-                var barcodeBytes = Code128Renderer.RenderToPng(product.Barcode ?? product.Sku, barHeight: 120, moduleWidth: 3);
+                var barcodeBytes = Code128Renderer.RenderToPng(product.Barcode ?? product.Sku, barHeight: 140, moduleWidth: 3);
                 container.Page(page => ConfigureLabelPage(page, product, barcodeBytes, pricing));
             }
         }).GeneratePdf();
