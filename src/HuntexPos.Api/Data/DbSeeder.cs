@@ -24,6 +24,8 @@ public static class DbSeeder
         await EnsurePricingColumnsAsync(db, ct);
         await EnsureProductColumnsAsync(db, ct);
         await EnsureInvoiceLineColumnsAsync(db, ct);
+        await EnsureStockReceiptsTableAsync(db, ct);
+        await EnsurePromotionsTablesAsync(db, ct);
 
         foreach (var r in Roles.All)
         {
@@ -116,6 +118,58 @@ public static class DbSeeder
         if (!db.Database.IsSqlite()) return;
         try { await db.Database.ExecuteSqlRawAsync(
             """ALTER TABLE "InvoiceLines" ADD COLUMN "CostAtSale" TEXT NOT NULL DEFAULT '0';""", ct); } catch { }
+    }
+
+    private static async Task EnsureStockReceiptsTableAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "StockReceipts" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_StockReceipts" PRIMARY KEY,
+                "ProductId" TEXT NOT NULL,
+                "SupplierId" TEXT,
+                "Type" TEXT NOT NULL,
+                "Quantity" INTEGER NOT NULL,
+                "Notes" TEXT,
+                "ProcessedBy" TEXT,
+                "CreatedAt" TEXT NOT NULL,
+                CONSTRAINT "FK_StockReceipts_Products_ProductId" FOREIGN KEY ("ProductId") REFERENCES "Products" ("Id") ON DELETE CASCADE,
+                CONSTRAINT "FK_StockReceipts_Suppliers_SupplierId" FOREIGN KEY ("SupplierId") REFERENCES "Suppliers" ("Id")
+            );
+            """, ct);
+        try { await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_StockReceipts_ProductId" ON "StockReceipts" ("ProductId");""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_StockReceipts_SupplierId" ON "StockReceipts" ("SupplierId");""", ct); } catch { }
+    }
+
+    private static async Task EnsurePromotionsTablesAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "Promotions" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_Promotions" PRIMARY KEY,
+                "Name" TEXT NOT NULL,
+                "DiscountPercent" TEXT NOT NULL DEFAULT '0',
+                "IsActive" INTEGER NOT NULL DEFAULT 0,
+                "StartsAt" TEXT,
+                "EndsAt" TEXT,
+                "CreatedAt" TEXT NOT NULL
+            );
+            """, ct);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "ProductSpecials" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_ProductSpecials" PRIMARY KEY,
+                "ProductId" TEXT NOT NULL,
+                "PromotionId" TEXT,
+                "SpecialPrice" TEXT,
+                "DiscountPercent" TEXT,
+                "IsActive" INTEGER NOT NULL DEFAULT 1,
+                "CreatedAt" TEXT NOT NULL,
+                CONSTRAINT "FK_ProductSpecials_Products_ProductId" FOREIGN KEY ("ProductId") REFERENCES "Products" ("Id") ON DELETE CASCADE,
+                CONSTRAINT "FK_ProductSpecials_Promotions_PromotionId" FOREIGN KEY ("PromotionId") REFERENCES "Promotions" ("Id")
+            );
+            """, ct);
+        try { await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_ProductSpecials_ProductId" ON "ProductSpecials" ("ProductId");""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_ProductSpecials_PromotionId" ON "ProductSpecials" ("PromotionId");""", ct); } catch { }
     }
 
     /// <summary>Upgrades SQLite DBs created before MailSettings existed (EnsureCreated does not alter schema).</summary>
