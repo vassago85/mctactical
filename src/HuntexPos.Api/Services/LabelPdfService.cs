@@ -132,12 +132,23 @@ public static class LabelPdfService
     }
 
     /// <summary>
-    /// Converts any string to an EAN-13 by extracting digits, padding to 12, and adding check digit.
-    /// Returns null only if there are no digits at all.
+    /// Converts any string to an EAN-13. Extracts digits first; if none, converts letters
+    /// to alphabet positions (A=01, B=02 … Z=26). Pads/truncates to 12 digits + check digit.
     /// </summary>
     public static string? ToEan13(string text)
     {
         var digits = new string(text.Where(char.IsDigit).ToArray());
+        if (digits.Length == 0)
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (var ch in text.ToUpperInvariant())
+            {
+                if (ch >= 'A' && ch <= 'Z')
+                    sb.Append((ch - 'A' + 1).ToString("D2"));
+                if (sb.Length >= 12) break;
+            }
+            digits = sb.ToString();
+        }
         if (digits.Length == 0) return null;
         if (digits.Length > 12) digits = digits[..12];
         digits = digits.PadLeft(12, '0');
