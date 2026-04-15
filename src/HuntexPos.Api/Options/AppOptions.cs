@@ -15,7 +15,9 @@ public class AppOptions
 
     /// <summary>Single line or short block for the shop address.</summary>
     public string CompanyAddress { get; set; } =
-        "877 Patryshond Street, Garsfontein, Pretoria, 0042";
+        "873A Patryshond Street, Garsfontein, Pretoria, 0042";
+
+    public string CompanyVatNumber { get; set; } = "";
 
     public string CompanyWebsite { get; set; } = "https://www.mctactical.co.za";
 

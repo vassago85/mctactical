@@ -47,5 +47,5 @@ WEB_PORT=8095
 - Hash router (`createWebHashHistory`) — no server-side URL rewriting needed for SPA routes
 - All API calls go through `/api/` prefix, proxied by nginx to the api container
 - Role hierarchy: Dev > Owner > Admin > Sales
-- Pricing is VAT-free (MC Tactical is not VAT registered)
+- MC Tactical is VAT registered — invoices must show VAT (15%) breakdown
 - Currency: ZAR (South African Rand)

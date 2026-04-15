@@ -10,6 +10,11 @@ public class Invoice
     public string? CustomerEmail { get; set; }
     public string? CustomerType { get; set; }
 
+    // Business customer fields (optional — for tax invoices)
+    public string? CustomerCompany { get; set; }
+    public string? CustomerAddress { get; set; }
+    public string? CustomerVatNumber { get; set; }
+
     public string PaymentMethod { get; set; } = "Cash";
     public decimal SubTotal { get; set; }
     public decimal TaxRate { get; set; }

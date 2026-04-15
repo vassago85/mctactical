@@ -18,6 +18,9 @@ public class CreateInvoiceRequest
     public string? CustomerName { get; set; }
     public string? CustomerEmail { get; set; }
     public string? CustomerType { get; set; }
+    public string? CustomerCompany { get; set; }
+    public string? CustomerAddress { get; set; }
+    public string? CustomerVatNumber { get; set; }
     [Required]
     public string PaymentMethod { get; set; } = "Cash";
     public decimal DiscountTotal { get; set; }
@@ -47,6 +50,9 @@ public class InvoiceDto
     public string? CustomerName { get; set; }
     public string? CustomerEmail { get; set; }
     public string? CustomerType { get; set; }
+    public string? CustomerCompany { get; set; }
+    public string? CustomerAddress { get; set; }
+    public string? CustomerVatNumber { get; set; }
     public string PaymentMethod { get; set; } = string.Empty;
     public decimal SubTotal { get; set; }
     public decimal TaxRate { get; set; }

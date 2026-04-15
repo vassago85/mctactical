@@ -34,9 +34,7 @@ public class InvoiceService
 
     public async Task<InvoiceDto> CreateAsync(CreateInvoiceRequest req, string userId, bool managerBypassPosRules, CancellationToken ct)
     {
-        // Shop is not VAT-registered: totals are VAT-free (no tax line on invoices).
-        const decimal taxRate = 0m;
-        const decimal taxAmount = 0m;
+        const decimal taxRate = 15m;
 
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
@@ -103,7 +101,10 @@ public class InvoiceService
                     $"Cart discount exceeds allowed {_posRules.MaxCartDiscountPercent}% of the sale subtotal for sales staff.");
         }
 
-        var grandTotal = Math.Max(0, subTotal - req.DiscountTotal);
+        var afterDiscount = Math.Max(0, subTotal - req.DiscountTotal);
+        // Prices are VAT-inclusive; extract the VAT portion
+        var taxAmount = PricingCalculator.Round2(afterDiscount - afterDiscount / (1 + taxRate / 100m));
+        var grandTotal = afterDiscount;
 
         if (!managerBypassPosRules && _posRules.BlockZeroOrNegativeTotal && grandTotal <= 0)
             throw new InvalidOperationException("Sale total must be greater than zero.");
@@ -116,6 +117,9 @@ public class InvoiceService
             CustomerName = req.CustomerName,
             CustomerEmail = req.CustomerEmail,
             CustomerType = req.CustomerType,
+            CustomerCompany = req.CustomerCompany,
+            CustomerAddress = req.CustomerAddress,
+            CustomerVatNumber = req.CustomerVatNumber,
             PaymentMethod = req.PaymentMethod,
             SubTotal = subTotal,
             TaxRate = taxRate,
@@ -202,6 +206,9 @@ public class InvoiceService
             CustomerName = inv.CustomerName,
             CustomerEmail = inv.CustomerEmail,
             CustomerType = inv.CustomerType,
+            CustomerCompany = inv.CustomerCompany,
+            CustomerAddress = inv.CustomerAddress,
+            CustomerVatNumber = inv.CustomerVatNumber,
             PaymentMethod = inv.PaymentMethod,
             SubTotal = inv.SubTotal,
             TaxRate = inv.TaxRate,

@@ -35,6 +35,8 @@ public class InvoicePdfService
     public byte[] BuildPdf(Invoice invoice)
     {
         var logoBytes = LoadLogo();
+        var hasVat = !string.IsNullOrWhiteSpace(_app.CompanyVatNumber);
+        var title = hasVat ? "TAX INVOICE" : "INVOICE";
 
         return Document.Create(container =>
         {
@@ -45,6 +47,7 @@ public class InvoicePdfService
                 page.MarginVertical(35);
                 page.DefaultTextStyle(x => x.FontSize(10).FontColor(TextDark));
 
+                // ── Header: logo left, invoice title right ──
                 page.Header().Column(header =>
                 {
                     header.Item().Row(row =>
@@ -57,7 +60,7 @@ public class InvoicePdfService
 
                         row.RelativeItem().AlignRight().AlignMiddle().Column(right =>
                         {
-                            right.Item().Text("INVOICE")
+                            right.Item().Text(title)
                                 .Bold().FontSize(22).FontColor(TextDark).LetterSpacing(0.04f);
                             right.Item().Text(invoice.InvoiceNumber)
                                 .FontSize(11).FontColor(TextMuted);
@@ -68,9 +71,65 @@ public class InvoicePdfService
                         .LineHorizontal(2).LineColor(AccentHex);
                 });
 
-                page.Content().PaddingTop(16).Column(col =>
+                page.Content().PaddingTop(14).Column(col =>
                 {
+                    // ── Seller / Buyer blocks ──
                     col.Item().Row(row =>
+                    {
+                        // Left: seller (MC Tactical)
+                        row.RelativeItem().Column(seller =>
+                        {
+                            seller.Item().Text("FROM").FontSize(7).Bold()
+                                .FontColor(TextLight).LetterSpacing(0.08f);
+                            seller.Item().PaddingTop(2)
+                                .Text(_app.CompanyDisplayName).Bold().FontSize(10);
+                            if (!string.IsNullOrWhiteSpace(_app.CompanyAddress))
+                            {
+                                foreach (var chunk in _app.CompanyAddress
+                                    .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                                    seller.Item().Text(chunk).FontSize(9).FontColor(TextMuted);
+                            }
+                            if (!string.IsNullOrWhiteSpace(_app.CompanyPhone))
+                                seller.Item().Text($"Tel: {_app.CompanyPhone}").FontSize(9).FontColor(TextMuted);
+                            if (!string.IsNullOrWhiteSpace(_app.CompanyEmail))
+                                seller.Item().Text(_app.CompanyEmail).FontSize(9).FontColor(TextMuted);
+                            if (hasVat)
+                                seller.Item().PaddingTop(2)
+                                    .Text($"VAT No: {_app.CompanyVatNumber}").FontSize(9).Bold();
+                        });
+
+                        // Right: buyer / customer
+                        row.RelativeItem().Column(buyer =>
+                        {
+                            buyer.Item().Text("BILL TO").FontSize(7).Bold()
+                                .FontColor(TextLight).LetterSpacing(0.08f);
+
+                            if (!string.IsNullOrWhiteSpace(invoice.CustomerCompany))
+                                buyer.Item().PaddingTop(2)
+                                    .Text(invoice.CustomerCompany).Bold().FontSize(10);
+
+                            if (!string.IsNullOrWhiteSpace(invoice.CustomerName))
+                                buyer.Item().PaddingTop(string.IsNullOrWhiteSpace(invoice.CustomerCompany) ? 2 : 0)
+                                    .Text(invoice.CustomerName).FontSize(10);
+
+                            if (!string.IsNullOrWhiteSpace(invoice.CustomerAddress))
+                            {
+                                foreach (var chunk in invoice.CustomerAddress
+                                    .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                                    buyer.Item().Text(chunk).FontSize(9).FontColor(TextMuted);
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(invoice.CustomerEmail))
+                                buyer.Item().Text(invoice.CustomerEmail).FontSize(9).FontColor(TextMuted);
+
+                            if (!string.IsNullOrWhiteSpace(invoice.CustomerVatNumber))
+                                buyer.Item().PaddingTop(2)
+                                    .Text($"VAT No: {invoice.CustomerVatNumber}").FontSize(9).Bold();
+                        });
+                    });
+
+                    // ── Meta row: date / payment ──
+                    col.Item().PaddingTop(12).Row(row =>
                     {
                         void MetaCell(IContainer c, string label, string value)
                         {
@@ -84,14 +143,11 @@ public class InvoicePdfService
 
                         MetaCell(row.RelativeItem(), "DATE",
                             invoice.CreatedAt.ToOffset(TimeSpan.FromHours(2)).ToString("yyyy-MM-dd  HH:mm"));
-
-                        if (!string.IsNullOrWhiteSpace(invoice.CustomerName))
-                            MetaCell(row.RelativeItem(), "CUSTOMER", invoice.CustomerName);
-
                         MetaCell(row.RelativeItem(), "PAYMENT", invoice.PaymentMethod);
                     });
 
-                    col.Item().PaddingTop(16).Table(table =>
+                    // ── Line items table ──
+                    col.Item().PaddingTop(14).Table(table =>
                     {
                         table.ColumnsDefinition(c =>
                         {
@@ -115,7 +171,7 @@ public class InvoicePdfService
 
                             Th(h.Cell(), "ITEM");
                             Th(h.Cell(), "QTY", true);
-                            Th(h.Cell(), "PRICE", true);
+                            Th(h.Cell(), "PRICE (INCL.)", true);
                             Th(h.Cell(), "TOTAL", true);
                         });
 
@@ -178,40 +234,50 @@ public class InvoicePdfService
                         }
                     });
 
+                    // ── Totals with VAT breakdown ──
                     col.Item().PaddingTop(12).AlignRight().Column(totals =>
                     {
                         totals.Spacing(3);
-                        totals.Item().Text($"Subtotal:  R{invoice.SubTotal:N2}")
-                            .FontSize(10).FontColor(TextMuted);
+
+                        var afterDiscount = invoice.SubTotal - invoice.DiscountTotal;
+                        if (afterDiscount < 0) afterDiscount = 0;
+                        var exclVat = afterDiscount - invoice.TaxAmount;
 
                         if (invoice.DiscountTotal > 0)
                         {
+                            totals.Item().Text($"Subtotal (incl. VAT):  R{invoice.SubTotal:N2}")
+                                .FontSize(10).FontColor(TextMuted);
                             var discLabel = !string.IsNullOrWhiteSpace(invoice.PromotionName)
                                 ? $"{invoice.PromotionName} discount" : "Discount";
                             totals.Item().Text($"{discLabel}:  -R{invoice.DiscountTotal:N2}")
                                 .FontSize(10).FontColor("#CC0000");
                         }
 
+                        totals.Item().Text($"Total excl. VAT:  R{exclVat:N2}")
+                            .FontSize(10).FontColor(TextMuted);
+
                         if (invoice.TaxAmount > 0)
-                            totals.Item().Text($"Tax ({invoice.TaxRate:F2}%):  R{invoice.TaxAmount:N2}")
+                            totals.Item().Text($"VAT ({invoice.TaxRate:F0}%):  R{invoice.TaxAmount:N2}")
                                 .FontSize(10).FontColor(TextMuted);
                     });
 
+                    // ── Grand total box ──
                     col.Item().PaddingTop(8).Row(totalRow =>
                     {
                         totalRow.RelativeItem();
-                        totalRow.ConstantItem(220).Background("#FFF5EB")
+                        totalRow.ConstantItem(240).Background("#FFF5EB")
                             .Border(1).BorderColor("#F9C89B")
                             .Padding(10).Row(inner =>
                             {
                                 inner.RelativeItem().AlignMiddle()
-                                    .Text("Total due").FontSize(11).FontColor(TextMuted);
+                                    .Text("Total due (incl. VAT)").FontSize(10).FontColor(TextMuted);
                                 inner.AutoItem().AlignRight().AlignMiddle()
                                     .Text($"R{invoice.GrandTotal:N2}")
                                     .Bold().FontSize(16).FontColor(TextDark);
                             });
                     });
 
+                    // ── Footer: company details ──
                     var (footerTitle, footerLines) = ReceiptCompanyContact.ToPdfFooter(_app);
                     col.Item().PaddingTop(30)
                         .LineHorizontal(1).LineColor(BorderLight);
@@ -219,6 +285,8 @@ public class InvoicePdfService
                         .Text(footerTitle).SemiBold().FontSize(10).FontColor(TextDark);
                     foreach (var line in footerLines)
                         col.Item().Text(line).FontSize(9).FontColor(TextMuted);
+                    if (hasVat)
+                        col.Item().Text($"VAT No: {_app.CompanyVatNumber}").FontSize(9).FontColor(TextMuted);
                 });
             });
         }).GeneratePdf();

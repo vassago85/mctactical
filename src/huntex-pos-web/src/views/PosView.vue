@@ -43,6 +43,10 @@ const scanOpen = ref(false)
 const customerName = ref('')
 const customerEmail = ref('')
 const customerType = ref('')
+const customerCompany = ref('')
+const customerAddress = ref('')
+const customerVatNumber = ref('')
+const showBusinessFields = ref(false)
 const paymentMethod = ref('Cash')
 const discountTotal = ref(0)
 const sendEmail = ref(true)
@@ -183,6 +187,10 @@ const subTotal = computed(() =>
 )
 
 const grandPreview = computed(() => Math.max(0, subTotal.value - discountTotal.value))
+const vatAmount = computed(() => {
+  const total = grandPreview.value
+  return Math.round((total - total / 1.15) * 100) / 100
+})
 
 const totalCost = computed(() =>
   cart.value.reduce((s, l) => s + (l.product.cost ?? 0) * l.qty, 0)
@@ -209,6 +217,9 @@ async function doCheckout() {
       customerName: customerName.value || null,
       customerEmail: customerEmail.value || null,
       customerType: customerType.value || null,
+      customerCompany: customerCompany.value || null,
+      customerAddress: customerAddress.value || null,
+      customerVatNumber: customerVatNumber.value || null,
       paymentMethod: paymentMethod.value,
       discountTotal: discountTotal.value,
       promotionName: activePromo.value?.promotionName || null,
@@ -236,6 +247,10 @@ async function doCheckout() {
     customerName.value = ''
     customerEmail.value = ''
     customerType.value = ''
+    customerCompany.value = ''
+    customerAddress.value = ''
+    customerVatNumber.value = ''
+    showBusinessFields.value = false
     paymentMethod.value = 'Cash'
     showSaleSummary.value = true
     results.value = []
@@ -437,6 +452,23 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
             </McField>
           </div>
           <McCheckbox v-model="sendEmail" label="Email invoice link" hint="Sends the customer a link to view &amp; download their invoice" />
+
+          <div style="margin-top: 0.75rem">
+            <button type="button" class="btn-link-toggle" @click="showBusinessFields = !showBusinessFields">
+              {{ showBusinessFields ? '▾ Hide' : '▸ Add' }} business / VAT details
+            </button>
+          </div>
+          <div v-if="showBusinessFields" class="pos-customer-grid" style="margin-top: 0.5rem">
+            <McField label="Company name" for-id="cust-company">
+              <input id="cust-company" v-model="customerCompany" type="text" placeholder="Business name" />
+            </McField>
+            <McField label="Company VAT number" for-id="cust-vat">
+              <input id="cust-vat" v-model="customerVatNumber" type="text" placeholder="e.g. 4123456789" />
+            </McField>
+            <McField label="Business address" for-id="cust-addr" class="span-full">
+              <textarea id="cust-addr" v-model="customerAddress" rows="2" placeholder="Street, City, Postal code" />
+            </McField>
+          </div>
         </McCard>
 
         <div class="pos-sticky-foot">
@@ -449,8 +481,12 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
               <span>After order discount</span>
               <strong>{{ formatZAR(grandPreview) }}</strong>
             </div>
+            <div v-if="grandPreview > 0" class="pos-totals__row pos-totals__row--muted">
+              <span>Incl. VAT (15%)</span>
+              <span>{{ formatZAR(vatAmount) }}</span>
+            </div>
             <div class="pos-totals__row pos-totals__grand">
-              <span>Total due</span>
+              <span>Total due (incl. VAT)</span>
               <strong>{{ formatZAR(grandPreview) }}</strong>
             </div>
           </div>
@@ -772,6 +808,19 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 0 1.25rem;
   }
+  .pos-customer-grid .span-full {
+    grid-column: 1 / -1;
+  }
+}
+
+.btn-link-toggle {
+  background: none;
+  border: none;
+  color: var(--mc-accent, #f47a20);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0;
+  text-decoration: underline;
 }
 
 .pos-sticky-foot {
