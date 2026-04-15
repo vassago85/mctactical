@@ -17,7 +17,7 @@ public class AppOptions
     public string CompanyAddress { get; set; } =
         "873A Patryshond Street, Garsfontein, Pretoria, 0042";
 
-    public string CompanyVatNumber { get; set; } = "";
+    public string CompanyVatNumber { get; set; } = "4030296307";
 
     public string CompanyWebsite { get; set; } = "https://www.mctactical.co.za";
 
