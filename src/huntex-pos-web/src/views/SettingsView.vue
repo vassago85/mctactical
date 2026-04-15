@@ -169,10 +169,7 @@ async function togglePromoActive(p: Promotion) {
   try {
     const activating = !p.isActive
     await http.put(`/api/promotions/${p.id}`, { isActive: activating })
-    const { data } = await http.post('/api/settings/pricing/recalculate')
-    let msg = activating ? 'Promotion activated' : 'Promotion deactivated'
-    msg += ` — ${data.updated} product prices recalculated.`
-    toast.success(msg)
+    toast.success(activating ? 'Promotion activated' : 'Promotion deactivated')
     await loadPromotions()
   } catch {
     toast.error('Update failed')
@@ -353,7 +350,7 @@ async function toggleSpecialActive(s: ProductSpecial) {
               @click="togglePromoActive(p)"
             >
               <McSpinner v-if="toggleBusy === p.id" />
-              <span v-else>{{ p.isActive ? 'Deactivate & recalculate' : 'Activate & recalculate' }}</span>
+              <span v-else>{{ p.isActive ? 'Deactivate' : 'Activate' }}</span>
             </McButton>
             <McButton variant="secondary" dense type="button" @click="openEditPromo(p)">Edit</McButton>
             <McButton variant="secondary" dense type="button" @click="openSpecials(p)">Specials</McButton>
