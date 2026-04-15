@@ -106,6 +106,8 @@ const consignSupplierId = ref('')
 const supplierList = ref<Supplier[]>([])
 const expandedConsignSuppliers = ref<Set<string>>(new Set())
 
+const showSohDetail = ref(false)
+
 /* Purge state */
 const showPurgeConfirm = ref(false)
 const purging = ref(false)
@@ -309,6 +311,32 @@ async function exportCsv() {
   } catch {
     toast.error('Export failed')
   }
+}
+
+function exportSohCsv() {
+  if (!stockReport.value) return
+  const lines = stockReport.value.onHand.lines
+  const rows = [
+    ['SKU', 'Name', 'Supplier', 'Owned', 'Consignment', 'Cost', 'Sell', 'Owned Value'].join(','),
+    ...lines.map(p => [
+      csvEsc(p.sku), csvEsc(p.name), csvEsc(p.supplierName ?? ''),
+      p.qtyOwned, p.qtyConsignment, p.cost.toFixed(2), p.sellPrice.toFixed(2), p.ownedValue.toFixed(2)
+    ].join(','))
+  ]
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'stock-on-hand.csv'
+  a.click()
+  URL.revokeObjectURL(url)
+  toast.success('CSV downloaded')
+}
+
+function csvEsc(s: string) {
+  if (s.includes('"') || s.includes(',') || s.includes('\n'))
+    return '"' + s.replace(/"/g, '""') + '"'
+  return s
 }
 
 async function purgeData() {
@@ -535,9 +563,16 @@ async function purgeData() {
           </div>
         </McCard>
 
-        <!-- Stock on hand detail -->
+        <!-- Stock on hand detail (collapsed by default) -->
         <McCard title="Stock on hand (all active products)">
-          <div class="rep-table-wrap">
+          <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;margin-bottom:0.5rem">
+            <McButton variant="secondary" dense type="button" @click="showSohDetail = !showSohDetail">
+              {{ showSohDetail ? 'Hide detail' : 'Show detail' }} ({{ stockReport.onHand.lines.length }} products)
+            </McButton>
+            <McButton variant="ghost" dense type="button" @click="exportSohCsv">Export CSV</McButton>
+          </div>
+
+          <div v-if="showSohDetail" class="rep-table-wrap">
             <table class="mc-table">
               <thead>
                 <tr>

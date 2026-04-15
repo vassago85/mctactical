@@ -607,7 +607,7 @@ onMounted(() => {
               <td>{{ p.itemType ?? '—' }}</td>
               <td>{{ p.category ?? '—' }}</td>
               <td>{{ p.supplierName ?? '—' }}</td>
-              <td>{{ p.cost ? formatZAR(p.cost) : '—' }}</td>
+              <td>{{ p.cost != null && p.cost > 0 ? formatZAR(p.cost) : '—' }}</td>
               <td :class="{ 'stock-warn': !!p.warning }">
                 {{ formatZAR(p.sellPrice) }}
                 <span v-if="p.warning" :title="p.warning" class="stock-warn-icon">⚠</span>
