@@ -295,16 +295,18 @@ function openReceiptModal(p: Product, type: typeof receiptType.value) {
   consignmentSummary.value = []
   showReceiptModal.value = true
   if (type === 'ConsignmentToStock' || type === 'ConsignmentReturn' || type === 'StockToConsignment') {
-    void loadConsignmentSummary(p.id)
+    void loadConsignmentSummary(p.id, p.supplierId ?? undefined)
   }
 }
 
-async function loadConsignmentSummary(productId: string) {
+async function loadConsignmentSummary(productId: string, productSupplierId?: string) {
   try {
     const { data } = await http.get<ConsignmentSummaryLine[]>(`/api/products/${productId}/consignment-summary`)
     consignmentSummary.value = data.filter(s => s.onHand > 0)
     if (consignmentSummary.value.length === 1) {
       receiptSupplierId.value = consignmentSummary.value[0].supplierId
+    } else if (consignmentSummary.value.length === 0 && productSupplierId) {
+      receiptSupplierId.value = productSupplierId
     }
   } catch { /* non-critical */ }
 }
@@ -313,7 +315,8 @@ const receiptMaxQty = computed(() => {
   if (receiptType.value === 'StockToConsignment') return receiptProduct.value?.qtyOnHand ?? 0
   if (receiptType.value !== 'ConsignmentToStock' && receiptType.value !== 'ConsignmentReturn') return 999999
   const line = consignmentSummary.value.find(s => s.supplierId === receiptSupplierId.value)
-  return line?.onHand ?? 0
+  if (line) return line.onHand
+  return receiptProduct.value?.qtyConsignment ?? 0
 })
 
 const receiptTypeLabel = computed(() => {
@@ -740,13 +743,16 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
       >
         <select id="r-supplier" v-model="receiptSupplierId" required>
           <option value="" disabled>Select supplier…</option>
-          <template v-if="receiptType === 'ConsignmentToStock' || receiptType === 'ConsignmentReturn'">
+          <template v-if="(receiptType === 'ConsignmentToStock' || receiptType === 'ConsignmentReturn') && consignmentSummary.length > 0">
             <option v-for="s in consignmentSummary" :key="s.supplierId" :value="s.supplierId">
               {{ s.supplierName }} ({{ s.onHand }} on hand)
             </option>
           </template>
           <template v-else>
-            <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+            <option v-for="s in suppliers" :key="s.id" :value="s.id">
+              {{ s.name }}
+              <template v-if="receiptProduct?.supplierId === s.id"> (assigned)</template>
+            </option>
           </template>
         </select>
       </McField>
@@ -762,7 +768,7 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
         <input id="r-qty" v-model.number="receiptQty" type="number" min="1" :max="receiptMaxQty" step="1" required />
       </McField>
       <p v-if="(receiptType === 'ConsignmentToStock' || receiptType === 'ConsignmentReturn') && receiptSupplierId" class="receipt-max-hint">
-        Max: {{ receiptMaxQty }} consignment units from this supplier
+        Max: {{ receiptMaxQty }} consignment units{{ consignmentSummary.find(s => s.supplierId === receiptSupplierId) ? ' from this supplier' : '' }}
       </p>
       <p v-if="receiptType === 'StockToConsignment'" class="receipt-max-hint">
         Max: {{ receiptMaxQty }} owned units available

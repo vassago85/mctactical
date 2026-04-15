@@ -43,8 +43,9 @@ public class StockReceiptsController : ControllerBase
         if (type is StockReceiptType.ConsignmentToStock or StockReceiptType.ConsignmentReturn)
         {
             var supplierBalance = await GetSupplierConsignmentBalance(productId, req.SupplierId!.Value, ct);
-            if (req.Quantity > supplierBalance)
-                return BadRequest(new { error = $"Only {supplierBalance} consignment units available from this supplier." });
+            var effectiveMax = supplierBalance > 0 ? supplierBalance : product.QtyConsignment;
+            if (req.Quantity > effectiveMax)
+                return BadRequest(new { error = $"Only {effectiveMax} consignment units available{(supplierBalance > 0 ? " from this supplier" : "")}." });
         }
 
         if (type is StockReceiptType.StockToConsignment)
