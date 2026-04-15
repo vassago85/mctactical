@@ -424,7 +424,7 @@ public class ProductsController : ControllerBase
         if (req.Manufacturer != null) p.Manufacturer = string.IsNullOrWhiteSpace(req.Manufacturer) ? null : req.Manufacturer.Trim();
         if (req.ItemType != null) p.ItemType = string.IsNullOrWhiteSpace(req.ItemType) ? null : req.ItemType.Trim();
         if (req.SupplierId.HasValue) p.SupplierId = req.SupplierId;
-        if (req.Cost.HasValue && req.Cost.Value > 0) p.Cost = req.Cost.Value;
+        if (req.Cost.HasValue) p.Cost = req.Cost.Value;
         if (req.SellPrice.HasValue && req.SellPrice.Value > 0)
             p.SellPrice = req.SellPrice.Value;
         if (req.QtyOnHand.HasValue) p.QtyOnHand = req.QtyOnHand.Value;

@@ -224,6 +224,8 @@ async function saveProduct() {
   formErr.value = null
   formBusy.value = true
   try {
+    const costVal = Number(form.value.cost) || 0
+    const sellVal = Number(form.value.sellPrice) || 0
     const payload: Record<string, unknown> = {
       sku: form.value.sku,
       barcode: form.value.barcode || null,
@@ -232,8 +234,8 @@ async function saveProduct() {
       manufacturer: form.value.manufacturer || null,
       itemType: form.value.itemType || null,
       supplierId: form.value.supplierId || null,
-      cost: form.value.cost,
-      sellPrice: form.value.sellPrice,
+      cost: costVal > 0 ? costVal : null,
+      sellPrice: sellVal > 0 ? sellVal : null,
     }
     if (editId.value) {
       await http.put(`/api/products/${editId.value}`, payload)
