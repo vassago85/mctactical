@@ -202,6 +202,8 @@ public class ProductsController : ControllerBase
             p => ComputeLabelPricing(p, promo, specialMap.GetValueOrDefault(p.Id)));
     }
 
+    private static decimal RoundUpR10(decimal v) => Math.Ceiling(v / 10m) * 10m;
+
     private static LabelPdfService.LabelPricing ComputeLabelPricing(Product product, Promotion? promo, ProductSpecial? special)
     {
         var baseSell = product.SellPrice;
@@ -212,13 +214,13 @@ public class ProductsController : ControllerBase
             if (special.SpecialPrice.HasValue)
                 effective = special.SpecialPrice.Value;
             else if (special.DiscountPercent.HasValue)
-                effective = Math.Round(baseSell * (1 - special.DiscountPercent.Value / 100m), 2);
+                effective = RoundUpR10(baseSell * (1 - special.DiscountPercent.Value / 100m));
             else
                 effective = baseSell;
         }
         else if (promo != null && promo.DiscountPercent > 0)
         {
-            effective = Math.Round(baseSell * (1 - promo.DiscountPercent / 100m), 2);
+            effective = RoundUpR10(baseSell * (1 - promo.DiscountPercent / 100m));
         }
         else
         {
@@ -463,7 +465,7 @@ public class ProductsController : ControllerBase
             var baseSell = s.Product?.SellPrice ?? 0;
             decimal effective;
             if (s.SpecialPrice.HasValue) effective = s.SpecialPrice.Value;
-            else if (s.DiscountPercent.HasValue) effective = Math.Round(baseSell * (1 - s.DiscountPercent.Value / 100m), 2);
+            else if (s.DiscountPercent.HasValue) effective = RoundUpR10(baseSell * (1 - s.DiscountPercent.Value / 100m));
             else continue;
             var label = s.Promotion?.Name ?? "Special";
             result.TryAdd(s.ProductId, new ActiveSpecialInfo(effective, label));
@@ -477,7 +479,7 @@ public class ProductsController : ControllerBase
             foreach (var p in allProducts)
             {
                 if (result.ContainsKey(p.Id)) continue;
-                var effective = Math.Round(p.SellPrice * (1 - promo.DiscountPercent / 100m), 2);
+                var effective = RoundUpR10(p.SellPrice * (1 - promo.DiscountPercent / 100m));
                 result[p.Id] = new ActiveSpecialInfo(effective, promo.Name);
             }
         }

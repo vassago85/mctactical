@@ -62,18 +62,22 @@ const activePromo = ref<ActivePromotion | null>(null)
 
 const showBelowCostModal = ref(false)
 
+function roundUpR10(v: number): number {
+  return Math.ceil(v / 10) * 10
+}
+
 function getEffectivePrice(p: Product): { price: number; hasDiscount: boolean } {
   if (!activePromo.value) return { price: p.sellPrice, hasDiscount: false }
   const special = activePromo.value.specials.find(s => s.productId === p.id)
   if (special) {
     if (special.specialPrice != null) return { price: special.specialPrice, hasDiscount: special.specialPrice !== p.sellPrice }
     if (special.discountPercent != null) {
-      const price = Math.round(p.sellPrice * (1 - special.discountPercent / 100) * 100) / 100
+      const price = roundUpR10(p.sellPrice * (1 - special.discountPercent / 100))
       return { price, hasDiscount: special.discountPercent > 0 }
     }
   }
   if (activePromo.value.siteDiscountPercent > 0) {
-    const price = Math.round(p.sellPrice * (1 - activePromo.value.siteDiscountPercent / 100) * 100) / 100
+    const price = roundUpR10(p.sellPrice * (1 - activePromo.value.siteDiscountPercent / 100))
     return { price, hasDiscount: true }
   }
   return { price: p.sellPrice, hasDiscount: false }

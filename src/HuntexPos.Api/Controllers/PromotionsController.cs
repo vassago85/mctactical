@@ -245,7 +245,7 @@ public class PromotionsController : ControllerBase
         if (s.SpecialPrice.HasValue)
             effective = s.SpecialPrice.Value;
         else if (s.DiscountPercent.HasValue)
-            effective = Math.Round(basePrice * (1 - s.DiscountPercent.Value / 100m), 2);
+            effective = Math.Ceiling(basePrice * (1 - s.DiscountPercent.Value / 100m) / 10m) * 10m;
         else
             effective = basePrice;
 
