@@ -66,7 +66,7 @@ public static class LabelPdfService
         page.MarginVertical(PaddingMm, Unit.Millimetre);
         page.DefaultTextStyle(x => x.FontSize(8).FontColor(Colors.Black));
 
-        page.Content().Column(col =>
+        page.Content().RotateRight().Column(col =>
         {
             if (logoBytes != null)
             {
