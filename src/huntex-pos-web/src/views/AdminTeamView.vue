@@ -215,6 +215,7 @@ async function applyReset() {
 .team-page {
   min-height: 100%;
   max-width: 100%;
+  overflow: hidden;
 }
 
 .team-lead {

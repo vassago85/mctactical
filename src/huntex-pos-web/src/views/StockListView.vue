@@ -397,6 +397,8 @@ onMounted(() => void load())
 <style scoped>
 .stock-page {
   min-height: 100%;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .stock-toolbar {

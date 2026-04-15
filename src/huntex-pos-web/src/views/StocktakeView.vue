@@ -236,28 +236,30 @@ async function confirmPost() {
       </div>
 
       <McCard title="Session lines">
-        <table v-if="session.lines.length" class="st-lines mc-table">
-          <thead>
-            <tr>
-              <th>Product</th>
-              <th>SKU</th>
-              <th>Before</th>
-              <th>Counted</th>
-              <th>Variance</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="l in session.lines" :key="l.id">
-              <td>{{ l.productName }}</td>
-              <td>{{ l.sku }}</td>
-              <td>{{ l.qtyBefore }}</td>
-              <td>{{ l.qtyCounted }}</td>
-              <td :class="{ 'st-var--ok': l.qtyCounted === l.qtyBefore, 'st-var--diff': l.qtyCounted !== l.qtyBefore }">
-                {{ l.qtyCounted - l.qtyBefore >= 0 ? '+' : '' }}{{ l.qtyCounted - l.qtyBefore }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div v-if="session.lines.length" class="st-table-wrap">
+          <table class="st-lines mc-table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>SKU</th>
+                <th>Before</th>
+                <th>Counted</th>
+                <th>Variance</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="l in session.lines" :key="l.id">
+                <td>{{ l.productName }}</td>
+                <td>{{ l.sku }}</td>
+                <td>{{ l.qtyBefore }}</td>
+                <td>{{ l.qtyCounted }}</td>
+                <td :class="{ 'st-var--ok': l.qtyCounted === l.qtyBefore, 'st-var--diff': l.qtyCounted !== l.qtyBefore }">
+                  {{ l.qtyCounted - l.qtyBefore >= 0 ? '+' : '' }}{{ l.qtyCounted - l.qtyBefore }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
         <McEmptyState v-else title="No lines yet" hint="Search and save a counted quantity for each product." />
       </McCard>
 
@@ -295,6 +297,8 @@ async function confirmPost() {
 <style scoped>
 .st-page {
   min-height: 100%;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .st-steps {
@@ -474,6 +478,11 @@ async function confirmPost() {
   font-size: 1.5rem !important;
   font-weight: 700;
   text-align: center;
+}
+
+.st-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .st-lines {

@@ -143,6 +143,8 @@ async function exportCsv() {
 <style scoped>
 .rep-page {
   min-height: 100%;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .rep-table-wrap {
