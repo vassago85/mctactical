@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
@@ -46,6 +46,7 @@ type StockReceipt = {
   supplierName?: string | null
   type: string
   quantity: number
+  costPrice?: number | null
   notes?: string | null
   processedBy?: string | null
   createdAt: string
@@ -217,7 +218,7 @@ async function saveProduct() {
   formErr.value = null
   formBusy.value = true
   try {
-    const payload = {
+    const payload: Record<string, unknown> = {
       sku: form.value.sku,
       barcode: form.value.barcode || null,
       name: form.value.name,
@@ -227,12 +228,12 @@ async function saveProduct() {
       supplierId: form.value.supplierId || null,
       cost: form.value.cost,
       sellPrice: form.value.sellPrice,
-      qtyOnHand: form.value.qtyOnHand
     }
     if (editId.value) {
       await http.put(`/api/products/${editId.value}`, payload)
       toast.success('Product updated')
     } else {
+      payload.qtyOnHand = form.value.qtyOnHand
       await http.post('/api/products', payload)
       toast.success('Product created')
     }
@@ -265,6 +266,7 @@ const receiptProduct = ref<Product | null>(null)
 const receiptType = ref<'OwnedIn' | 'ConsignmentIn' | 'ConsignmentToStock' | 'ConsignmentReturn'>('OwnedIn')
 const receiptSupplierId = ref('')
 const receiptQty = ref(1)
+const receiptCostPrice = ref(0)
 const receiptNotes = ref('')
 const receiptBusy = ref(false)
 const receiptErr = ref<string | null>(null)
@@ -275,6 +277,7 @@ function openReceiptModal(p: Product, type: typeof receiptType.value) {
   receiptType.value = type
   receiptSupplierId.value = ''
   receiptQty.value = 1
+  receiptCostPrice.value = p.cost ?? 0
   receiptNotes.value = ''
   receiptErr.value = null
   consignmentSummary.value = []
@@ -323,6 +326,7 @@ async function submitReceipt() {
       type: receiptType.value,
       supplierId: receiptSupplierId.value || null,
       quantity: receiptQty.value,
+      costPrice: receiptType.value === 'OwnedIn' && receiptCostPrice.value > 0 ? receiptCostPrice.value : null,
       notes: receiptNotes.value || null
     })
     toast.success(`${receiptTypeLabel.value}: ${receiptQty.value} units`)
@@ -665,7 +669,7 @@ onMounted(() => {
               <McField label="Sell price (R)" for-id="f-sell" :hint="!editId && !sellPriceManual ? 'Auto-calculated from cost' : ''">
                 <input id="f-sell" v-model.number="form.sellPrice" type="number" step="0.01" min="0" @input="sellPriceManual = true" />
               </McField>
-              <McField label="Qty on hand" for-id="f-qty">
+              <McField v-if="!editId" label="Initial stock qty" for-id="f-qty">
                 <input id="f-qty" v-model.number="form.qtyOnHand" type="number" step="1" min="0" />
               </McField>
             </div>
@@ -716,6 +720,10 @@ onMounted(() => {
         Max: {{ receiptMaxQty }} units from this supplier
       </p>
 
+      <McField v-if="receiptType === 'OwnedIn'" label="Purchase price / Cost ex VAT (R)" for-id="r-cost" hint="Updates the product cost price. Leave unchanged if price hasn't changed.">
+        <input id="r-cost" v-model.number="receiptCostPrice" type="number" step="0.01" min="0" />
+      </McField>
+
       <McField label="Notes (optional)" for-id="r-notes">
         <input id="r-notes" v-model="receiptNotes" />
       </McField>
@@ -752,6 +760,7 @@ onMounted(() => {
                   <th>Type</th>
                   <th>Supplier</th>
                   <th>Qty</th>
+                  <th>Cost</th>
                   <th>Notes</th>
                   <th>User</th>
                 </tr>
@@ -762,6 +771,7 @@ onMounted(() => {
                   <td><McBadge :variant="receiptTypeBadge(r.type).variant">{{ receiptTypeBadge(r.type).label }}</McBadge></td>
                   <td>{{ r.supplierName ?? '—' }}</td>
                   <td><strong>{{ r.quantity }}</strong></td>
+                  <td>{{ r.costPrice ? formatZAR(r.costPrice) : '—' }}</td>
                   <td>{{ r.notes ?? '—' }}</td>
                   <td>{{ r.processedBy ?? '—' }}</td>
                 </tr>

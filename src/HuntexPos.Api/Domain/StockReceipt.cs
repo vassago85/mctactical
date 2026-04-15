@@ -20,6 +20,7 @@ public class StockReceipt
 
     public StockReceiptType Type { get; set; }
     public int Quantity { get; set; }
+    public decimal? CostPrice { get; set; }
     public string? Notes { get; set; }
     public string? ProcessedBy { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;

@@ -12,6 +12,7 @@ public class CreateStockReceiptRequest
     [Range(1, 999_999)]
     public int Quantity { get; set; }
 
+    public decimal? CostPrice { get; set; }
     public string? Notes { get; set; }
 }
 
@@ -23,6 +24,7 @@ public class StockReceiptDto
     public string? SupplierName { get; set; }
     public string Type { get; set; } = string.Empty;
     public int Quantity { get; set; }
+    public decimal? CostPrice { get; set; }
     public string? Notes { get; set; }
     public string? ProcessedBy { get; set; }
     public DateTimeOffset CreatedAt { get; set; }

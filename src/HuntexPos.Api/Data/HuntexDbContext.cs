@@ -89,6 +89,7 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
             e.HasIndex(r => r.ProductId);
             e.HasIndex(r => r.SupplierId);
             e.Property(r => r.Type).HasConversion<string>().HasMaxLength(30);
+            e.Property(r => r.CostPrice).HasPrecision(18, 2);
         });
 
         modelBuilder.Entity<Promotion>(e =>

@@ -51,6 +51,8 @@ public class StockReceiptsController : ControllerBase
         {
             case StockReceiptType.OwnedIn:
                 product.QtyOnHand += req.Quantity;
+                if (req.CostPrice.HasValue && req.CostPrice.Value > 0)
+                    product.Cost = req.CostPrice.Value;
                 break;
             case StockReceiptType.ConsignmentIn:
                 product.QtyConsignment += req.Quantity;
@@ -73,6 +75,7 @@ public class StockReceiptsController : ControllerBase
             SupplierId = req.SupplierId,
             Type = type,
             Quantity = req.Quantity,
+            CostPrice = req.CostPrice,
             Notes = string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim(),
             ProcessedBy = User.Identity?.Name,
             CreatedAt = DateTimeOffset.UtcNow
@@ -162,6 +165,7 @@ public class StockReceiptsController : ControllerBase
         SupplierName = supplierName,
         Type = r.Type.ToString(),
         Quantity = r.Quantity,
+        CostPrice = r.CostPrice,
         Notes = r.Notes,
         ProcessedBy = r.ProcessedBy,
         CreatedAt = r.CreatedAt
