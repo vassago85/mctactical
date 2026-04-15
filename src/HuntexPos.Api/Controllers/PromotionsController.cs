@@ -18,26 +18,35 @@ public class PromotionsController : ControllerBase
     public PromotionsController(HuntexDbContext db) => _db = db;
 
     [HttpGet]
-    public async Task<List<PromotionDto>> List(CancellationToken ct)
+    public async Task<ActionResult<List<PromotionDto>>> List(CancellationToken ct)
     {
-        var promos = await _db.Promotions.AsNoTracking().OrderByDescending(p => p.CreatedAt).ToListAsync(ct);
-        var specialCounts = await _db.ProductSpecials.AsNoTracking()
-            .GroupBy(s => s.PromotionId)
-            .Select(g => new { PromotionId = g.Key, Count = g.Count() })
-            .ToListAsync(ct);
-        var countMap = specialCounts.Where(c => c.PromotionId.HasValue).ToDictionary(c => c.PromotionId!.Value, c => c.Count);
-
-        return promos.Select(p => new PromotionDto
+        try
         {
-            Id = p.Id,
-            Name = p.Name,
-            DiscountPercent = p.DiscountPercent,
-            IsActive = p.IsActive,
-            StartsAt = p.StartsAt,
-            EndsAt = p.EndsAt,
-            CreatedAt = p.CreatedAt,
-            SpecialsCount = countMap.GetValueOrDefault(p.Id)
-        }).ToList();
+            var promos = await _db.Promotions.AsNoTracking().ToListAsync(ct);
+            promos = promos.OrderByDescending(p => p.CreatedAt).ToList();
+
+            var specials = await _db.ProductSpecials.AsNoTracking()
+                .Where(s => s.PromotionId != null)
+                .Select(s => s.PromotionId!.Value)
+                .ToListAsync(ct);
+            var countMap = specials.GroupBy(id => id).ToDictionary(g => g.Key, g => g.Count());
+
+            return promos.Select(p => new PromotionDto
+            {
+                Id = p.Id,
+                Name = p.Name,
+                DiscountPercent = p.DiscountPercent,
+                IsActive = p.IsActive,
+                StartsAt = p.StartsAt,
+                EndsAt = p.EndsAt,
+                CreatedAt = p.CreatedAt,
+                SpecialsCount = countMap.GetValueOrDefault(p.Id)
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message, detail = ex.InnerException?.Message });
+        }
     }
 
     [HttpPost]
@@ -187,9 +196,13 @@ public class PromotionsController : ControllerBase
             .Where(p => !p.EndsAt.HasValue || p.EndsAt >= now)
             .FirstOrDefault();
 
-        var specials = await _db.ProductSpecials.AsNoTracking()
-            .Where(s => s.IsActive)
-            .Where(s => s.PromotionId == null || (promo != null && s.PromotionId == promo.Id))
+        var specialsQuery = _db.ProductSpecials.AsNoTracking().Where(s => s.IsActive);
+        if (promo != null)
+            specialsQuery = specialsQuery.Where(s => s.PromotionId == null || s.PromotionId == promo.Id);
+        else
+            specialsQuery = specialsQuery.Where(s => s.PromotionId == null);
+
+        var specials = await specialsQuery
             .Select(s => new ActiveSpecialDto
             {
                 ProductId = s.ProductId,
