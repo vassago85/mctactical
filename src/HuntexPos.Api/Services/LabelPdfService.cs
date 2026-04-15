@@ -16,8 +16,8 @@ namespace HuntexPos.Api.Services;
 public static class LabelPdfService
 {
     private const float LabelWidthMm = 62f;
-    private const float LabelHeightMm = 35f;
-    private const float PaddingMm = 2f;
+    private const float LabelHeightMm = 30f;
+    private const float PaddingMm = 1.5f;
 
     public record LabelPricing(decimal DisplayPrice, decimal? WasPrice, string? PromoName);
 
@@ -68,55 +68,51 @@ public static class LabelPdfService
 
         page.Content().Column(col =>
         {
-            // Row 1: Logo
+            // Row 1: Logo (small strip)
             if (logoBytes != null)
             {
                 col.Item().AlignCenter()
-                    .Height(5, Unit.Millimetre)
+                    .Height(4, Unit.Millimetre)
                     .Image(logoBytes).FitArea();
             }
 
-            // Row 2: Barcode + number
+            // Row 2: Barcode spanning full width
             if (barcodeBytes != null)
             {
-                col.Item().PaddingTop(0.5f, Unit.Millimetre).AlignCenter()
-                    .Height(10, Unit.Millimetre)
-                    .Width(40, Unit.Millimetre)
-                    .Image(barcodeBytes).FitArea();
+                col.Item().PaddingTop(0.5f, Unit.Millimetre)
+                    .Height(12, Unit.Millimetre)
+                    .Image(barcodeBytes).FitWidth();
             }
+
+            // Row 3: EAN number centred under barcode
             col.Item().AlignCenter()
                 .Text(barcodeText).FontSize(6).FontColor("#444444");
 
-            // Row 3: Price
-            if (pricing.WasPrice.HasValue && pricing.WasPrice.Value != pricing.DisplayPrice)
+            // Row 4: Product name (left) + Price (right)
+            col.Item().PaddingTop(0.5f, Unit.Millimetre).Row(row =>
             {
-                col.Item().PaddingTop(0.5f, Unit.Millimetre).AlignCenter().Row(priceRow =>
-                {
-                    priceRow.AutoItem()
-                        .Text($"R{pricing.DisplayPrice:N2}")
-                        .Bold().FontSize(11).FontColor("#CC0000");
-                    priceRow.AutoItem().PaddingLeft(1.5f, Unit.Millimetre).AlignBottom()
-                        .Text($"R{pricing.WasPrice.Value:N2}")
-                        .FontSize(7).FontColor("#999999").Strikethrough();
-                });
-                if (!string.IsNullOrWhiteSpace(pricing.PromoName))
-                {
-                    col.Item().AlignCenter()
-                        .Text(pricing.PromoName)
-                        .FontSize(5).FontColor("#CC0000").Bold();
-                }
-            }
-            else
-            {
-                col.Item().PaddingTop(0.5f, Unit.Millimetre).AlignCenter()
-                    .Text($"R{pricing.DisplayPrice:N2}")
-                    .Bold().FontSize(11);
-            }
+                row.RelativeItem().AlignLeft().AlignBottom()
+                    .Text(product.Name).Bold().FontSize(6).FontColor("#333333");
 
-            // Row 4: Product name
-            col.Item().AlignCenter()
-                .Text(product.Name)
-                .Bold().FontSize(5.5f).FontColor("#333333");
+                row.AutoItem().AlignRight().Column(priceCol =>
+                {
+                    if (pricing.WasPrice.HasValue && pricing.WasPrice.Value != pricing.DisplayPrice)
+                    {
+                        priceCol.Item().AlignRight()
+                            .Text($"R{pricing.DisplayPrice:N2}")
+                            .Bold().FontSize(11).FontColor("#CC0000");
+                        priceCol.Item().AlignRight()
+                            .Text($"R{pricing.WasPrice.Value:N2}")
+                            .FontSize(6.5f).FontColor("#999999").Strikethrough();
+                    }
+                    else
+                    {
+                        priceCol.Item().AlignRight()
+                            .Text($"R{pricing.DisplayPrice:N2}")
+                            .Bold().FontSize(11);
+                    }
+                });
+            });
         });
     }
 
@@ -151,15 +147,13 @@ public static class LabelPdfService
 
     private static (byte[]? Bytes, string DisplayText) RenderBarcodeWithText(string text)
     {
-        // Always try to get a clean 13-digit string for EAN-13
         var ean13 = ToEan13(text);
         if (ean13 != null)
         {
-            var png = Ean13Renderer.RenderToPng(ean13, barHeight: 80, moduleWidth: 2);
+            var png = Ean13Renderer.RenderToPng(ean13, barHeight: 120, moduleWidth: 3);
             if (png != null) return (png, ean13);
         }
-        // Last resort: Code 128
-        return (Code128Renderer.RenderToPng(text, barHeight: 80, moduleWidth: 2), text);
+        return (Code128Renderer.RenderToPng(text, barHeight: 120, moduleWidth: 3), text);
     }
 
     public static byte[] BuildSingleLabel(Product product, LabelPricing pricing, int copies = 1)
