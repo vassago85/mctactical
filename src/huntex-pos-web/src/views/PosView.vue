@@ -61,6 +61,17 @@ const posRules = ref<{
 const activePromo = ref<ActivePromotion | null>(null)
 
 const showBelowCostModal = ref(false)
+const showSaleSummary = ref(false)
+const saleSummary = ref<{
+  invoiceNumber: string
+  grandTotal: number
+  customerName: string | null
+  paymentMethod: string
+  emailSent: boolean
+  emailWarning: string | null
+  belowCostWarning: string | null
+  lines: { name: string; qty: number; unitPrice: number; lineTotal: number }[]
+} | null>(null)
 
 function roundUpR10(v: number): number {
   return Math.ceil(v / 10) * 10
@@ -188,6 +199,12 @@ async function doCheckout() {
   err.value = null
   busy.value = true
   try {
+    const summaryLines = cart.value.map(l => ({
+      name: l.product.name,
+      qty: l.qty,
+      unitPrice: l.unitPrice,
+      lineTotal: Math.max(0, l.unitPrice * l.qty - computedLineDiscount(l))
+    }))
     const { data } = await http.post('/api/invoices', {
       customerName: customerName.value || null,
       customerEmail: customerEmail.value || null,
@@ -204,12 +221,25 @@ async function doCheckout() {
         lineDiscount: computedLineDiscount(l)
       }))
     })
+    saleSummary.value = {
+      invoiceNumber: data.invoiceNumber,
+      grandTotal: data.grandTotal,
+      customerName: customerName.value || null,
+      paymentMethod: paymentMethod.value,
+      emailSent: sendEmail.value && !!customerEmail.value.trim(),
+      emailWarning: data.emailWarning ?? null,
+      belowCostWarning: data.belowCostWarning ?? null,
+      lines: summaryLines
+    }
     cart.value = []
     discountTotal.value = 0
-    let msg = `Invoice ${data.invoiceNumber} — total ${formatZAR(data.grandTotal)}`
-    if (data.belowCostWarning) msg += `\n${data.belowCostWarning}`
-    toast.success(msg)
-    if (data.emailWarning) toast.error(data.emailWarning)
+    customerName.value = ''
+    customerEmail.value = ''
+    customerType.value = ''
+    paymentMethod.value = 'Cash'
+    showSaleSummary.value = true
+    results.value = []
+    q.value = ''
   } catch (e: unknown) {
     const ax = e as { response?: { data?: { error?: string } } }
     err.value = ax.response?.data?.error ?? 'Checkout failed'
@@ -446,6 +476,51 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
       <template #footer>
         <McButton variant="secondary" type="button" @click="showBelowCostModal = false">Cancel</McButton>
         <McButton variant="primary" type="button" :disabled="busy" @click="doCheckout">Proceed</McButton>
+      </template>
+    </McModal>
+
+    <McModal v-model="showSaleSummary" title="Sale complete">
+      <template v-if="saleSummary">
+        <div class="sale-summary">
+          <div class="sale-summary__header">
+            <span class="sale-summary__invoice">{{ saleSummary.invoiceNumber }}</span>
+            <span class="sale-summary__method">{{ saleSummary.paymentMethod }}</span>
+          </div>
+
+          <table class="mc-table sale-summary__table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th style="text-align:right">Qty</th>
+                <th style="text-align:right">Price</th>
+                <th style="text-align:right">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(line, i) in saleSummary.lines" :key="i">
+                <td>{{ line.name }}</td>
+                <td style="text-align:right">{{ line.qty }}</td>
+                <td style="text-align:right">{{ formatZAR(line.unitPrice) }}</td>
+                <td style="text-align:right">{{ formatZAR(line.lineTotal) }}</td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="3" style="text-align:right"><strong>Total</strong></td>
+                <td style="text-align:right"><strong>{{ formatZAR(saleSummary.grandTotal) }}</strong></td>
+              </tr>
+            </tfoot>
+          </table>
+
+          <p v-if="saleSummary.customerName" class="sale-summary__detail">Customer: {{ saleSummary.customerName }}</p>
+          <p v-if="saleSummary.emailSent" class="sale-summary__detail">Receipt emailed</p>
+
+          <McAlert v-if="saleSummary.belowCostWarning" variant="warning">{{ saleSummary.belowCostWarning }}</McAlert>
+          <McAlert v-if="saleSummary.emailWarning" variant="error">{{ saleSummary.emailWarning }}</McAlert>
+        </div>
+      </template>
+      <template #footer>
+        <McButton variant="primary" type="button" @click="showSaleSummary = false">Done</McButton>
       </template>
     </McModal>
   </div>
@@ -786,5 +861,31 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   color: var(--mc-app-text-muted, #5c5a56);
   text-decoration: line-through;
   font-weight: 400;
+}
+
+.sale-summary__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+.sale-summary__invoice {
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+.sale-summary__method {
+  font-size: 0.9rem;
+  color: var(--mc-app-text-muted, #5c5a56);
+  background: var(--mc-app-surface-alt, #f5f4f0);
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+}
+.sale-summary__table {
+  margin-bottom: 1rem;
+}
+.sale-summary__detail {
+  margin: 0.25rem 0;
+  font-size: 0.9rem;
+  color: var(--mc-app-text-muted, #5c5a56);
 }
 </style>
