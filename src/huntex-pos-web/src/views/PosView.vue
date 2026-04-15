@@ -391,6 +391,8 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 .pos-page {
   max-width: 100%;
   overflow: hidden;
+  padding: 0 0.5rem;
+  box-sizing: border-box;
 }
 
 .pos-col {
