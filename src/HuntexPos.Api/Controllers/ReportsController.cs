@@ -199,6 +199,7 @@ public class ReportsController : ControllerBase
             TotalOwnedQty = products.Sum(p => p.QtyOnHand),
             TotalOwnedValue = products.Sum(p => p.Cost * p.QtyOnHand),
             TotalConsignmentQty = products.Sum(p => p.QtyConsignment),
+            TotalConsignmentValue = products.Sum(p => p.Cost * 1.15m * p.QtyConsignment),
             ProductCount = products.Count,
             Lines = onHandLines
         };

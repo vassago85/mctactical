@@ -30,7 +30,8 @@ type StockOnHandLine = {
 }
 type StockOnHandSummary = {
   totalOwnedQty: number; totalOwnedValue: number
-  totalConsignmentQty: number; productCount: number
+  totalConsignmentQty: number; totalConsignmentValue: number
+  productCount: number
   lines: StockOnHandLine[]
 }
 type ConsignmentProductLine = {
@@ -430,6 +431,10 @@ async function purgeData() {
           <div class="rep-kpi">
             <span class="rep-kpi__label">Consignment stock (qty)</span>
             <strong class="rep-kpi__value rep-kpi__value--blue">{{ stockReport.onHand.totalConsignmentQty }}</strong>
+          </div>
+          <div class="rep-kpi">
+            <span class="rep-kpi__label">Consignment stock (value incl.)</span>
+            <strong class="rep-kpi__value rep-kpi__value--blue">{{ formatZAR(stockReport.onHand.totalConsignmentValue) }}</strong>
           </div>
           <div class="rep-kpi">
             <span class="rep-kpi__label">Sold in period (qty)</span>

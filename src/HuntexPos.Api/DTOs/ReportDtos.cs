@@ -33,6 +33,7 @@ public class StockOnHandSummaryDto
     public int TotalOwnedQty { get; set; }
     public decimal TotalOwnedValue { get; set; }
     public int TotalConsignmentQty { get; set; }
+    public decimal TotalConsignmentValue { get; set; }
     public int ProductCount { get; set; }
     public List<StockOnHandLineDto> Lines { get; set; } = new();
 }

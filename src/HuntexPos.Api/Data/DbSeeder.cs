@@ -30,6 +30,7 @@ public static class DbSeeder
         await EnsureStockReceiptCostColumnAsync(db, ct);
         await EnsureInvoiceBusinessColumnsAsync(db, ct);
         await EnsureCustomersTableAsync(db, ct);
+        await EnsureConsignmentBatchesTablesAsync(db, ct);
 
         foreach (var r in Roles.All)
         {
@@ -215,6 +216,41 @@ public static class DbSeeder
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "CustomerCompany" TEXT;""", ct); } catch { }
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "CustomerAddress" TEXT;""", ct); } catch { }
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "CustomerVatNumber" TEXT;""", ct); } catch { }
+    }
+
+    private static async Task EnsureConsignmentBatchesTablesAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "ConsignmentBatches" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_ConsignmentBatches" PRIMARY KEY,
+                "SupplierId" TEXT NOT NULL,
+                "Type" TEXT NOT NULL,
+                "Status" TEXT NOT NULL,
+                "Notes" TEXT,
+                "CreatedBy" TEXT,
+                "CreatedAt" TEXT NOT NULL,
+                "CommittedAt" TEXT,
+                CONSTRAINT "FK_ConsignmentBatches_Suppliers_SupplierId" FOREIGN KEY ("SupplierId") REFERENCES "Suppliers" ("Id") ON DELETE CASCADE
+            );
+            """, ct);
+        try { await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_ConsignmentBatches_SupplierId" ON "ConsignmentBatches" ("SupplierId");""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_ConsignmentBatches_Status" ON "ConsignmentBatches" ("Status");""", ct); } catch { }
+
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "ConsignmentBatchLines" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_ConsignmentBatchLines" PRIMARY KEY,
+                "BatchId" TEXT NOT NULL,
+                "ProductId" TEXT NOT NULL,
+                "ExpectedQty" INTEGER NOT NULL,
+                "CheckedQty" INTEGER NOT NULL,
+                "Notes" TEXT,
+                CONSTRAINT "FK_ConsignmentBatchLines_ConsignmentBatches_BatchId" FOREIGN KEY ("BatchId") REFERENCES "ConsignmentBatches" ("Id") ON DELETE CASCADE,
+                CONSTRAINT "FK_ConsignmentBatchLines_Products_ProductId" FOREIGN KEY ("ProductId") REFERENCES "Products" ("Id") ON DELETE CASCADE
+            );
+            """, ct);
+        try { await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_ConsignmentBatchLines_BatchId" ON "ConsignmentBatchLines" ("BatchId");""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_ConsignmentBatchLines_ProductId" ON "ConsignmentBatchLines" ("ProductId");""", ct); } catch { }
     }
 
     /// <summary>Upgrades SQLite DBs created before MailSettings existed (EnsureCreated does not alter schema).</summary>
