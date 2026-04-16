@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
-import { formatZAR } from '@/utils/format'
+import { formatZAR, formatNumber } from '@/utils/format'
 import McPageHeader from '@/components/ui/McPageHeader.vue'
 import McCard from '@/components/ui/McCard.vue'
 import McButton from '@/components/ui/McButton.vue'
@@ -418,19 +418,19 @@ async function purgeData() {
         <div class="rep-kpi-row">
           <div class="rep-kpi">
             <span class="rep-kpi__label">Products</span>
-            <strong class="rep-kpi__value">{{ stockReport.onHand.productCount }}</strong>
+            <strong class="rep-kpi__value">{{ formatNumber(stockReport.onHand.productCount) }}</strong>
           </div>
           <div class="rep-kpi">
             <span class="rep-kpi__label">Owned stock (qty)</span>
-            <strong class="rep-kpi__value">{{ stockReport.onHand.totalOwnedQty }}</strong>
+            <strong class="rep-kpi__value">{{ formatNumber(stockReport.onHand.totalOwnedQty) }}</strong>
           </div>
           <div class="rep-kpi">
-            <span class="rep-kpi__label">Owned stock (value)</span>
+            <span class="rep-kpi__label">Owned stock (value ex VAT)</span>
             <strong class="rep-kpi__value">{{ formatZAR(stockReport.onHand.totalOwnedValue) }}</strong>
           </div>
           <div class="rep-kpi">
             <span class="rep-kpi__label">Consignment stock (qty)</span>
-            <strong class="rep-kpi__value rep-kpi__value--blue">{{ stockReport.onHand.totalConsignmentQty }}</strong>
+            <strong class="rep-kpi__value rep-kpi__value--blue">{{ formatNumber(stockReport.onHand.totalConsignmentQty) }}</strong>
           </div>
           <div class="rep-kpi">
             <span class="rep-kpi__label">Consignment stock (value incl.)</span>
@@ -438,7 +438,7 @@ async function purgeData() {
           </div>
           <div class="rep-kpi">
             <span class="rep-kpi__label">Sold in period (qty)</span>
-            <strong class="rep-kpi__value">{{ totalSoldQty }}</strong>
+            <strong class="rep-kpi__value">{{ formatNumber(totalSoldQty) }}</strong>
           </div>
           <div class="rep-kpi">
             <span class="rep-kpi__label">Sold in period (revenue)</span>
@@ -446,7 +446,7 @@ async function purgeData() {
           </div>
           <div class="rep-kpi">
             <span class="rep-kpi__label">Received in period (qty)</span>
-            <strong class="rep-kpi__value">{{ totalReceivedQty }}</strong>
+            <strong class="rep-kpi__value">{{ formatNumber(totalReceivedQty) }}</strong>
           </div>
         </div>
 
@@ -468,10 +468,10 @@ async function purgeData() {
                 <template v-for="s in stockReport.consignmentBySupplier" :key="s.supplierId">
                   <tr>
                     <td class="rep-bold">{{ s.supplierName }}</td>
-                    <td class="rep-num">{{ s.totalIn }}</td>
-                    <td class="rep-num">{{ s.totalMovedToStock }}</td>
-                    <td class="rep-num">{{ s.totalReturned }}</td>
-                    <td class="rep-num"><strong>{{ s.onHand }}</strong></td>
+                    <td class="rep-num">{{ formatNumber(s.totalIn) }}</td>
+                    <td class="rep-num">{{ formatNumber(s.totalMovedToStock) }}</td>
+                    <td class="rep-num">{{ formatNumber(s.totalReturned) }}</td>
+                    <td class="rep-num"><strong>{{ formatNumber(s.onHand) }}</strong></td>
                     <td>
                       <McButton variant="ghost" dense type="button" @click="toggleSupplier(s.supplierId)">
                         {{ expandedSuppliers.has(s.supplierId) ? 'Hide' : 'Details' }}
@@ -481,10 +481,10 @@ async function purgeData() {
                   <template v-if="expandedSuppliers.has(s.supplierId)">
                     <tr v-for="p in s.products" :key="p.sku" class="rep-detail-row">
                       <td class="rep-indent">{{ p.sku }} — {{ p.name }}</td>
-                      <td class="rep-num">{{ p.totalIn }}</td>
-                      <td class="rep-num">{{ p.totalMovedToStock }}</td>
-                      <td class="rep-num">{{ p.totalReturned }}</td>
-                      <td class="rep-num">{{ p.onHand }}</td>
+                      <td class="rep-num">{{ formatNumber(p.totalIn) }}</td>
+                      <td class="rep-num">{{ formatNumber(p.totalMovedToStock) }}</td>
+                      <td class="rep-num">{{ formatNumber(p.totalReturned) }}</td>
+                      <td class="rep-num">{{ formatNumber(p.onHand) }}</td>
                       <td></td>
                     </tr>
                   </template>
@@ -513,7 +513,7 @@ async function purgeData() {
                 <tr v-for="p in stockReport.soldInPeriod" :key="p.sku">
                   <td class="rep-mono">{{ p.sku }}</td>
                   <td>{{ p.name }}</td>
-                  <td class="rep-num">{{ p.qtySold }}</td>
+                  <td class="rep-num">{{ formatNumber(p.qtySold) }}</td>
                   <td class="rep-num">{{ formatZAR(p.revenue) }}</td>
                   <td class="rep-num">{{ formatZAR(p.costExVat) }}</td>
                   <td class="rep-num">{{ formatZAR(p.costInclVat) }}</td>
@@ -523,7 +523,7 @@ async function purgeData() {
               <tfoot>
                 <tr class="rep-total-row">
                   <td colspan="2"><strong>Totals</strong></td>
-                  <td class="rep-num"><strong>{{ totalSoldQty }}</strong></td>
+                  <td class="rep-num"><strong>{{ formatNumber(totalSoldQty) }}</strong></td>
                   <td class="rep-num"><strong>{{ formatZAR(totalSoldRevenue) }}</strong></td>
                   <td class="rep-num"><strong>{{ formatZAR(stockReport.soldInPeriod.reduce((s, p) => s + p.costExVat, 0)) }}</strong></td>
                   <td class="rep-num"><strong>{{ formatZAR(stockReport.soldInPeriod.reduce((s, p) => s + p.costInclVat, 0)) }}</strong></td>
@@ -555,13 +555,13 @@ async function purgeData() {
                   <td>{{ r.name }}</td>
                   <td>{{ r.supplierName ?? '—' }}</td>
                   <td><McBadge :variant="r.type === 'OwnedIn' ? 'success' : 'warning'">{{ receiptTypeLabel(r.type) }}</McBadge></td>
-                  <td class="rep-num">{{ r.quantity }}</td>
+                  <td class="rep-num">{{ formatNumber(r.quantity) }}</td>
                 </tr>
               </tbody>
               <tfoot>
                 <tr class="rep-total-row">
                   <td colspan="5"><strong>Total received</strong></td>
-                  <td class="rep-num"><strong>{{ totalReceivedQty }}</strong></td>
+                  <td class="rep-num"><strong>{{ formatNumber(totalReceivedQty) }}</strong></td>
                 </tr>
               </tfoot>
             </table>
@@ -596,8 +596,8 @@ async function purgeData() {
                   <td class="rep-mono">{{ p.sku }}</td>
                   <td>{{ p.name }}</td>
                   <td>{{ p.supplierName ?? '—' }}</td>
-                  <td class="rep-num">{{ p.qtyOwned }}</td>
-                  <td class="rep-num" :class="{ 'rep-blue': p.qtyConsignment > 0 }">{{ p.qtyConsignment || '—' }}</td>
+                  <td class="rep-num">{{ formatNumber(p.qtyOwned) }}</td>
+                  <td class="rep-num" :class="{ 'rep-blue': p.qtyConsignment > 0 }">{{ p.qtyConsignment ? formatNumber(p.qtyConsignment) : '—' }}</td>
                   <td class="rep-num">{{ formatZAR(p.cost) }}</td>
                   <td class="rep-num">{{ formatZAR(p.sellPrice) }}</td>
                   <td class="rep-num">{{ formatZAR(p.ownedValue) }}</td>
@@ -606,8 +606,8 @@ async function purgeData() {
               <tfoot>
                 <tr class="rep-total-row">
                   <td colspan="3"><strong>Totals</strong></td>
-                  <td class="rep-num"><strong>{{ stockReport.onHand.totalOwnedQty }}</strong></td>
-                  <td class="rep-num"><strong>{{ stockReport.onHand.totalConsignmentQty }}</strong></td>
+                  <td class="rep-num"><strong>{{ formatNumber(stockReport.onHand.totalOwnedQty) }}</strong></td>
+                  <td class="rep-num"><strong>{{ formatNumber(stockReport.onHand.totalConsignmentQty) }}</strong></td>
                   <td colspan="2"></td>
                   <td class="rep-num"><strong>{{ formatZAR(stockReport.onHand.totalOwnedValue) }}</strong></td>
                 </tr>
@@ -650,7 +650,7 @@ async function purgeData() {
         <div class="rep-kpi-row">
           <div class="rep-kpi">
             <span class="rep-kpi__label">Consignment on hand</span>
-            <strong class="rep-kpi__value rep-kpi__value--blue">{{ consignReport.totalOnHand }}</strong>
+            <strong class="rep-kpi__value rep-kpi__value--blue">{{ formatNumber(consignReport.totalOnHand) }}</strong>
           </div>
           <div class="rep-kpi">
             <span class="rep-kpi__label">On hand value (sell)</span>
@@ -658,7 +658,7 @@ async function purgeData() {
           </div>
           <div class="rep-kpi">
             <span class="rep-kpi__label">Total received</span>
-            <strong class="rep-kpi__value">{{ consignReport.totalReceived }}</strong>
+            <strong class="rep-kpi__value">{{ formatNumber(consignReport.totalReceived) }}</strong>
           </div>
           <div class="rep-kpi">
             <span class="rep-kpi__label">Received value (sell)</span>
@@ -666,7 +666,7 @@ async function purgeData() {
           </div>
           <div class="rep-kpi">
             <span class="rep-kpi__label">Sold in period (qty)</span>
-            <strong class="rep-kpi__value">{{ consignReport.totalSold }}</strong>
+            <strong class="rep-kpi__value">{{ formatNumber(consignReport.totalSold) }}</strong>
           </div>
           <div class="rep-kpi">
             <span class="rep-kpi__label">Sold in period (revenue)</span>
@@ -674,7 +674,7 @@ async function purgeData() {
           </div>
           <div class="rep-kpi">
             <span class="rep-kpi__label">Returned to supplier</span>
-            <strong class="rep-kpi__value">{{ consignReport.totalReturned }}</strong>
+            <strong class="rep-kpi__value">{{ formatNumber(consignReport.totalReturned) }}</strong>
           </div>
         </div>
 
@@ -682,7 +682,7 @@ async function purgeData() {
           <div class="rep-kpi-row" style="margin-bottom: 0.75rem">
             <div class="rep-kpi rep-kpi--sm">
               <span class="rep-kpi__label">On hand</span>
-              <strong class="rep-kpi__value rep-kpi__value--blue">{{ s.onHand }}</strong>
+              <strong class="rep-kpi__value rep-kpi__value--blue">{{ formatNumber(s.onHand) }}</strong>
             </div>
             <div class="rep-kpi rep-kpi--sm">
               <span class="rep-kpi__label">On hand value</span>
@@ -690,19 +690,19 @@ async function purgeData() {
             </div>
             <div class="rep-kpi rep-kpi--sm">
               <span class="rep-kpi__label">Received</span>
-              <strong class="rep-kpi__value">{{ s.totalReceived }}</strong>
+              <strong class="rep-kpi__value">{{ formatNumber(s.totalReceived) }}</strong>
             </div>
             <div class="rep-kpi rep-kpi--sm">
               <span class="rep-kpi__label">Moved to stock</span>
-              <strong class="rep-kpi__value">{{ s.totalMovedToStock }}</strong>
+              <strong class="rep-kpi__value">{{ formatNumber(s.totalMovedToStock) }}</strong>
             </div>
             <div class="rep-kpi rep-kpi--sm">
               <span class="rep-kpi__label">Returned</span>
-              <strong class="rep-kpi__value">{{ s.totalReturned }}</strong>
+              <strong class="rep-kpi__value">{{ formatNumber(s.totalReturned) }}</strong>
             </div>
             <div class="rep-kpi rep-kpi--sm">
               <span class="rep-kpi__label">Sold (period)</span>
-              <strong class="rep-kpi__value">{{ s.totalSold }}</strong>
+              <strong class="rep-kpi__value">{{ formatNumber(s.totalSold) }}</strong>
             </div>
             <div class="rep-kpi rep-kpi--sm">
               <span class="rep-kpi__label">Revenue (period)</span>
@@ -738,26 +738,26 @@ async function purgeData() {
                   <td>{{ p.name }}</td>
                   <td class="rep-num">{{ formatZAR(p.cost) }}</td>
                   <td class="rep-num">{{ formatZAR(p.sellPrice) }}</td>
-                  <td class="rep-num">{{ p.received }}</td>
-                  <td class="rep-num">{{ p.movedToStock }}</td>
-                  <td class="rep-num">{{ p.movedFromStock || '—' }}</td>
-                  <td class="rep-num">{{ p.returned }}</td>
-                  <td class="rep-num"><strong :class="{ 'rep-blue': p.onHand > 0 }">{{ p.onHand }}</strong></td>
+                  <td class="rep-num">{{ formatNumber(p.received) }}</td>
+                  <td class="rep-num">{{ formatNumber(p.movedToStock) }}</td>
+                  <td class="rep-num">{{ p.movedFromStock ? formatNumber(p.movedFromStock) : '—' }}</td>
+                  <td class="rep-num">{{ formatNumber(p.returned) }}</td>
+                  <td class="rep-num"><strong :class="{ 'rep-blue': p.onHand > 0 }">{{ formatNumber(p.onHand) }}</strong></td>
                   <td class="rep-num">{{ formatZAR(p.onHandValue) }}</td>
-                  <td class="rep-num">{{ p.sold }}</td>
+                  <td class="rep-num">{{ formatNumber(p.sold) }}</td>
                   <td class="rep-num">{{ formatZAR(p.soldRevenue) }}</td>
                 </tr>
               </tbody>
               <tfoot>
                 <tr class="rep-total-row">
                   <td colspan="4"><strong>Totals</strong></td>
-                  <td class="rep-num"><strong>{{ s.totalReceived }}</strong></td>
-                  <td class="rep-num"><strong>{{ s.totalMovedToStock }}</strong></td>
-                  <td class="rep-num"><strong>{{ s.totalMovedFromStock || '—' }}</strong></td>
-                  <td class="rep-num"><strong>{{ s.totalReturned }}</strong></td>
-                  <td class="rep-num"><strong>{{ s.onHand }}</strong></td>
+                  <td class="rep-num"><strong>{{ formatNumber(s.totalReceived) }}</strong></td>
+                  <td class="rep-num"><strong>{{ formatNumber(s.totalMovedToStock) }}</strong></td>
+                  <td class="rep-num"><strong>{{ s.totalMovedFromStock ? formatNumber(s.totalMovedFromStock) : '—' }}</strong></td>
+                  <td class="rep-num"><strong>{{ formatNumber(s.totalReturned) }}</strong></td>
+                  <td class="rep-num"><strong>{{ formatNumber(s.onHand) }}</strong></td>
                   <td class="rep-num"><strong>{{ formatZAR(s.onHandValue) }}</strong></td>
-                  <td class="rep-num"><strong>{{ s.totalSold }}</strong></td>
+                  <td class="rep-num"><strong>{{ formatNumber(s.totalSold) }}</strong></td>
                   <td class="rep-num"><strong>{{ formatZAR(s.totalSoldRevenue) }}</strong></td>
                 </tr>
               </tfoot>
@@ -796,7 +796,7 @@ async function purgeData() {
       <div class="rep-kpi-row">
         <div class="rep-kpi">
           <span class="rep-kpi__label">Invoices</span>
-          <strong class="rep-kpi__value">{{ salesInvoiceCount }}</strong>
+          <strong class="rep-kpi__value">{{ formatNumber(salesInvoiceCount) }}</strong>
         </div>
         <div class="rep-kpi">
           <span class="rep-kpi__label">Total sales</span>
@@ -817,14 +817,14 @@ async function purgeData() {
             <tbody>
               <tr v-for="d in daily" :key="d.date">
                 <td>{{ d.date }}</td>
-                <td class="rep-num">{{ d.invoiceCount }}</td>
+                <td class="rep-num">{{ formatNumber(d.invoiceCount) }}</td>
                 <td class="rep-num">{{ formatZAR(d.grandTotal) }}</td>
               </tr>
             </tbody>
             <tfoot v-if="daily.length">
               <tr class="rep-total-row">
                 <td><strong>Total</strong></td>
-                <td class="rep-num"><strong>{{ salesInvoiceCount }}</strong></td>
+                <td class="rep-num"><strong>{{ formatNumber(salesInvoiceCount) }}</strong></td>
                 <td class="rep-num"><strong>{{ formatZAR(salesGrandTotal) }}</strong></td>
               </tr>
             </tfoot>

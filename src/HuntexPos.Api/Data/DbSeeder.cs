@@ -31,6 +31,7 @@ public static class DbSeeder
         await EnsureInvoiceBusinessColumnsAsync(db, ct);
         await EnsureCustomersTableAsync(db, ct);
         await EnsureConsignmentBatchesTablesAsync(db, ct);
+        await MergeDuplicateSkusAsync(db, log, ct);
 
         foreach (var r in Roles.All)
         {
@@ -251,6 +252,70 @@ public static class DbSeeder
             """, ct);
         try { await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_ConsignmentBatchLines_BatchId" ON "ConsignmentBatchLines" ("BatchId");""", ct); } catch { }
         try { await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_ConsignmentBatchLines_ProductId" ON "ConsignmentBatchLines" ("ProductId");""", ct); } catch { }
+    }
+
+    /// <summary>Auto-merge products with duplicate SKUs, then enforce a unique index.</summary>
+    private static async Task MergeDuplicateSkusAsync(HuntexDbContext db, ILogger log, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+
+        var dupes = await db.Products
+            .GroupBy(p => p.Sku)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToListAsync(ct);
+
+        if (dupes.Count > 0)
+        {
+            foreach (var sku in dupes)
+            {
+                var group = await db.Products
+                    .Where(p => p.Sku == sku)
+                    .OrderByDescending(p => p.UpdatedAt ?? p.CreatedAt)
+                    .ToListAsync(ct);
+
+                var survivor = group[0];
+                var victims = group.Skip(1).ToList();
+                var victimIds = victims.Select(v => v.Id).ToList();
+
+                survivor.QtyOnHand += victims.Sum(v => v.QtyOnHand);
+                survivor.QtyConsignment += victims.Sum(v => v.QtyConsignment);
+                survivor.UpdatedAt = DateTimeOffset.UtcNow;
+
+                await db.InvoiceLines
+                    .Where(il => victimIds.Contains(il.ProductId))
+                    .ExecuteUpdateAsync(s => s.SetProperty(il => il.ProductId, survivor.Id), ct);
+                await db.StockReceipts
+                    .Where(sr => victimIds.Contains(sr.ProductId))
+                    .ExecuteUpdateAsync(s => s.SetProperty(sr => sr.ProductId, survivor.Id), ct);
+                await db.StocktakeLines
+                    .Where(sl => victimIds.Contains(sl.ProductId))
+                    .ExecuteUpdateAsync(s => s.SetProperty(sl => sl.ProductId, survivor.Id), ct);
+                await db.ConsignmentBatchLines
+                    .Where(cl => victimIds.Contains(cl.ProductId))
+                    .ExecuteUpdateAsync(s => s.SetProperty(cl => cl.ProductId, survivor.Id), ct);
+                await db.ProductSpecials
+                    .Where(ps => victimIds.Contains(ps.ProductId))
+                    .ExecuteUpdateAsync(s => s.SetProperty(ps => ps.ProductId, survivor.Id), ct);
+
+                db.Products.RemoveRange(victims);
+            }
+
+            await db.SaveChangesAsync(ct);
+            log.LogInformation("Merged {Count} duplicate SKUs: {Skus}", dupes.Count, string.Join(", ", dupes));
+        }
+
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                """DROP INDEX IF EXISTS "IX_Products_Sku";""", ct);
+            await db.Database.ExecuteSqlRawAsync(
+                """CREATE UNIQUE INDEX IF NOT EXISTS "IX_Products_Sku" ON "Products" ("Sku");""", ct);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Could not create unique SKU index — duplicates may still exist.");
+        }
     }
 
     /// <summary>Upgrades SQLite DBs created before MailSettings existed (EnsureCreated does not alter schema).</summary>

@@ -30,7 +30,7 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
 
         modelBuilder.Entity<Product>(e =>
         {
-            e.HasIndex(p => p.Sku);
+            e.HasIndex(p => p.Sku).IsUnique();
             e.HasIndex(p => p.Barcode);
             e.HasIndex(p => p.Name);
             e.HasIndex(p => p.Manufacturer);

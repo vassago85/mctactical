@@ -516,6 +516,74 @@ public class ProductsController : ControllerBase
         return hide;
     }
 
+    /// <summary>
+    /// Finds products that share the same SKU and merges them into a single record.
+    /// Quantities are summed; all FK references are re-pointed to the survivor.
+    /// </summary>
+    [HttpPost("merge-duplicates")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Owner},{Roles.Dev}")]
+    public async Task<ActionResult> MergeDuplicates(CancellationToken ct)
+    {
+        var dupes = await _db.Products
+            .GroupBy(p => p.Sku)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToListAsync(ct);
+
+        if (dupes.Count == 0)
+            return Ok(new { merged = 0 });
+
+        int merged = 0;
+
+        foreach (var sku in dupes)
+        {
+            var group = await _db.Products
+                .Where(p => p.Sku == sku)
+                .OrderByDescending(p => p.UpdatedAt ?? p.CreatedAt)
+                .ToListAsync(ct);
+
+            var survivor = group[0];
+            var victims = group.Skip(1).ToList();
+            var victimIds = victims.Select(v => v.Id).ToList();
+
+            survivor.QtyOnHand += victims.Sum(v => v.QtyOnHand);
+            survivor.QtyConsignment += victims.Sum(v => v.QtyConsignment);
+            survivor.UpdatedAt = DateTimeOffset.UtcNow;
+
+            await _db.InvoiceLines
+                .Where(il => victimIds.Contains(il.ProductId))
+                .ExecuteUpdateAsync(s => s.SetProperty(il => il.ProductId, survivor.Id), ct);
+
+            await _db.StockReceipts
+                .Where(sr => victimIds.Contains(sr.ProductId))
+                .ExecuteUpdateAsync(s => s.SetProperty(sr => sr.ProductId, survivor.Id), ct);
+
+            await _db.StocktakeLines
+                .Where(sl => victimIds.Contains(sl.ProductId))
+                .ExecuteUpdateAsync(s => s.SetProperty(sl => sl.ProductId, survivor.Id), ct);
+
+            await _db.ConsignmentBatchLines
+                .Where(cl => victimIds.Contains(cl.ProductId))
+                .ExecuteUpdateAsync(s => s.SetProperty(cl => cl.ProductId, survivor.Id), ct);
+
+            var survivorSpecialProductIds = await _db.ProductSpecials
+                .Where(ps => ps.ProductId == survivor.Id)
+                .Select(ps => ps.ProductId)
+                .ToListAsync(ct);
+
+            await _db.ProductSpecials
+                .Where(ps => victimIds.Contains(ps.ProductId))
+                .ExecuteUpdateAsync(s => s.SetProperty(ps => ps.ProductId, survivor.Id), ct);
+
+            _db.Products.RemoveRange(victims);
+            merged += victims.Count;
+        }
+
+        await _db.SaveChangesAsync(ct);
+
+        return Ok(new { merged, skus = dupes });
+    }
+
     private static ProductDto Map(Domain.Product p, bool hideCost, ActiveSpecialInfo? special = null) => new()
     {
         Id = p.Id,
