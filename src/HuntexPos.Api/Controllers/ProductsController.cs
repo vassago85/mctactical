@@ -537,10 +537,11 @@ public class ProductsController : ControllerBase
 
         foreach (var sku in dupes)
         {
-            var group = await _db.Products
+            var group = (await _db.Products
                 .Where(p => p.Sku == sku)
+                .ToListAsync(ct))
                 .OrderByDescending(p => p.UpdatedAt ?? p.CreatedAt)
-                .ToListAsync(ct);
+                .ToList();
 
             var survivor = group[0];
             var victims = group.Skip(1).ToList();

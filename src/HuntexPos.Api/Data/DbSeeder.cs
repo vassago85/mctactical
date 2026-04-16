@@ -269,10 +269,11 @@ public static class DbSeeder
         {
             foreach (var sku in dupes)
             {
-                var group = await db.Products
+                var group = (await db.Products
                     .Where(p => p.Sku == sku)
+                    .ToListAsync(ct))
                     .OrderByDescending(p => p.UpdatedAt ?? p.CreatedAt)
-                    .ToListAsync(ct);
+                    .ToList();
 
                 var survivor = group[0];
                 var victims = group.Skip(1).ToList();
