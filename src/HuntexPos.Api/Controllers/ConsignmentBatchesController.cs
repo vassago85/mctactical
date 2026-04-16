@@ -61,7 +61,8 @@ public class ConsignmentBatchesController : ControllerBase
         if (supplierId.HasValue)
             q = q.Where(b => b.SupplierId == supplierId.Value);
 
-        var batches = await q.OrderByDescending(b => b.CreatedAt).Take(100).ToListAsync(ct);
+        var batches = (await q.ToListAsync(ct))
+            .OrderByDescending(b => b.CreatedAt).Take(100).ToList();
         return batches.Select(MapBatch).ToList();
     }
 
