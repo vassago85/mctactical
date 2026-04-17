@@ -408,6 +408,7 @@ body.mc-body-app .app-main tbody tr:hover {
 .mc-nav-link {
   display: flex;
   align-items: center;
+  gap: 0.5rem;
   min-height: 44px;
   padding: 0 var(--mc-space-4);
   margin: 2px var(--mc-space-2);
@@ -444,6 +445,10 @@ body.mc-body-app .app-main tbody tr:hover {
 }
 
 .mc-sidebar__logout {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
   width: 100%;
   min-height: 44px;
   border-radius: 10px;
@@ -494,6 +499,9 @@ body.mc-body-app .app-main tbody tr:hover {
 }
 
 .mc-topbar__menu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 44px;
   min-height: 44px;
   border-radius: 10px;
@@ -509,6 +517,9 @@ body.mc-body-app .app-main tbody tr:hover {
 }
 
 .mc-topbar__nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 38px;
   min-height: 38px;
   border-radius: 10px;

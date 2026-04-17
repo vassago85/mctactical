@@ -9,6 +9,7 @@ import McField from '@/components/ui/McField.vue'
 import McAlert from '@/components/ui/McAlert.vue'
 import McBadge from '@/components/ui/McBadge.vue'
 import McModal from '@/components/ui/McModal.vue'
+import { ChevronRight, AlertTriangle } from 'lucide-vue-next'
 
 type Supplier = { id: string; name: string }
 type Preset = { id: string; supplierId: string; name: string; mapping: Record<string, string | undefined> }
@@ -214,10 +215,10 @@ async function commitWholesaler() {
     <div class="imp-steps" aria-hidden="true">
       <McBadge variant="accent">1</McBadge>
       <span class="imp-steps__txt">Supplier &amp; presets</span>
-      <span class="imp-steps__sep">→</span>
+      <span class="imp-steps__sep"><ChevronRight :size="14" /></span>
       <McBadge variant="neutral">2</McBadge>
       <span class="imp-steps__txt">File + preview</span>
-      <span class="imp-steps__sep">→</span>
+      <span class="imp-steps__sep"><ChevronRight :size="14" /></span>
       <McBadge variant="neutral">3</McBadge>
       <span class="imp-steps__txt">Commit</span>
     </div>
@@ -289,7 +290,7 @@ async function commitWholesaler() {
               <td>{{ r.cost }}</td>
               <td :class="{ 'imp-warn': !!r.warning }">
                 {{ r.sellPrice }}
-                <span v-if="r.warning" :title="r.warning ?? ''" class="imp-warn-ic">⚠</span>
+                <AlertTriangle v-if="r.warning" :title="r.warning ?? ''" class="imp-warn-ic" :size="14" />
               </td>
               <td>{{ r.qtyOnHand }}</td>
               <td>{{ r.error }}</td>
@@ -340,7 +341,7 @@ async function commitWholesaler() {
               <td>{{ r.cost }}</td>
               <td :class="{ 'imp-warn': !!r.warning }">
                 {{ r.sellPrice }}
-                <span v-if="r.warning" :title="r.warning ?? ''" class="imp-warn-ic">⚠</span>
+                <AlertTriangle v-if="r.warning" :title="r.warning ?? ''" class="imp-warn-ic" :size="14" />
               </td>
               <td>{{ r.qtyOnHand }}</td>
               <td>{{ r.error }}</td>
@@ -392,6 +393,8 @@ async function commitWholesaler() {
 }
 
 .imp-steps__sep {
+  display: inline-flex;
+  align-items: center;
   color: #d4d2cd;
 }
 
@@ -491,5 +494,7 @@ async function commitWholesaler() {
 .imp-warn-ic {
   cursor: help;
   margin-left: 0.2rem;
+  vertical-align: middle;
+  display: inline-block;
 }
 </style>

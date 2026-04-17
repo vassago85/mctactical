@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { watch, onMounted, onUnmounted } from 'vue'
+import { X } from 'lucide-vue-next'
 
 const props = defineProps<{
   modelValue: boolean
@@ -50,7 +51,7 @@ onUnmounted(() => {
             <slot name="title">
               <h2 id="mc-modal-title" class="mc-modal-title">{{ title }}</h2>
             </slot>
-            <button type="button" class="mc-modal-x" aria-label="Close" @click="close">×</button>
+            <button type="button" class="mc-modal-x" aria-label="Close" @click="close"><X :size="18" /></button>
           </header>
           <div class="mc-modal-body">
             <slot />
@@ -112,6 +113,9 @@ onUnmounted(() => {
   color: var(--mc-app-heading, #0a0a0c);
 }
 .mc-modal-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   width: 2.5rem;
   height: 2.5rem;

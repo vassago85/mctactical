@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useToast } from '@/composables/useToast'
+import { X } from 'lucide-vue-next'
 
 const { toasts, dismiss } = useToast()
 </script>
@@ -15,7 +16,7 @@ const { toasts, dismiss } = useToast()
         role="status"
       >
         <span class="mc-toast__msg">{{ t.message }}</span>
-        <button type="button" class="mc-toast__close" aria-label="Dismiss" @click="dismiss(t.id)">×</button>
+        <button type="button" class="mc-toast__close" aria-label="Dismiss" @click="dismiss(t.id)"><X :size="16" /></button>
       </div>
     </TransitionGroup>
   </div>
@@ -70,6 +71,9 @@ const { toasts, dismiss } = useToast()
   line-height: 1.4;
 }
 .mc-toast__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   width: 2rem;
   height: 2rem;

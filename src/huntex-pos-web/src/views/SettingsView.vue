@@ -14,6 +14,7 @@ import McCheckbox from '@/components/ui/McCheckbox.vue'
 import McActionBar from '@/components/ui/McActionBar.vue'
 import McEmptyState from '@/components/ui/McEmptyState.vue'
 import McSpinner from '@/components/ui/McSpinner.vue'
+import { X } from 'lucide-vue-next'
 
 const toast = useToast()
 const dto = ref({
@@ -358,7 +359,7 @@ async function toggleSpecialActive(s: ProductSpecial) {
         <aside v-if="showSpecialsDrawer" class="promo-drawer" role="dialog">
           <header class="promo-drawer__head">
             <h2 class="promo-drawer__title">Specials — {{ specialsPromo?.name }}</h2>
-            <button type="button" class="promo-drawer__close" @click="showSpecialsDrawer = false">×</button>
+            <button type="button" class="promo-drawer__close" aria-label="Close" @click="showSpecialsDrawer = false"><X :size="20" /></button>
           </header>
           <div class="promo-drawer__body">
             <McButton variant="primary" type="button" @click="openAddSpecialModal">Add product special</McButton>
@@ -525,6 +526,7 @@ async function toggleSpecialActive(s: ProductSpecial) {
 .promo-drawer__title { font-size: 1.1rem; margin: 0; }
 
 .promo-drawer__close {
+  display: inline-flex; align-items: center; justify-content: center;
   background: none; border: none; font-size: 1.5rem; cursor: pointer;
   color: var(--mc-app-text-muted);
 }

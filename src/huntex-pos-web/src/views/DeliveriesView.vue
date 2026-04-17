@@ -11,6 +11,7 @@ import McBadge from '@/components/ui/McBadge.vue'
 import McSpinner from '@/components/ui/McSpinner.vue'
 import McEmptyState from '@/components/ui/McEmptyState.vue'
 import McModal from '@/components/ui/McModal.vue'
+import { FileText, CheckCircle } from 'lucide-vue-next'
 
 type Delivery = {
   id: string
@@ -150,9 +151,9 @@ onMounted(() => void load())
               </td>
               <td>
                 <div class="del-actions">
-                  <McButton variant="ghost" dense type="button" @click="openOrderConfirmation(d)">Confirmation</McButton>
-                  <McButton variant="ghost" dense type="button" @click="openInvoicePdf(d)">Invoice</McButton>
-                  <McButton v-if="!d.isDelivered" variant="primary" dense type="button" @click="openDeliverModal(d)">Mark delivered</McButton>
+                  <McButton variant="ghost" dense type="button" @click="openOrderConfirmation(d)"><FileText :size="14" class="del-btn-icon" />Confirmation</McButton>
+                  <McButton variant="ghost" dense type="button" @click="openInvoicePdf(d)"><FileText :size="14" class="del-btn-icon" />Invoice</McButton>
+                  <McButton v-if="!d.isDelivered" variant="primary" dense type="button" @click="openDeliverModal(d)"><CheckCircle :size="14" class="del-btn-icon" />Mark delivered</McButton>
                 </div>
               </td>
             </tr>
@@ -219,5 +220,10 @@ onMounted(() => void load())
   display: flex;
   gap: 0.35rem;
   flex-wrap: wrap;
+}
+
+.del-btn-icon {
+  flex-shrink: 0;
+  margin-right: 0.25rem;
 }
 </style>

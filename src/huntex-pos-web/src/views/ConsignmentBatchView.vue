@@ -12,6 +12,7 @@ import McSpinner from '@/components/ui/McSpinner.vue'
 import McEmptyState from '@/components/ui/McEmptyState.vue'
 import McModal from '@/components/ui/McModal.vue'
 import BarcodeScanner from '@/components/BarcodeScanner.vue'
+import { X } from 'lucide-vue-next'
 
 const toast = useToast()
 
@@ -423,7 +424,7 @@ function formatDate(iso: string) {
                 <span v-else>{{ l.expectedQty }}</span>
               </td>
               <td v-if="isDraft" class="text-center">
-                <button type="button" class="cb-remove-btn" title="Remove" @click="removeLine(l.id)">×</button>
+                <button type="button" class="cb-remove-btn" title="Remove" @click="removeLine(l.id)"><X :size="16" /></button>
               </td>
             </tr>
           </tbody>
@@ -550,7 +551,7 @@ function formatDate(iso: string) {
 .cb-table-wrap { overflow-x: auto; }
 .cb-table { width: 100%; }
 .cb-qty-input { width: 60px; text-align: center; padding: .25rem; border: 1px solid #ddd; border-radius: 4px; font-size: .9rem; }
-.cb-remove-btn { background: none; border: none; font-size: 1.2rem; color: #999; cursor: pointer; padding: .25rem .5rem; }
+.cb-remove-btn { display: inline-flex; align-items: center; justify-content: center; background: none; border: none; font-size: 1.2rem; color: #999; cursor: pointer; padding: .25rem .5rem; }
 .cb-remove-btn:hover { color: #e11d48; }
 
 .cb-row--done { background: #f0fdf4; }

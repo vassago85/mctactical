@@ -15,6 +15,7 @@ import McModal from '@/components/ui/McModal.vue'
 import McSpinner from '@/components/ui/McSpinner.vue'
 import McCheckbox from '@/components/ui/McCheckbox.vue'
 import McBadge from '@/components/ui/McBadge.vue'
+import { Minus, Plus, ChevronDown, ChevronRight } from 'lucide-vue-next'
 
 type Product = {
   id: string
@@ -442,11 +443,11 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
                   <td>
                     <div class="pos-stepper">
                       <button type="button" class="pos-stepper__btn" aria-label="Decrease" @click="bumpQty(l, -1)">
-                        −
+                        <Minus :size="16" />
                       </button>
                       <span class="pos-stepper__val">{{ l.qty }}</span>
                       <button type="button" class="pos-stepper__btn" aria-label="Increase" @click="bumpQty(l, 1)">
-                        +
+                        <Plus :size="16" />
                       </button>
                     </div>
                   </td>
@@ -510,7 +511,8 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 
           <div style="margin-top: 0.75rem">
             <button type="button" class="btn-link-toggle" @click="showBusinessFields = !showBusinessFields">
-              {{ showBusinessFields ? '▾ Hide' : '▸ Add' }} business / VAT details
+              <component :is="showBusinessFields ? ChevronDown : ChevronRight" :size="14" />
+              {{ showBusinessFields ? 'Hide' : 'Add' }} business / VAT details
             </button>
           </div>
           <div v-if="showBusinessFields" class="pos-customer-grid" style="margin-top: 0.5rem">
@@ -783,6 +785,9 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 }
 
 .pos-stepper__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 38px;
   min-height: 38px;
   border: none;
@@ -891,6 +896,9 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 }
 
 .btn-link-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
   background: none;
   border: none;
   color: var(--mc-accent, #f47a20);

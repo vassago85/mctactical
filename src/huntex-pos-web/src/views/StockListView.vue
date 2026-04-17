@@ -14,6 +14,7 @@ import McSpinner from '@/components/ui/McSpinner.vue'
 import McEmptyState from '@/components/ui/McEmptyState.vue'
 import McModal from '@/components/ui/McModal.vue'
 import McCheckbox from '@/components/ui/McCheckbox.vue'
+import { AlertTriangle, MoreHorizontal, X, Star } from 'lucide-vue-next'
 
 type Supplier = { id: string; name: string }
 
@@ -584,7 +585,7 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
         :class="{ 'stock-specials-chip--active': filterSpecials }"
         @click="filterSpecials = !filterSpecials"
       >
-        <span class="stock-specials-chip__icon">{{ filterSpecials ? '✕' : '★' }}</span>
+        <span class="stock-specials-chip__icon"><component :is="filterSpecials ? X : Star" :size="14" /></span>
         {{ filterSpecials ? 'Showing specials only — click to clear' : 'Show products with specials' }}
         <span v-if="filterSpecials && page" class="stock-specials-chip__count">({{ page.total }})</span>
       </button>
@@ -615,7 +616,7 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
               <td class="text-right">{{ p.cost != null && p.cost > 0 ? formatZAR(p.cost) : '—' }}</td>
               <td class="text-right" :class="{ 'stock-warn': !!p.warning }">
                 {{ formatZAR(p.sellPrice) }}
-                <span v-if="p.warning" :title="p.warning" class="stock-warn-icon">⚠</span>
+                <AlertTriangle v-if="p.warning" :title="p.warning" class="stock-warn-icon" :size="14" />
               </td>
               <td class="text-right">
                 <template v-if="p.specialPrice != null && p.specialPrice !== p.sellPrice">
@@ -638,7 +639,7 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
                 <McButton variant="secondary" dense type="button" @click="openEdit(p)">Edit</McButton>
                 <McButton variant="secondary" dense type="button" @click="openLabelModal(p)">Label</McButton>
                 <div class="stock-actions-more">
-                  <button type="button" class="stock-actions-toggle" @click="toggleActionsMenu(p.id)">⋯</button>
+                  <button type="button" class="stock-actions-toggle" @click="toggleActionsMenu(p.id)"><MoreHorizontal :size="16" /></button>
                   <div v-if="actionsMenuId === p.id" class="stock-actions-dropdown">
                     <button type="button" @click="openReceiptModal(p, 'OwnedIn'); actionsMenuId = null">+ Owned stock</button>
                     <button type="button" @click="openReceiptModal(p, 'ConsignmentIn'); actionsMenuId = null">+ Consignment</button>
@@ -676,7 +677,7 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
         <aside v-if="showForm" class="stock-drawer" role="dialog" aria-labelledby="stock-drawer-title">
           <header class="stock-drawer__head">
             <h2 id="stock-drawer-title" class="stock-drawer__title">{{ editId ? 'Edit product' : 'Add product' }}</h2>
-            <button type="button" class="stock-drawer__close" aria-label="Close" @click="closeDrawer">×</button>
+            <button type="button" class="stock-drawer__close" aria-label="Close" @click="closeDrawer"><X :size="20" /></button>
           </header>
           <div class="stock-drawer__body">
             <McAlert v-if="formErr" variant="error">{{ formErr }}</McAlert>
@@ -800,7 +801,7 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
         <aside v-if="showHistory" class="stock-drawer stock-drawer--wide" role="dialog" aria-labelledby="history-title">
           <header class="stock-drawer__head">
             <h2 id="history-title" class="stock-drawer__title">Stock history — {{ historyProduct?.name }}</h2>
-            <button type="button" class="stock-drawer__close" aria-label="Close" @click="showHistory = false">×</button>
+            <button type="button" class="stock-drawer__close" aria-label="Close" @click="showHistory = false"><X :size="20" /></button>
           </header>
           <div class="stock-drawer__body">
             <div v-if="historyBusy" class="stock-loading">
@@ -973,6 +974,8 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
 }
 
 .stock-specials-chip__icon {
+  display: inline-flex;
+  align-items: center;
   font-size: 0.9rem;
 }
 
@@ -1085,6 +1088,8 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
 .stock-warn-icon {
   cursor: help;
   margin-left: 0.2rem;
+  vertical-align: middle;
+  display: inline-block;
 }
 
 .stock-special-price {
@@ -1124,12 +1129,15 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
 }
 
 .stock-actions-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: 1px solid var(--mc-app-border, #ddd);
   border-radius: 4px;
   cursor: pointer;
   font-size: 1.1rem;
-  padding: 2px 8px;
+  padding: 4px 8px;
   line-height: 1;
   color: var(--mc-app-text, #333);
 }
