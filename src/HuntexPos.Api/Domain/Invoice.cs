@@ -32,5 +32,10 @@ public class Invoice
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public string? CreatedByUserId { get; set; }
 
+    public bool IsSpecialOrder { get; set; }
+    public bool IsDelivered { get; set; }
+    public DateTimeOffset? DeliveredAt { get; set; }
+    public string? DeliveryNotes { get; set; }
+
     public ICollection<InvoiceLine> Lines { get; set; } = new List<InvoiceLine>();
 }

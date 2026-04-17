@@ -69,6 +69,7 @@ const activePromo = ref<ActivePromotion | null>(null)
 const showBelowCostModal = ref(false)
 const showSaleSummary = ref(false)
 const saleSummary = ref<{
+  invoiceId: string
   invoiceNumber: string
   grandTotal: number
   customerName: string | null
@@ -76,6 +77,7 @@ const saleSummary = ref<{
   emailSent: boolean
   emailWarning: string | null
   belowCostWarning: string | null
+  isSpecialOrder: boolean
   lines: { name: string; qty: number; unitPrice: number; lineTotal: number }[]
 } | null>(null)
 
@@ -144,10 +146,10 @@ async function runSearch() {
 function addToCart(p: Product) {
   const existing = cart.value.find((l) => l.product.id === p.id)
   if (existing) {
-    if (existing.qty >= p.qtyOnHand) return
+    if (!isManager.value && existing.qty >= p.qtyOnHand) return
     existing.qty += 1
   } else {
-    if (p.qtyOnHand < 1) return
+    if (!isManager.value && p.qtyOnHand < 1) return
     const { price } = getEffectivePrice(p)
     cart.value.push({ product: p, qty: 1, unitPrice: price, originalPrice: p.sellPrice, lineDiscount: 0, discMode: 'R', discInput: 0 })
   }
@@ -167,7 +169,7 @@ function onScan(code: string) {
 function bumpQty(l: Line, delta: number) {
   const next = l.qty + delta
   if (next < 1) return
-  if (next > l.product.qtyOnHand) return
+  if (!isManager.value && next > l.product.qtyOnHand) return
   l.qty = next
 }
 
@@ -204,6 +206,11 @@ const belowCostWarning = computed(() => {
     return `Sale total ${formatZAR(grandPreview.value)} is below total cost ${formatZAR(totalCost.value)}`
   return null
 })
+
+const hasSpecialOrderLines = computed(() =>
+  cart.value.some(l => l.qty > l.product.qtyOnHand)
+)
+const showSpecialOrderModal = ref(false)
 
 async function lookupCustomer() {
   const email = customerEmail.value.trim()
@@ -255,6 +262,7 @@ async function doCheckout() {
       }))
     })
     saleSummary.value = {
+      invoiceId: data.id,
       invoiceNumber: data.invoiceNumber,
       grandTotal: data.grandTotal,
       customerName: customerName.value || null,
@@ -262,6 +270,7 @@ async function doCheckout() {
       emailSent: sendEmail.value && !!customerEmail.value.trim(),
       emailWarning: data.emailWarning ?? null,
       belowCostWarning: data.belowCostWarning ?? null,
+      isSpecialOrder: data.isSpecialOrder ?? false,
       lines: summaryLines
     }
     cart.value = []
@@ -290,11 +299,29 @@ async function doCheckout() {
 
 function requestCheckout() {
   if (!cart.value.length) return
+  if (hasSpecialOrderLines.value) {
+    showSpecialOrderModal.value = true
+    return
+  }
   if (belowCostWarning.value) {
     showBelowCostModal.value = true
     return
   }
   void doCheckout()
+}
+
+function confirmSpecialOrder() {
+  showSpecialOrderModal.value = false
+  if (belowCostWarning.value) {
+    showBelowCostModal.value = true
+    return
+  }
+  void doCheckout()
+}
+
+function openOrderConfirmationPdf() {
+  if (!saleSummary.value) return
+  window.open(`/api/invoices/${saleSummary.value.invoiceId}/order-confirmation-pdf`, '_blank')
 }
 
 const searchEmpty = computed(() => !q.value.trim())
@@ -369,16 +396,16 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
                   <span class="pos-result__price--was">{{ formatZAR(p.sellPrice) }}</span>
                 </template>
                 <span v-else class="pos-result__price">{{ formatZAR(p.sellPrice) }}</span>
-                <span class="pos-result__stock" :class="{ 'pos-result__stock--low': p.qtyOnHand <= 3 }">
-                  Stock {{ p.qtyOnHand }}
+                <span class="pos-result__stock" :class="{ 'pos-result__stock--low': p.qtyOnHand <= 3, 'pos-result__stock--out': p.qtyOnHand < 1 }">
+                  {{ p.qtyOnHand < 1 ? 'Out of stock' : `Stock ${p.qtyOnHand}` }}
                 </span>
                 <McButton
                   variant="primary"
                   type="button"
-                  :disabled="p.qtyOnHand < 1"
+                  :disabled="!isManager && p.qtyOnHand < 1"
                   @click="addToCart(p)"
                 >
-                  Add
+                  {{ isManager && p.qtyOnHand < 1 ? 'Special order' : 'Add' }}
                 </McButton>
               </div>
             </li>
@@ -410,6 +437,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
                   <td class="pos-cart-name">
                     {{ l.product.name }}
                     <span v-if="l.originalPrice !== l.unitPrice" class="pos-cart-was">was {{ formatZAR(l.originalPrice) }}</span>
+                    <McBadge v-if="l.qty > l.product.qtyOnHand" variant="warning">Special order — {{ l.qty - Math.max(0, l.product.qtyOnHand) }} to deliver</McBadge>
                   </td>
                   <td>
                     <div class="pos-stepper">
@@ -542,7 +570,20 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
       </template>
     </McModal>
 
-    <McModal v-model="showSaleSummary" title="Sale complete">
+    <McModal v-model="showSpecialOrderModal" title="Special order">
+      <p>Some items in this cart exceed available stock. This will create a <strong>Special Order</strong> — stock will go negative and items must be delivered to the customer.</p>
+      <ul style="margin: 0.5rem 0; padding-left: 1.25rem">
+        <li v-for="l in cart.filter(x => x.qty > x.product.qtyOnHand)" :key="l.product.id">
+          {{ l.product.name }} — {{ l.qty - Math.max(0, l.product.qtyOnHand) }} unit(s) to deliver
+        </li>
+      </ul>
+      <template #footer>
+        <McButton variant="secondary" type="button" @click="showSpecialOrderModal = false">Cancel</McButton>
+        <McButton variant="primary" type="button" :disabled="busy" @click="confirmSpecialOrder">Confirm special order</McButton>
+      </template>
+    </McModal>
+
+    <McModal v-model="showSaleSummary" :title="saleSummary?.isSpecialOrder ? 'Special order created' : 'Sale complete'">
       <template v-if="saleSummary">
         <div class="sale-summary">
           <div class="sale-summary__header">
@@ -578,11 +619,15 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
           <p v-if="saleSummary.customerName" class="sale-summary__detail">Customer: {{ saleSummary.customerName }}</p>
           <p v-if="saleSummary.emailSent" class="sale-summary__detail">Receipt emailed</p>
 
+          <McAlert v-if="saleSummary.isSpecialOrder" variant="warning">
+            This is a special order. Items need to be delivered to the customer.
+          </McAlert>
           <McAlert v-if="saleSummary.belowCostWarning" variant="warning">{{ saleSummary.belowCostWarning }}</McAlert>
           <McAlert v-if="saleSummary.emailWarning" variant="error">{{ saleSummary.emailWarning }}</McAlert>
         </div>
       </template>
       <template #footer>
+        <McButton v-if="saleSummary?.isSpecialOrder" variant="secondary" type="button" @click="openOrderConfirmationPdf">Order confirmation PDF</McButton>
         <McButton variant="primary" type="button" @click="showSaleSummary = false">Done</McButton>
       </template>
     </McModal>
@@ -701,6 +746,11 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 .pos-result__stock--low {
   color: #e65100;
   background: rgba(230, 81, 0, 0.08);
+}
+
+.pos-result__stock--out {
+  color: #c62828;
+  background: rgba(198, 40, 40, 0.08);
 }
 
 .pos-cart-table-wrap {

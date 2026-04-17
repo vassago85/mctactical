@@ -64,6 +64,7 @@ function logout() {
         </div>
         <div v-if="auth.hasRole('Admin', 'Owner', 'Dev')" class="mc-nav-group">
           <p class="mc-nav-group__label">Office</p>
+          <RouterLink class="mc-nav-link" to="/deliveries" @click="sidebarOpen = false">Deliveries</RouterLink>
           <RouterLink class="mc-nav-link" to="/import" @click="sidebarOpen = false">Import</RouterLink>
           <RouterLink class="mc-nav-link" to="/reports" @click="sidebarOpen = false">Reports</RouterLink>
           <RouterLink class="mc-nav-link" to="/settings" @click="sidebarOpen = false">Pricing</RouterLink>

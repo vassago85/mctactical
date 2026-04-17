@@ -31,6 +31,7 @@ public static class DbSeeder
         await EnsureInvoiceBusinessColumnsAsync(db, ct);
         await EnsureCustomersTableAsync(db, ct);
         await EnsureConsignmentBatchesTablesAsync(db, ct);
+        await EnsureSpecialOrderColumnsAsync(db, ct);
         await MergeDuplicateSkusAsync(db, log, ct);
 
         foreach (var r in Roles.All)
@@ -252,6 +253,15 @@ public static class DbSeeder
             """, ct);
         try { await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_ConsignmentBatchLines_BatchId" ON "ConsignmentBatchLines" ("BatchId");""", ct); } catch { }
         try { await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_ConsignmentBatchLines_ProductId" ON "ConsignmentBatchLines" ("ProductId");""", ct); } catch { }
+    }
+
+    private static async Task EnsureSpecialOrderColumnsAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "IsSpecialOrder" INTEGER NOT NULL DEFAULT 0;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "IsDelivered" INTEGER NOT NULL DEFAULT 0;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "DeliveredAt" TEXT;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "DeliveryNotes" TEXT;""", ct); } catch { }
     }
 
     /// <summary>Auto-merge products with duplicate SKUs, then enforce a unique index.</summary>

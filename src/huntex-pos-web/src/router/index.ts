@@ -15,6 +15,7 @@ const router = createRouter({
     { path: '/stock', component: () => import('@/views/StockListView.vue'), meta: { layout: 'app' } },
     { path: '/stocktake', component: () => import('@/views/StocktakeView.vue'), meta: { layout: 'app' } },
     { path: '/consignment', component: () => import('@/views/ConsignmentBatchView.vue'), meta: { layout: 'app' } },
+    { path: '/deliveries', component: () => import('@/views/DeliveriesView.vue'), meta: { layout: 'app' } },
     { path: '/import', component: () => import('@/views/ImportView.vue'), meta: { layout: 'app' } },
     { path: '/reports', component: () => import('@/views/ReportsView.vue'), meta: { layout: 'app' } },
     { path: '/settings', component: () => import('@/views/SettingsView.vue'), meta: { layout: 'app' } },

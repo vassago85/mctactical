@@ -1,9 +1,11 @@
 using System.Security.Claims;
+using HuntexPos.Api.Data;
 using HuntexPos.Api.Domain;
 using HuntexPos.Api.DTOs;
 using HuntexPos.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace HuntexPos.Api.Controllers;
 
@@ -13,8 +15,15 @@ namespace HuntexPos.Api.Controllers;
 public class InvoicesController : ControllerBase
 {
     private readonly InvoiceService _invoices;
+    private readonly HuntexDbContext _db;
+    private readonly InvoicePdfService _pdf;
 
-    public InvoicesController(InvoiceService invoices) => _invoices = invoices;
+    public InvoicesController(InvoiceService invoices, HuntexDbContext db, InvoicePdfService pdf)
+    {
+        _invoices = invoices;
+        _db = db;
+        _pdf = pdf;
+    }
 
     [HttpPost]
     public async Task<ActionResult<InvoiceDto>> Create([FromBody] CreateInvoiceRequest req, CancellationToken ct)
@@ -60,5 +69,62 @@ public class InvoicesController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+    }
+
+    [HttpGet("pending-deliveries")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Owner},{Roles.Dev}")]
+    public async Task<ActionResult<List<PendingDeliveryDto>>> PendingDeliveries(
+        [FromQuery] string? filter, CancellationToken ct)
+    {
+        var q = _db.Invoices.AsNoTracking()
+            .Include(i => i.Lines)
+            .Where(i => i.IsSpecialOrder && i.Status != InvoiceStatus.Voided);
+
+        if (string.IsNullOrWhiteSpace(filter) || filter == "pending")
+            q = q.Where(i => !i.IsDelivered);
+        else if (filter == "delivered")
+            q = q.Where(i => i.IsDelivered);
+
+        var invoices = (await q.ToListAsync(ct))
+            .OrderByDescending(i => i.CreatedAt).ToList();
+
+        return invoices.Select(i => new PendingDeliveryDto
+        {
+            Id = i.Id,
+            InvoiceNumber = i.InvoiceNumber,
+            CustomerName = i.CustomerName,
+            CustomerEmail = i.CustomerEmail,
+            GrandTotal = i.GrandTotal,
+            CreatedAt = i.CreatedAt,
+            IsDelivered = i.IsDelivered,
+            DeliveredAt = i.DeliveredAt,
+            DeliveryNotes = i.DeliveryNotes,
+            ItemsSummary = string.Join(", ", i.Lines.Select(l => $"{l.Description} x{l.Quantity}"))
+        }).ToList();
+    }
+
+    [HttpPost("{id:guid}/mark-delivered")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Owner},{Roles.Dev}")]
+    public async Task<IActionResult> MarkDelivered(Guid id, [FromBody] MarkDeliveredRequest req, CancellationToken ct)
+    {
+        var inv = await _db.Invoices.FirstOrDefaultAsync(i => i.Id == id, ct);
+        if (inv == null) return NotFound();
+        if (!inv.IsSpecialOrder) return BadRequest(new { error = "Not a special order." });
+
+        inv.IsDelivered = true;
+        inv.DeliveredAt = DateTimeOffset.UtcNow;
+        inv.DeliveryNotes = req.Notes;
+        await _db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+
+    [HttpGet("{id:guid}/order-confirmation-pdf")]
+    [Authorize(Roles = $"{Roles.Admin},{Roles.Owner},{Roles.Dev}")]
+    public async Task<IActionResult> OrderConfirmationPdf(Guid id, CancellationToken ct)
+    {
+        var inv = await _db.Invoices.AsNoTracking().Include(i => i.Lines).FirstOrDefaultAsync(i => i.Id == id, ct);
+        if (inv == null) return NotFound();
+        var bytes = _pdf.BuildOrderConfirmationPdf(inv);
+        return File(bytes, "application/pdf", $"order-confirmation-{inv.InvoiceNumber}.pdf");
     }
 }

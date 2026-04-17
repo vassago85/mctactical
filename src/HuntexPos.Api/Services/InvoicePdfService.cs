@@ -292,6 +292,189 @@ public class InvoicePdfService
         }).GeneratePdf();
     }
 
+    public byte[] BuildOrderConfirmationPdf(Invoice invoice)
+    {
+        var logoBytes = LoadLogo();
+
+        return Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.MarginHorizontal(40);
+                page.MarginVertical(35);
+                page.DefaultTextStyle(x => x.FontSize(10).FontColor(TextDark));
+
+                page.Header().Column(header =>
+                {
+                    header.Item().Row(row =>
+                    {
+                        if (logoBytes != null)
+                            row.ConstantItem(120).AlignMiddle().Image(logoBytes).FitWidth();
+                        else
+                            row.ConstantItem(120).AlignMiddle()
+                                .Text("MC").Bold().FontSize(28).FontColor(AccentHex);
+
+                        row.RelativeItem().AlignRight().AlignMiddle().Column(right =>
+                        {
+                            right.Item().Text("ORDER CONFIRMATION")
+                                .Bold().FontSize(20).FontColor(TextDark).LetterSpacing(0.04f);
+                            right.Item().Text(invoice.InvoiceNumber)
+                                .FontSize(11).FontColor(TextMuted);
+                        });
+                    });
+
+                    header.Item().PaddingTop(8)
+                        .LineHorizontal(2).LineColor(AccentHex);
+                });
+
+                page.Content().PaddingTop(14).Column(col =>
+                {
+                    col.Item().Row(row =>
+                    {
+                        row.RelativeItem().Column(seller =>
+                        {
+                            seller.Item().Text("FROM").FontSize(7).Bold()
+                                .FontColor(TextLight).LetterSpacing(0.08f);
+                            seller.Item().PaddingTop(2)
+                                .Text(_app.CompanyDisplayName).Bold().FontSize(10);
+                            if (!string.IsNullOrWhiteSpace(_app.CompanyAddress))
+                            {
+                                foreach (var chunk in _app.CompanyAddress
+                                    .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                                    seller.Item().Text(chunk).FontSize(9).FontColor(TextMuted);
+                            }
+                            if (!string.IsNullOrWhiteSpace(_app.CompanyPhone))
+                                seller.Item().Text($"Tel: {_app.CompanyPhone}").FontSize(9).FontColor(TextMuted);
+                            if (!string.IsNullOrWhiteSpace(_app.CompanyEmail))
+                                seller.Item().Text(_app.CompanyEmail).FontSize(9).FontColor(TextMuted);
+                        });
+
+                        row.RelativeItem().Column(buyer =>
+                        {
+                            buyer.Item().Text("DELIVER TO").FontSize(7).Bold()
+                                .FontColor(TextLight).LetterSpacing(0.08f);
+
+                            if (!string.IsNullOrWhiteSpace(invoice.CustomerCompany))
+                                buyer.Item().PaddingTop(2)
+                                    .Text(invoice.CustomerCompany).Bold().FontSize(10);
+
+                            if (!string.IsNullOrWhiteSpace(invoice.CustomerName))
+                                buyer.Item().PaddingTop(string.IsNullOrWhiteSpace(invoice.CustomerCompany) ? 2 : 0)
+                                    .Text(invoice.CustomerName).FontSize(10);
+
+                            if (!string.IsNullOrWhiteSpace(invoice.CustomerAddress))
+                            {
+                                foreach (var chunk in invoice.CustomerAddress
+                                    .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                                    buyer.Item().Text(chunk).FontSize(9).FontColor(TextMuted);
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(invoice.CustomerEmail))
+                                buyer.Item().Text(invoice.CustomerEmail).FontSize(9).FontColor(TextMuted);
+                        });
+                    });
+
+                    col.Item().PaddingTop(12).Row(row =>
+                    {
+                        void MetaCell(IContainer c, string label, string value)
+                        {
+                            c.Column(mc =>
+                            {
+                                mc.Item().Text(label).FontSize(7).Bold()
+                                    .FontColor(TextLight).LetterSpacing(0.08f);
+                                mc.Item().PaddingTop(2).Text(value).FontSize(10).FontColor(TextDark);
+                            });
+                        }
+
+                        MetaCell(row.RelativeItem(), "ORDER DATE",
+                            invoice.CreatedAt.ToOffset(TimeSpan.FromHours(2)).ToString("yyyy-MM-dd  HH:mm"));
+                        MetaCell(row.RelativeItem(), "REFERENCE", invoice.InvoiceNumber);
+                    });
+
+                    col.Item().PaddingTop(14).Background("#FFF5EB")
+                        .Border(1).BorderColor("#F9C89B").Padding(10)
+                        .Text("Items will be delivered once available. Payment secures your Huntex pricing.")
+                        .FontSize(9.5f).FontColor(TextDark);
+
+                    col.Item().PaddingTop(14).Table(table =>
+                    {
+                        table.ColumnsDefinition(c =>
+                        {
+                            c.RelativeColumn(4);
+                            c.ConstantColumn(50);
+                            c.ConstantColumn(75);
+                            c.ConstantColumn(80);
+                        });
+
+                        table.Header(h =>
+                        {
+                            void Th(IContainer c, string text, bool right = false)
+                            {
+                                var cell = c.BorderBottom(1).BorderColor(BorderLight)
+                                    .Background(TableHeadBg)
+                                    .Padding(6);
+                                if (right) cell = cell.AlignRight();
+                                cell.Text(text).FontSize(7).Bold()
+                                    .FontColor(TextLight).LetterSpacing(0.06f);
+                            }
+
+                            Th(h.Cell(), "ITEM");
+                            Th(h.Cell(), "QTY", true);
+                            Th(h.Cell(), "PRICE (INCL.)", true);
+                            Th(h.Cell(), "TOTAL", true);
+                        });
+
+                        var odd = false;
+                        foreach (var line in invoice.Lines)
+                        {
+                            var bg = odd ? "#F8F7F5" : "#FFFFFF";
+                            odd = !odd;
+
+                            table.Cell().Background(bg).BorderBottom(1).BorderColor(BorderLight)
+                                .Padding(6).Text(line.Description).FontSize(9.5f);
+
+                            table.Cell().Background(bg).BorderBottom(1).BorderColor(BorderLight)
+                                .Padding(6).AlignRight()
+                                .Text(line.Quantity.ToString()).FontSize(9.5f);
+
+                            table.Cell().Background(bg).BorderBottom(1).BorderColor(BorderLight)
+                                .Padding(6).AlignRight()
+                                .Text($"R{line.UnitPrice:N2}").FontSize(9.5f);
+
+                            table.Cell().Background(bg).BorderBottom(1).BorderColor(BorderLight)
+                                .Padding(6).AlignRight()
+                                .Text($"R{line.LineTotal:N2}").FontSize(9.5f);
+                        }
+                    });
+
+                    col.Item().PaddingTop(8).Row(totalRow =>
+                    {
+                        totalRow.RelativeItem();
+                        totalRow.ConstantItem(240).Background("#FFF5EB")
+                            .Border(1).BorderColor("#F9C89B")
+                            .Padding(10).Row(inner =>
+                            {
+                                inner.RelativeItem().AlignMiddle()
+                                    .Text("Total (incl. VAT)").FontSize(10).FontColor(TextMuted);
+                                inner.AutoItem().AlignRight().AlignMiddle()
+                                    .Text($"R{invoice.GrandTotal:N2}")
+                                    .Bold().FontSize(16).FontColor(TextDark);
+                            });
+                    });
+
+                    var (footerTitle, footerLines) = ReceiptCompanyContact.ToPdfFooter(_app);
+                    col.Item().PaddingTop(30)
+                        .LineHorizontal(1).LineColor(BorderLight);
+                    col.Item().PaddingTop(10)
+                        .Text(footerTitle).SemiBold().FontSize(10).FontColor(TextDark);
+                    foreach (var line in footerLines)
+                        col.Item().Text(line).FontSize(9).FontColor(TextMuted);
+                });
+            });
+        }).GeneratePdf();
+    }
+
     public async Task<string> SavePdfAsync(Invoice invoice, byte[] pdf, CancellationToken ct)
     {
         var dir = Path.Combine(Directory.GetCurrentDirectory(), _app.PdfStoragePath);

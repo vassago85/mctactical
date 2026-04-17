@@ -68,6 +68,11 @@ public class InvoiceDto
     /// <summary>Set on anonymous public invoice responses so the web receipt can show shop details.</summary>
     public CompanyContactDto? CompanyContact { get; set; }
 
+    public bool IsSpecialOrder { get; set; }
+    public bool IsDelivered { get; set; }
+    public DateTimeOffset? DeliveredAt { get; set; }
+    public string? DeliveryNotes { get; set; }
+
     /// <summary>Non-null if the sale total is below total cost (managers only).</summary>
     public string? BelowCostWarning { get; set; }
     public string? EmailWarning { get; set; }
@@ -88,4 +93,23 @@ public class VoidInvoiceRequest
 {
     [Required, MinLength(3)]
     public string Reason { get; set; } = string.Empty;
+}
+
+public class PendingDeliveryDto
+{
+    public Guid Id { get; set; }
+    public string InvoiceNumber { get; set; } = string.Empty;
+    public string? CustomerName { get; set; }
+    public string? CustomerEmail { get; set; }
+    public decimal GrandTotal { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public bool IsDelivered { get; set; }
+    public DateTimeOffset? DeliveredAt { get; set; }
+    public string? DeliveryNotes { get; set; }
+    public string ItemsSummary { get; set; } = string.Empty;
+}
+
+public class MarkDeliveredRequest
+{
+    public string? Notes { get; set; }
 }

@@ -43,13 +43,18 @@ public class InvoiceService
 
         var lines = new List<InvoiceLine>();
         decimal subTotal = 0;
+        bool isSpecialOrder = false;
 
         foreach (var l in req.Lines)
         {
             if (!products.TryGetValue(l.ProductId, out var p))
                 throw new InvalidOperationException($"Unknown product {l.ProductId}");
             if (p.QtyOnHand < l.Quantity)
-                throw new InvalidOperationException($"Insufficient stock for {p.Name} (have {p.QtyOnHand})");
+            {
+                if (!managerBypassPosRules)
+                    throw new InvalidOperationException($"Insufficient stock for {p.Name} (have {p.QtyOnHand})");
+                isSpecialOrder = true;
+            }
 
             var unit = l.UnitPriceOverride ?? p.SellPrice;
             var lineGross = unit * l.Quantity;
@@ -128,6 +133,7 @@ public class InvoiceService
             GrandTotal = grandTotal,
             PromotionName = req.PromotionName,
             CreatedByUserId = userId,
+            IsSpecialOrder = isSpecialOrder,
             Lines = lines
         };
 
@@ -158,17 +164,24 @@ public class InvoiceService
                     ? "MC Tactical"
                     : _app.CompanyDisplayName.Trim();
                 var footer = ReceiptCompanyContact.ToEmailHtmlFooter(_app);
+                var specialNote = isSpecialOrder
+                    ? "<p><strong>This is a special order.</strong> Items will be delivered once available. Your payment secures Huntex pricing.</p>"
+                    : "";
                 var html = $"""
                             <p>Thank you for your purchase at {System.Net.WebUtility.HtmlEncode(shopName)}.</p>
-                            <p>Invoice <strong>{invoice.InvoiceNumber}</strong> — Total <strong>{invoice.GrandTotal:F2}</strong></p>
+                            <p>Invoice <strong>{invoice.InvoiceNumber}</strong> — Total <strong>R{invoice.GrandTotal:F2}</strong></p>
+                            {specialNote}
                             <p><a href="{viewUrl}">View or print your invoice</a></p>
                             {footer}
                             """;
+                var subject = isSpecialOrder
+                    ? $"Order Confirmation & Invoice {invoice.InvoiceNumber}"
+                    : $"Invoice {invoice.InvoiceNumber}";
                 try
                 {
                     await _email.SendInvoiceEmailAsync(
                         req.CustomerEmail.Trim(),
-                        $"Invoice {invoice.InvoiceNumber}",
+                        subject,
                         html,
                         mailOpt.AttachPdf ? pdfBytes : null,
                         mailOpt.AttachPdf ? $"{invoice.InvoiceNumber}.pdf" : null,
@@ -221,6 +234,10 @@ public class InvoiceService
             PublicToken = inv.PublicToken,
             PdfUrl = pdfUrl,
             CreatedAt = inv.CreatedAt,
+            IsSpecialOrder = inv.IsSpecialOrder,
+            IsDelivered = inv.IsDelivered,
+            DeliveredAt = inv.DeliveredAt,
+            DeliveryNotes = inv.DeliveryNotes,
             Lines = inv.Lines.Select(l => new InvoiceLineDto
             {
                 ProductId = l.ProductId,
