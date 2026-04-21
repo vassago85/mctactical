@@ -170,8 +170,17 @@ public static class DbSeeder
         if (!db.Database.IsSqlite()) return;
         try { await db.Database.ExecuteSqlRawAsync(
             """ALTER TABLE "Suppliers" ADD COLUMN "IsActive" INTEGER NOT NULL DEFAULT 1;""", ct); } catch { }
+        // NOTE: default is a safe mid-range UTC datetime, NOT 0001-01-01. SQLite stores
+        // DateTimeOffset as TEXT without offset, and EF reads it back using the server's
+        // local timezone. A '0001-01-01 00:00:00' literal on a +02:00 host becomes
+        // year 0 in UTC, which overflows DateTimeOffset.UtcDateTime (the error:
+        // "The UTC representation of the date '0001-01-01 00:00:00' falls outside the
+        // year range 1-9999"). 1970-01-01 is safely representable in every timezone.
         try { await db.Database.ExecuteSqlRawAsync(
-            """ALTER TABLE "Suppliers" ADD COLUMN "UpdatedAt" TEXT NOT NULL DEFAULT '0001-01-01 00:00:00';""", ct); } catch { }
+            """ALTER TABLE "Suppliers" ADD COLUMN "UpdatedAt" TEXT NOT NULL DEFAULT '1970-01-01 00:00:00';""", ct); } catch { }
+        // Backfill any existing rows that were stamped with the old unsafe default.
+        try { await db.Database.ExecuteSqlRawAsync(
+            """UPDATE "Suppliers" SET "UpdatedAt" = "CreatedAt" WHERE "UpdatedAt" = '0001-01-01 00:00:00';""", ct); } catch { }
     }
 
     /// <summary>Add VoidedAt + VoidedByUserId to Invoices if missing (older DBs).</summary>
