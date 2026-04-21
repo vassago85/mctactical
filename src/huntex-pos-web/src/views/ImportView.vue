@@ -51,6 +51,20 @@ const presets = ref<Preset[]>([])
 const showPresetModal = ref(false)
 const newPresetName = ref('')
 
+function extractApiError(e: unknown): string | null {
+  const anyE = e as { response?: { data?: unknown; status?: number }; message?: string }
+  const data = anyE?.response?.data
+  if (typeof data === 'string' && data.trim()) return data.trim().slice(0, 300)
+  if (data && typeof data === 'object') {
+    const d = data as { title?: string; detail?: string; message?: string; error?: string }
+    const text = d.detail ?? d.title ?? d.message ?? d.error
+    if (text && typeof text === 'string') return text.slice(0, 300)
+  }
+  if (anyE?.response?.status) return `HTTP ${anyE.response.status}`
+  if (anyE?.message) return anyE.message
+  return null
+}
+
 async function loadPresets() {
   try {
     const { data } = await http.get<Preset[]>('/api/imports/presets/all')
@@ -104,13 +118,16 @@ async function previewHuntex() {
     fd.append('file', huntexFile.value)
     fd.append('sheetName', sheetName.value)
     fd.append('commit', 'false')
-    const { data } = await http.post<{ preview: PreviewRow[]; warnings: string[] }>('/api/imports/huntex', fd)
+    const { data } = await http.post<{ preview: PreviewRow[]; warnings: string[] }>('/api/imports/huntex', fd, {
+      timeout: 300000,
+    })
     huntexPreview.value = data.preview
     huntexWarnings.value = data.warnings ?? []
     toast.success('Preview ready — review rows, then commit.')
-  } catch {
-    err.value = 'Huntex preview failed'
-    toast.error('Huntex preview failed')
+  } catch (e: unknown) {
+    const detail = extractApiError(e)
+    err.value = detail ? `Huntex preview failed: ${detail}` : 'Huntex preview failed'
+    toast.error(err.value)
   } finally {
     busy.value = false
   }
@@ -125,12 +142,15 @@ async function commitHuntex() {
     fd.append('file', huntexFile.value)
     fd.append('sheetName', sheetName.value)
     fd.append('commit', 'true')
-    const { data } = await http.post<{ imported: number }>('/api/imports/huntex', fd)
+    const { data } = await http.post<{ imported: number }>('/api/imports/huntex', fd, {
+      timeout: 300000,
+    })
     toast.success(`Imported ${data.imported} rows`)
     huntexPreview.value = []
-  } catch {
-    err.value = 'Huntex import failed'
-    toast.error('Huntex import failed')
+  } catch (e: unknown) {
+    const detail = extractApiError(e)
+    err.value = detail ? `Huntex import failed: ${detail}` : 'Huntex import failed'
+    toast.error(err.value)
   } finally {
     busy.value = false
   }

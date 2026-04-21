@@ -124,12 +124,31 @@ public class ImportService
 
     public async Task<int> CommitHuntexPreviewAsync(List<ImportPreviewRowDto> validRows, Guid? supplierId, CancellationToken ct)
     {
-        var count = 0;
-        foreach (var p in validRows.Where(x => x.Error == null))
+        var rows = validRows.Where(x => x.Error == null).ToList();
+        if (rows.Count == 0) return 0;
+
+        // De-duplicate by SKU within the batch — last occurrence wins (typical for spreadsheets).
+        var bySku = new Dictionary<string, ImportPreviewRowDto>(StringComparer.OrdinalIgnoreCase);
+        foreach (var r in rows)
         {
-            var sku = p.Sku.Trim();
-            var existing = await _db.Products.FirstOrDefaultAsync(x => x.Sku == sku, ct);
-            if (existing != null)
+            var s = r.Sku?.Trim();
+            if (string.IsNullOrEmpty(s)) continue;
+            bySku[s] = r;
+        }
+        if (bySku.Count == 0) return 0;
+
+        // Single round-trip: load every existing product whose SKU appears in the batch.
+        var skus = bySku.Keys.ToList();
+        var existingList = await _db.Products
+            .Where(p => skus.Contains(p.Sku))
+            .ToListAsync(ct);
+        var existingBySku = existingList.ToDictionary(p => p.Sku, StringComparer.OrdinalIgnoreCase);
+
+        var now = DateTimeOffset.UtcNow;
+        var count = 0;
+        foreach (var (sku, p) in bySku)
+        {
+            if (existingBySku.TryGetValue(sku, out var existing))
             {
                 existing.Name = p.Name;
                 existing.Barcode = string.IsNullOrWhiteSpace(p.Barcode) ? existing.Barcode : p.Barcode.Trim();
@@ -140,7 +159,7 @@ public class ImportService
                 existing.Manufacturer = p.Manufacturer ?? existing.Manufacturer;
                 existing.ItemType = p.ItemType ?? existing.ItemType;
                 existing.SupplierId = supplierId ?? existing.SupplierId;
-                existing.UpdatedAt = DateTimeOffset.UtcNow;
+                existing.UpdatedAt = now;
             }
             else
             {
@@ -225,12 +244,29 @@ public class ImportService
 
     public async Task<int> CommitWholesalerAsync(List<ImportPreviewRowDto> validRows, Guid? supplierId, CancellationToken ct)
     {
-        var count = 0;
-        foreach (var p in validRows.Where(x => x.Error == null))
+        var rows = validRows.Where(x => x.Error == null).ToList();
+        if (rows.Count == 0) return 0;
+
+        var bySku = new Dictionary<string, ImportPreviewRowDto>(StringComparer.OrdinalIgnoreCase);
+        foreach (var r in rows)
         {
-            var sku = p.Sku.Trim();
-            var existing = await _db.Products.FirstOrDefaultAsync(x => x.Sku == sku, ct);
-            if (existing != null)
+            var s = r.Sku?.Trim();
+            if (string.IsNullOrEmpty(s)) continue;
+            bySku[s] = r;
+        }
+        if (bySku.Count == 0) return 0;
+
+        var skus = bySku.Keys.ToList();
+        var existingList = await _db.Products
+            .Where(p => skus.Contains(p.Sku))
+            .ToListAsync(ct);
+        var existingBySku = existingList.ToDictionary(p => p.Sku, StringComparer.OrdinalIgnoreCase);
+
+        var now = DateTimeOffset.UtcNow;
+        var count = 0;
+        foreach (var (sku, p) in bySku)
+        {
+            if (existingBySku.TryGetValue(sku, out var existing))
             {
                 existing.Name = p.Name;
                 existing.Barcode = string.IsNullOrWhiteSpace(p.Barcode) ? existing.Barcode : p.Barcode!.Trim();
@@ -241,7 +277,7 @@ public class ImportService
                 existing.Manufacturer = p.Manufacturer ?? existing.Manufacturer;
                 existing.ItemType = p.ItemType ?? existing.ItemType;
                 if (supplierId.HasValue) existing.SupplierId = supplierId;
-                existing.UpdatedAt = DateTimeOffset.UtcNow;
+                existing.UpdatedAt = now;
             }
             else
             {
