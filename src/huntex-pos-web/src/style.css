@@ -27,6 +27,14 @@
   --mc-radius-lg: 12px;
   --mc-radius-xl: 14px;
 
+  --mc-container-sm: 640px;
+  --mc-container-md: 860px;
+  --mc-container-lg: 1200px;
+  --mc-container-xl: 1440px;
+  --mc-container-width: var(--mc-container-lg);
+  --mc-touch-min: 44px;
+  --mc-touch-min-lg: 52px;
+
   font-family: 'Source Sans 3', 'Segoe UI', system-ui, sans-serif;
   line-height: 1.5;
   font-weight: 400;

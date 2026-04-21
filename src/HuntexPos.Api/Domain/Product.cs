@@ -19,6 +19,26 @@ public class Product
     public int QtyOnHand { get; set; }
     public int QtyConsignment { get; set; }
 
+    /// <summary>
+    /// How sell price is derived for this product:
+    /// "default" = fall through pricing rule hierarchy,
+    /// "custom_markup" = use <see cref="CustomMarkupPercent"/>,
+    /// "fixed_price" = use <see cref="FixedSellPrice"/>.
+    /// </summary>
+    public string PricingMethod { get; set; } = "default";
+
+    /// <summary>Overrides rule-derived markup when <see cref="PricingMethod"/> = "custom_markup".</summary>
+    public decimal? CustomMarkupPercent { get; set; }
+
+    /// <summary>Fixed sell price when <see cref="PricingMethod"/> = "fixed_price". Bypasses markup logic.</summary>
+    public decimal? FixedSellPrice { get; set; }
+
+    /// <summary>Optional floor — sell never goes below this, even with discounts.</summary>
+    public decimal? MinSellPrice { get; set; }
+
+    /// <summary>When true, recalculation operations must not change <see cref="SellPrice"/>.</summary>
+    public bool PriceLocked { get; set; }
+
     public bool Active { get; set; } = true;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }

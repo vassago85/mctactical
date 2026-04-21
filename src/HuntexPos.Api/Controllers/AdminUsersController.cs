@@ -21,12 +21,18 @@ public class AdminUsersController : ControllerBase
     private readonly UserManager<ApplicationUser> _users;
     private readonly IEmailSender _email;
     private readonly AppOptions _app;
+    private readonly IEffectiveBusinessSettings _business;
 
-    public AdminUsersController(UserManager<ApplicationUser> users, IEmailSender email, IOptions<AppOptions> app)
+    public AdminUsersController(
+        UserManager<ApplicationUser> users,
+        IEmailSender email,
+        IOptions<AppOptions> app,
+        IEffectiveBusinessSettings business)
     {
         _users = users;
         _email = email;
         _app = app.Value;
+        _business = business;
     }
 
     [HttpGet]
@@ -153,20 +159,25 @@ public class AdminUsersController : ControllerBase
 
     private async Task SendSetupEmailAsync(ApplicationUser user, CancellationToken ct)
     {
+        var eff = await _business.GetAsync(ct);
         var token = await _users.GeneratePasswordResetTokenAsync(user);
         var encoded = Uri.EscapeDataString(token);
         var emailEncoded = Uri.EscapeDataString(user.Email!);
         var link = $"{_app.PublicBaseUrl.TrimEnd('/')}/#/setup-password?token={encoded}&email={emailEncoded}";
         var name = user.DisplayName ?? user.Email;
+        var accent = string.IsNullOrWhiteSpace(eff.AccentColor) ? "#ff6600" : eff.AccentColor;
+        var shop = System.Net.WebUtility.HtmlEncode(eff.BusinessName);
+        var phone = System.Net.WebUtility.HtmlEncode(eff.Phone);
+        var addr = System.Net.WebUtility.HtmlEncode(eff.Address);
 
         var html = $"""
         <div style="font-family:sans-serif;max-width:500px;margin:0 auto">
-            <h2 style="color:#ff6600">Welcome to {_app.CompanyDisplayName}</h2>
-            <p>Hi {name},</p>
+            <h2 style="color:{accent}">Welcome to {shop}</h2>
+            <p>Hi {System.Net.WebUtility.HtmlEncode(name!)},</p>
             <p>An account has been created for you. Please set your password to get started:</p>
             <p style="text-align:center;margin:24px 0">
                 <a href="{link}" style="display:inline-block;padding:12px 28px;
-                    background:#ff6600;color:#fff;text-decoration:none;border-radius:4px;
+                    background:{accent};color:#fff;text-decoration:none;border-radius:4px;
                     font-weight:bold">Set my password</a>
             </p>
             <p style="font-size:0.85rem;color:#888">
@@ -174,15 +185,15 @@ public class AdminUsersController : ControllerBase
                 <a href="{link}">{link}</a>
             </p>
             <p style="font-size:0.85rem;color:#888">
-                {_app.CompanyDisplayName} &bull; {_app.CompanyPhone}<br/>
-                {_app.CompanyAddress}
+                {shop} &bull; {phone}<br/>
+                {addr}
             </p>
         </div>
         """;
 
         await _email.SendInvoiceEmailAsync(
             user.Email!,
-            $"Set up your {_app.CompanyDisplayName} account",
+            $"Set up your {eff.BusinessName} account",
             html,
             null, null, ct);
     }

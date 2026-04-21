@@ -104,7 +104,7 @@ async function loadBatches() {
 }
 
 async function createBatch() {
-  if (!createSupplierId.value) { err.value = 'Select a supplier.'; return }
+  if (!createSupplierId.value) { err.value = 'Select a wholesaler.'; return }
   err.value = null
   busy.value = true
   try {
@@ -447,7 +447,7 @@ function formatDate(iso: string) {
           <tr>
             <th>Date</th>
             <th>Type</th>
-            <th>Supplier</th>
+            <th>Wholesaler</th>
             <th>Lines</th>
             <th>Status</th>
             <th></th>
@@ -479,9 +479,9 @@ function formatDate(iso: string) {
         <option value="Return">Return (send back)</option>
       </select>
     </McField>
-    <McField label="Supplier" for-id="cb-supplier">
+    <McField label="Wholesaler" for-id="cb-supplier">
       <select id="cb-supplier" v-model="createSupplierId" required>
-        <option value="" disabled>Select supplier…</option>
+        <option value="" disabled>Select wholesaler…</option>
         <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
       </select>
     </McField>

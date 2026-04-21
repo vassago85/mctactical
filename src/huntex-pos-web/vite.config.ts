@@ -14,23 +14,26 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: [],
+      // Generic fallback manifest. The running deployment overrides this at runtime
+      // by swapping the manifest <link> to /api/settings/branding/manifest.webmanifest
+      // (see main.ts).
       manifest: {
-        name: 'MC Tactical POS',
-        short_name: 'MC Tactical',
-        description: 'MC Tactical point of sale & stock',
-        theme_color: '#f47a20',
-        background_color: '#0a0a0b',
+        name: 'POS',
+        short_name: 'POS',
+        description: 'Point of sale',
+        theme_color: '#0a0a0b',
+        background_color: '#ffffff',
         display: 'standalone',
         start_url: '/',
         icons: [
           {
-            src: '/MCtactical Dark.png',
+            src: '/favicon.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any'
           },
           {
-            src: '/MCtactical Dark.png',
+            src: '/favicon.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable'

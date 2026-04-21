@@ -44,16 +44,14 @@ public class WholesalerImportRequest
 {
     [Required]
     public IFormFile File { get; set; } = null!;
-    [Required]
-    public Guid SupplierId { get; set; }
+    public Guid? SupplierId { get; set; }
     public ColumnMappingDto Mapping { get; set; } = new();
     public bool Commit { get; set; }
 }
 
 public class SaveImportPresetRequest
 {
-    [Required]
-    public Guid SupplierId { get; set; }
+    public Guid? SupplierId { get; set; }
     [Required]
     public string Name { get; set; } = string.Empty;
     [Required]
@@ -63,7 +61,7 @@ public class SaveImportPresetRequest
 public class ImportPresetDto
 {
     public Guid Id { get; set; }
-    public Guid SupplierId { get; set; }
+    public Guid? SupplierId { get; set; }
     public string Name { get; set; } = string.Empty;
     public ColumnMappingDto Mapping { get; set; } = new();
 }

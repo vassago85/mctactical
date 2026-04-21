@@ -167,7 +167,7 @@ public class ImportService
     }
 
     public async Task<(List<ImportPreviewRowDto> Rows, List<string> Warnings)> PreviewWholesalerAsync(
-        Stream stream, string fileName, Guid supplierId, ColumnMappingDto mapping, CancellationToken ct)
+        Stream stream, string fileName, Guid? supplierId, ColumnMappingDto mapping, CancellationToken ct)
     {
         var ext = Path.GetExtension(fileName).ToLowerInvariant();
         if (ext == ".xlsx" || ext == ".xlsm")
@@ -176,7 +176,7 @@ public class ImportService
     }
 
     private async Task<(List<ImportPreviewRowDto>, List<string>)> PreviewWholesalerCsvAsync(
-        Stream stream, Guid supplierId, ColumnMappingDto mapping, CancellationToken ct)
+        Stream stream, Guid? supplierId, ColumnMappingDto mapping, CancellationToken ct)
     {
         var settings = await _db.PricingSettings.AsNoTracking().FirstOrDefaultAsync(ct) ?? new PricingSettings();
         using var reader = new StreamReader(stream);
@@ -204,7 +204,7 @@ public class ImportService
     }
 
     private async Task<(List<ImportPreviewRowDto>, List<string>)> PreviewWholesalerXlsxAsync(
-        Stream stream, Guid supplierId, ColumnMappingDto mapping, CancellationToken ct)
+        Stream stream, Guid? supplierId, ColumnMappingDto mapping, CancellationToken ct)
     {
         var settings = await _db.PricingSettings.AsNoTracking().FirstOrDefaultAsync(ct) ?? new PricingSettings();
         using var workbook = new XLWorkbook(stream);
@@ -223,7 +223,7 @@ public class ImportService
         return (rows, new List<string>());
     }
 
-    public async Task<int> CommitWholesalerAsync(List<ImportPreviewRowDto> validRows, Guid supplierId, CancellationToken ct)
+    public async Task<int> CommitWholesalerAsync(List<ImportPreviewRowDto> validRows, Guid? supplierId, CancellationToken ct)
     {
         var count = 0;
         foreach (var p in validRows.Where(x => x.Error == null))
@@ -240,7 +240,7 @@ public class ImportService
                 existing.Category = p.Category ?? existing.Category;
                 existing.Manufacturer = p.Manufacturer ?? existing.Manufacturer;
                 existing.ItemType = p.ItemType ?? existing.ItemType;
-                existing.SupplierId = supplierId;
+                if (supplierId.HasValue) existing.SupplierId = supplierId;
                 existing.UpdatedAt = DateTimeOffset.UtcNow;
             }
             else

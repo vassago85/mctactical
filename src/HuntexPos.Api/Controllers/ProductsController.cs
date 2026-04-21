@@ -20,11 +20,13 @@ public class ProductsController : ControllerBase
 {
     private readonly HuntexDbContext _db;
     private readonly AppOptions _app;
+    private readonly IPricingService _pricing;
 
-    public ProductsController(HuntexDbContext db, IOptions<AppOptions> app)
+    public ProductsController(HuntexDbContext db, IOptions<AppOptions> app, IPricingService pricing)
     {
         _db = db;
         _app = app.Value;
+        _pricing = pricing;
     }
 
     [HttpGet]
@@ -358,7 +360,8 @@ public class ProductsController : ControllerBase
     {
         var hideCost = await ShouldHideCostAsync(ct);
         var p = await _db.Products.AsNoTracking().Include(x => x.Supplier).FirstOrDefaultAsync(x => x.Id == id, ct);
-        return p == null ? NotFound() : Map(p, hideCost);
+        if (p == null) return NotFound();
+        return await MapWithPricingAsync(p, hideCost, ct);
     }
 
     [HttpPost]
@@ -372,15 +375,6 @@ public class ProductsController : ControllerBase
         if (await _db.Products.AnyAsync(p => p.Sku == req.Sku.Trim(), ct))
             return BadRequest(new { error = $"SKU \"{req.Sku.Trim()}\" already exists." });
 
-        var sell = req.SellPrice > 0
-            ? req.SellPrice
-            : 0m;
-        if (sell == 0 && req.Cost > 0)
-        {
-            var settings = await _db.PricingSettings.AsNoTracking().FirstOrDefaultAsync(ct) ?? new PricingSettings();
-            sell = PricingCalculator.ComputeSellPrice(req.Cost, settings);
-        }
-
         var product = new Product
         {
             Id = Guid.NewGuid(),
@@ -393,13 +387,28 @@ public class ProductsController : ControllerBase
             ItemType = string.IsNullOrWhiteSpace(req.ItemType) ? null : req.ItemType.Trim(),
             SupplierId = req.SupplierId,
             Cost = req.Cost,
-            SellPrice = sell,
             QtyOnHand = req.QtyOnHand,
-            Active = true
+            Active = true,
+            PricingMethod = string.IsNullOrWhiteSpace(req.PricingMethod) ? "default" : req.PricingMethod.Trim(),
+            CustomMarkupPercent = req.CustomMarkupPercent,
+            FixedSellPrice = req.FixedSellPrice,
+            MinSellPrice = req.MinSellPrice,
+            PriceLocked = req.PriceLocked ?? false
         };
+
+        if (req.SellPrice > 0)
+        {
+            product.SellPrice = req.SellPrice;
+        }
+        else
+        {
+            var resolution = await _pricing.ResolveAsync(product, ct);
+            product.SellPrice = resolution.SellPrice;
+        }
+
         _db.Products.Add(product);
         await _db.SaveChangesAsync(ct);
-        return Map(product, false);
+        return await MapWithPricingAsync(product, false, ct);
     }
 
     [HttpPut("{id:guid}")]
@@ -433,14 +442,46 @@ public class ProductsController : ControllerBase
         if (req.ItemType != null) p.ItemType = string.IsNullOrWhiteSpace(req.ItemType) ? null : req.ItemType.Trim();
         if (req.SupplierId.HasValue) p.SupplierId = req.SupplierId;
         if (req.Cost.HasValue) p.Cost = req.Cost.Value;
-        if (req.SellPrice.HasValue && req.SellPrice.Value > 0)
-            p.SellPrice = req.SellPrice.Value;
         if (req.QtyOnHand.HasValue) p.QtyOnHand = req.QtyOnHand.Value;
         if (req.Active.HasValue) p.Active = req.Active.Value;
+
+        if (req.PricingMethod != null) p.PricingMethod = string.IsNullOrWhiteSpace(req.PricingMethod) ? "default" : req.PricingMethod.Trim();
+        if (req.CustomMarkupPercent.HasValue) p.CustomMarkupPercent = req.CustomMarkupPercent;
+        if (req.FixedSellPrice.HasValue) p.FixedSellPrice = req.FixedSellPrice;
+        if (req.MinSellPrice.HasValue) p.MinSellPrice = req.MinSellPrice;
+        if (req.PriceLocked.HasValue) p.PriceLocked = req.PriceLocked.Value;
+
+        if (req.SellPrice.HasValue && req.SellPrice.Value > 0)
+        {
+            p.SellPrice = req.SellPrice.Value;
+        }
+        else if (!p.PriceLocked)
+        {
+            var resolution = await _pricing.ResolveAsync(p, ct);
+            if (resolution.SellPrice > 0)
+                p.SellPrice = resolution.SellPrice;
+        }
+
         p.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _db.SaveChangesAsync(ct);
-        return Map(p, false);
+        return await MapWithPricingAsync(p, false, ct);
+    }
+
+    private async Task<ProductDto> MapWithPricingAsync(Product p, bool hideCost, CancellationToken ct, ActiveSpecialInfo? special = null)
+    {
+        var dto = Map(p, hideCost, special);
+        try
+        {
+            var res = await _pricing.ResolveAsync(p, ct);
+            dto.PricingSource = res.Source;
+            dto.MinAllowedPrice = res.MinAllowedPrice > 0 ? res.MinAllowedPrice : null;
+        }
+        catch
+        {
+            /* best effort — never fail a product fetch over pricing metadata */
+        }
+        return dto;
     }
 
     private async Task<Promotion?> FindActivePromoAsync(CancellationToken ct)
@@ -606,6 +647,11 @@ public class ProductsController : ControllerBase
             ? $"Sell R{p.SellPrice:0} < distributor R{PricingCalculator.DistributorFloor(p.Cost):0.00}"
             : null,
         SpecialPrice = special?.EffectivePrice,
-        SpecialLabel = special?.Label
+        SpecialLabel = special?.Label,
+        PricingMethod = string.IsNullOrWhiteSpace(p.PricingMethod) ? "default" : p.PricingMethod,
+        CustomMarkupPercent = p.CustomMarkupPercent,
+        FixedSellPrice = p.FixedSellPrice,
+        MinSellPrice = p.MinSellPrice,
+        PriceLocked = p.PriceLocked
     };
 }

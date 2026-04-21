@@ -14,6 +14,7 @@ public class InvoiceService
     private readonly IEmailSender _email;
     private readonly AppOptions _app;
     private readonly IEffectiveMailgunProvider _mailgun;
+    private readonly IEffectiveBusinessSettings _business;
     private readonly PosRulesOptions _posRules;
 
     public InvoiceService(
@@ -22,6 +23,7 @@ public class InvoiceService
         IEmailSender email,
         IOptions<AppOptions> app,
         IEffectiveMailgunProvider mailgun,
+        IEffectiveBusinessSettings business,
         IOptions<PosRulesOptions> posRules)
     {
         _db = db;
@@ -29,6 +31,7 @@ public class InvoiceService
         _email = email;
         _app = app.Value;
         _mailgun = mailgun;
+        _business = business;
         _posRules = posRules.Value;
     }
 
@@ -159,13 +162,12 @@ public class InvoiceService
             }
             else
             {
+                var eff = await _business.GetAsync(ct);
                 var viewUrl = $"{_app.PublicBaseUrl.TrimEnd('/')}/#/invoice/{invoice.PublicToken.ToString("N")}";
-                var shopName = string.IsNullOrWhiteSpace(_app.CompanyDisplayName)
-                    ? "MC Tactical"
-                    : _app.CompanyDisplayName.Trim();
-                var footer = ReceiptCompanyContact.ToEmailHtmlFooter(_app);
+                var shopName = string.IsNullOrWhiteSpace(eff.BusinessName) ? "Our Shop" : eff.BusinessName;
+                var footer = ReceiptCompanyContact.ToEmailHtmlFooter(eff);
                 var specialNote = isSpecialOrder
-                    ? "<p><strong>This is a special order.</strong> Items will be delivered once available. Your payment secures Huntex pricing.</p>"
+                    ? $"<p><strong>This is a special order.</strong> Items will be delivered once available. Your payment secures {System.Net.WebUtility.HtmlEncode(shopName)} pricing.</p>"
                     : "";
                 var html = $"""
                             <p>Thank you for your purchase at {System.Net.WebUtility.HtmlEncode(shopName)}.</p>
@@ -205,6 +207,17 @@ public class InvoiceService
         if (grandTotal < totalCost)
             dto.BelowCostWarning = $"Sale total R{grandTotal:0.00} is below total cost R{totalCost:0.00}";
 
+        return dto;
+    }
+
+    private async Task<InvoiceDto> MapToDtoAsync(Invoice inv, byte[]? pdfBytes, bool includeCompanyContact, CancellationToken ct)
+    {
+        var dto = MapToDto(inv, pdfBytes, includeCompanyContact: false);
+        if (includeCompanyContact)
+        {
+            var eff = await _business.GetAsync(ct);
+            dto.CompanyContact = ReceiptCompanyContact.ToDto(eff);
+        }
         return dto;
     }
 
@@ -248,7 +261,7 @@ public class InvoiceService
                 LineDiscount = l.LineDiscount,
                 LineTotal = l.LineTotal
             }).ToList(),
-            CompanyContact = includeCompanyContact ? ReceiptCompanyContact.ToDto(_app) : null
+            CompanyContact = null
         };
     }
 
@@ -275,7 +288,7 @@ public class InvoiceService
     public async Task<InvoiceDto?> GetByPublicTokenAsync(Guid token, CancellationToken ct)
     {
         var inv = await _db.Invoices.Include(i => i.Lines).FirstOrDefaultAsync(i => i.PublicToken == token, ct);
-        return inv == null ? null : MapToDto(inv, null, includeCompanyContact: true);
+        return inv == null ? null : await MapToDtoAsync(inv, null, includeCompanyContact: true, ct);
     }
 
     public async Task<byte[]?> GetPdfByPublicTokenAsync(Guid token, CancellationToken ct)

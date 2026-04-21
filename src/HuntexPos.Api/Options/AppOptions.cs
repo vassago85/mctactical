@@ -5,6 +5,7 @@ public class AppOptions
     public const string SectionName = "App";
     public string PublicBaseUrl { get; set; } = "http://localhost:5173";
     public string PdfStoragePath { get; set; } = "storage/pdfs";
+    public string BrandingStoragePath { get; set; } = "storage/branding";
     public bool HideCostForSalesRole { get; set; } = true;
 
     /// <summary>Shown on customer receipts (email, PDF, public invoice page).</summary>

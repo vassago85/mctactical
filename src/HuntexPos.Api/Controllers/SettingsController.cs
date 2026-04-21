@@ -20,7 +20,7 @@ public class SettingsController : ControllerBase
     private readonly IOptions<MailgunOptions> _mailCfg;
 
     private readonly IEmailSender _email;
-    private readonly AppOptions _app;
+    private readonly IEffectiveBusinessSettings _business;
 
     public SettingsController(
         HuntexDbContext db,
@@ -28,14 +28,14 @@ public class SettingsController : ControllerBase
         IEffectiveMailgunProvider effectiveMail,
         IOptions<MailgunOptions> mailCfg,
         IEmailSender email,
-        IOptions<AppOptions> app)
+        IEffectiveBusinessSettings business)
     {
         _db = db;
         _posRules = posRules.Value;
         _effectiveMail = effectiveMail;
         _mailCfg = mailCfg;
         _email = email;
-        _app = app.Value;
+        _business = business;
     }
 
     [HttpGet("pos-rules")]
@@ -130,10 +130,9 @@ public class SettingsController : ControllerBase
         if (string.IsNullOrWhiteSpace(to))
             return BadRequest(new { error = "Email address required." });
 
-        var shopName = string.IsNullOrWhiteSpace(_app.CompanyDisplayName)
-            ? "MC Tactical"
-            : _app.CompanyDisplayName.Trim();
-        var footer = ReceiptCompanyContact.ToEmailHtmlFooter(_app);
+        var eff = await _business.GetAsync(ct);
+        var shopName = string.IsNullOrWhiteSpace(eff.BusinessName) ? "Our Shop" : eff.BusinessName;
+        var footer = ReceiptCompanyContact.ToEmailHtmlFooter(eff);
         var html = $"""
             <p>This is a test email from <strong>{System.Net.WebUtility.HtmlEncode(shopName)} POS</strong>.</p>
             <p>If you received this, your Mailgun settings are working correctly.</p>

@@ -3,7 +3,10 @@ import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
 import { logoDark } from '@/branding'
+import { useBranding } from '@/composables/useBranding'
 import { formatZAR } from '@/utils/format'
+
+const { businessName, logoUrl } = useBranding()
 
 const route = useRoute()
 const token = route.params.token as string
@@ -50,7 +53,7 @@ function pdfLink() {
   <div class="inv-public">
     <div class="inv-public__sheet">
       <header class="inv-public__head">
-        <img class="inv-public__logo" :src="logoDark" alt="MC Tactical" />
+        <img class="inv-public__logo" :src="logoUrl ?? logoDark" :alt="businessName" />
         <div class="inv-public__head-text">
           <h1 class="inv-public__h1">Invoice</h1>
           <p v-if="inv" class="inv-public__num">{{ inv.invoiceNumber }}</p>

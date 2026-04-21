@@ -3,9 +3,12 @@ import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { logoDark } from '@/branding'
+import { useBranding } from '@/composables/useBranding'
 import McButton from '@/components/ui/McButton.vue'
 import McField from '@/components/ui/McField.vue'
 import McAlert from '@/components/ui/McAlert.vue'
+
+const { businessName, logoUrl } = useBranding()
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -35,10 +38,10 @@ async function submit() {
   <div class="auth-layout">
     <div class="auth-panel">
       <div class="auth-panel__brand">
-        <img class="auth-panel__logo" :src="logoDark" alt="MC Tactical" />
+        <img class="auth-panel__logo" :src="logoUrl ?? logoDark" :alt="businessName" />
         <p class="auth-panel__tagline">Point of sale</p>
       </div>
-      <h1 class="sr-only">Sign in to MC Tactical POS</h1>
+      <h1 class="sr-only">Sign in to {{ businessName }} POS</h1>
       <p class="auth-panel__title">Sign in</p>
       <p class="auth-panel__sub">Staff access — use the email and password provided by your manager.</p>
 
@@ -55,7 +58,7 @@ async function submit() {
           {{ busy ? 'Signing in…' : 'Sign in' }}
         </McButton>
       </form>
-      <p class="auth-panel__foot">mctactical.co.za</p>
+      <p class="auth-panel__foot">{{ businessName }}</p>
     </div>
   </div>
 </template>

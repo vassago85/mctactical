@@ -36,6 +36,13 @@ type Product = {
   warning?: string | null
   specialPrice?: number | null
   specialLabel?: string | null
+  pricingMethod?: string
+  customMarkupPercent?: number | null
+  fixedSellPrice?: number | null
+  minSellPrice?: number | null
+  priceLocked?: boolean
+  pricingSource?: string | null
+  minAllowedPrice?: number | null
 }
 
 type Page = { total: number; skip: number; take: number; items: Product[] }
@@ -172,11 +179,30 @@ const form = ref({
   supplierId: '' as string,
   cost: 0,
   sellPrice: 0,
-  qtyOnHand: 0
+  qtyOnHand: 0,
+  pricingMethod: 'default' as 'default' | 'custom_markup' | 'fixed_price',
+  customMarkupPercent: null as number | null,
+  fixedSellPrice: null as number | null,
+  minSellPrice: null as number | null,
+  priceLocked: false
 })
 const formBusy = ref(false)
 const formErr = ref<string | null>(null)
 const sellPriceManual = ref(false)
+
+interface PricingPreview {
+  sellPrice: number
+  minAllowedPrice: number
+  source: string
+  pricingMethod: string
+  effectiveMarkupPercent: number
+  effectiveMaxDiscountPercent: number
+  effectiveRoundToNearest: number
+  effectiveMinMarginPercent: number | null
+}
+const pricingPreview = ref<PricingPreview | null>(null)
+const previewBusy = ref(false)
+let previewTimer: ReturnType<typeof setTimeout> | null = null
 let computeTimer: ReturnType<typeof setTimeout> | null = null
 
 function closeDrawer() {
@@ -186,9 +212,16 @@ function closeDrawer() {
 function openAdd() {
   editId.value = null
   sellPriceManual.value = false
-  form.value = { sku: '', barcode: '', name: '', category: '', manufacturer: '', itemType: '', supplierId: '', cost: 0, sellPrice: 0, qtyOnHand: 0 }
+  form.value = {
+    sku: '', barcode: '', name: '', category: '', manufacturer: '', itemType: '',
+    supplierId: '', cost: 0, sellPrice: 0, qtyOnHand: 0,
+    pricingMethod: 'default', customMarkupPercent: null, fixedSellPrice: null,
+    minSellPrice: null, priceLocked: false
+  }
+  pricingPreview.value = null
   formErr.value = null
   showForm.value = true
+  schedulePreview()
 }
 
 function openEdit(p: Product) {
@@ -204,11 +237,61 @@ function openEdit(p: Product) {
     supplierId: p.supplierId ?? '',
     cost: p.cost ?? 0,
     sellPrice: p.sellPrice,
-    qtyOnHand: p.qtyOnHand
+    qtyOnHand: p.qtyOnHand,
+    pricingMethod: (p.pricingMethod as 'default' | 'custom_markup' | 'fixed_price') ?? 'default',
+    customMarkupPercent: p.customMarkupPercent ?? null,
+    fixedSellPrice: p.fixedSellPrice ?? null,
+    minSellPrice: p.minSellPrice ?? null,
+    priceLocked: p.priceLocked ?? false
   }
+  pricingPreview.value = null
   formErr.value = null
   showForm.value = true
+  schedulePreview()
 }
+
+function schedulePreview() {
+  if (previewTimer) clearTimeout(previewTimer)
+  previewTimer = setTimeout(() => { void runPreview() }, 250)
+}
+
+async function runPreview() {
+  previewBusy.value = true
+  try {
+    const { data } = await http.post<PricingPreview>('/api/pricing-rules/preview', {
+      cost: Number(form.value.cost) || 0,
+      category: form.value.category || null,
+      manufacturer: form.value.manufacturer || null,
+      supplierId: form.value.supplierId || null,
+      pricingMethod: form.value.pricingMethod,
+      customMarkupPercent: form.value.customMarkupPercent,
+      fixedSellPrice: form.value.fixedSellPrice,
+      minSellPrice: form.value.minSellPrice
+    })
+    pricingPreview.value = data
+    if (!sellPriceManual.value && data.sellPrice > 0) {
+      form.value.sellPrice = data.sellPrice
+    }
+  } catch {
+    /* keep current preview */
+  } finally {
+    previewBusy.value = false
+  }
+}
+
+watch(() => [
+  form.value.cost,
+  form.value.category,
+  form.value.manufacturer,
+  form.value.supplierId,
+  form.value.pricingMethod,
+  form.value.customMarkupPercent,
+  form.value.fixedSellPrice,
+  form.value.minSellPrice
+], () => {
+  if (!showForm.value) return
+  schedulePreview()
+}, { deep: true })
 
 async function computeSellFromCost(cost: number) {
   if (!cost || cost <= 0) { form.value.sellPrice = 0; return }
@@ -241,6 +324,11 @@ async function saveProduct() {
       supplierId: form.value.supplierId || null,
       cost: costVal > 0 ? costVal : null,
       sellPrice: sellVal > 0 ? sellVal : null,
+      pricingMethod: form.value.pricingMethod,
+      customMarkupPercent: form.value.customMarkupPercent,
+      fixedSellPrice: form.value.fixedSellPrice,
+      minSellPrice: form.value.minSellPrice,
+      priceLocked: form.value.priceLocked
     }
     if (editId.value) {
       await http.put(`/api/products/${editId.value}`, payload)
@@ -326,7 +414,7 @@ const receiptTypeLabel = computed(() => {
     case 'ConsignmentIn': return 'Receive consignment'
     case 'ConsignmentToStock': return 'Move consignment → owned stock'
     case 'StockToConsignment': return 'Move owned stock → consignment'
-    case 'ConsignmentReturn': return 'Return to supplier'
+    case 'ConsignmentReturn': return 'Return to wholesaler'
     default: return 'Stock movement'
   }
 })
@@ -335,7 +423,7 @@ async function submitReceipt() {
   receiptErr.value = null
   if (!receiptProduct.value) return
   if (receiptType.value !== 'OwnedIn' && !receiptSupplierId.value) {
-    receiptErr.value = 'Please select a supplier.'
+    receiptErr.value = 'Please select a wholesaler.'
     return
   }
   receiptBusy.value = true
@@ -544,7 +632,7 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
               id="stock-q"
               v-model="q"
               type="search"
-              placeholder="Any words, any order — matches name, SKU, barcode, category, supplier…"
+              placeholder="Any words, any order — matches name, SKU, barcode, category, wholesaler…"
             />
           </McField>
         </div>
@@ -598,7 +686,7 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
             <tr>
               <th>SKU</th>
               <th>Name</th>
-              <th>Supplier</th>
+              <th>Wholesaler</th>
               <th class="text-right">Cost</th>
               <th class="text-right">Sell</th>
               <th class="text-right">Promo</th>
@@ -704,7 +792,7 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
               <McField label="Category" for-id="f-cat">
                 <input id="f-cat" v-model="form.category" />
               </McField>
-              <McField label="Supplier" for-id="f-supplier">
+              <McField label="Wholesaler" for-id="f-supplier">
                 <select id="f-supplier" v-model="form.supplierId">
                   <option value="">— None —</option>
                   <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
@@ -722,6 +810,64 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
                 <input id="f-qty" v-model.number="form.qtyOnHand" type="number" step="1" min="0" />
               </McField>
             </div>
+
+            <section class="pricing-section">
+              <header class="pricing-section__head">
+                <h3 class="pricing-section__title">Pricing</h3>
+                <p v-if="pricingPreview" class="pricing-section__source">{{ pricingPreview.source }}</p>
+              </header>
+
+              <McField label="Pricing method" for-id="f-method">
+                <select id="f-method" v-model="form.pricingMethod">
+                  <option value="default">Default (use pricing rules)</option>
+                  <option value="custom_markup">Custom markup %</option>
+                  <option value="fixed_price">Fixed sell price</option>
+                </select>
+              </McField>
+
+              <div v-if="form.pricingMethod === 'custom_markup'" class="stock-drawer__grid">
+                <McField label="Custom markup % (cost × 1 + markup/100)" for-id="f-cmp">
+                  <input id="f-cmp" v-model.number="form.customMarkupPercent" type="number" step="0.01" />
+                </McField>
+              </div>
+
+              <div v-if="form.pricingMethod === 'fixed_price'" class="stock-drawer__grid">
+                <McField label="Fixed sell price (R)" for-id="f-fsp">
+                  <input id="f-fsp" v-model.number="form.fixedSellPrice" type="number" step="0.01" min="0" />
+                </McField>
+              </div>
+
+              <div class="stock-drawer__grid">
+                <McField label="Minimum sell price (R)" for-id="f-minp" hint="Hard floor — sell price never goes below this.">
+                  <input id="f-minp" v-model.number="form.minSellPrice" type="number" step="0.01" min="0" />
+                </McField>
+                <McField label="&nbsp;" for-id="f-lock">
+                  <label class="pricing-lock">
+                    <input id="f-lock" v-model="form.priceLocked" type="checkbox" />
+                    <span>Lock price (never auto-recalculate)</span>
+                  </label>
+                </McField>
+              </div>
+
+              <div v-if="pricingPreview" class="pricing-preview">
+                <div>
+                  <span class="pricing-preview__label">Preview sell</span>
+                  <strong>{{ formatZAR(pricingPreview.sellPrice) }}</strong>
+                </div>
+                <div>
+                  <span class="pricing-preview__label">Min allowed</span>
+                  <strong>{{ pricingPreview.minAllowedPrice > 0 ? formatZAR(pricingPreview.minAllowedPrice) : '—' }}</strong>
+                </div>
+                <div>
+                  <span class="pricing-preview__label">Markup</span>
+                  <strong>{{ pricingPreview.effectiveMarkupPercent }}%</strong>
+                </div>
+                <div>
+                  <span class="pricing-preview__label">Max discount</span>
+                  <strong>{{ pricingPreview.effectiveMaxDiscountPercent }}%</strong>
+                </div>
+              </div>
+            </section>
           </div>
           <footer class="stock-drawer__foot">
             <McButton variant="secondary" type="button" @click="closeDrawer">Cancel</McButton>
@@ -739,11 +885,11 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
 
       <McField
         v-if="receiptType !== 'OwnedIn'"
-        label="Supplier"
+        label="Wholesaler"
         for-id="r-supplier"
       >
         <select id="r-supplier" v-model="receiptSupplierId" required>
-          <option value="" disabled>Select supplier…</option>
+          <option value="" disabled>Select wholesaler…</option>
           <template v-if="(receiptType === 'ConsignmentToStock' || receiptType === 'ConsignmentReturn') && consignmentSummary.length > 0">
             <option v-for="s in consignmentSummary" :key="s.supplierId" :value="s.supplierId">
               {{ s.supplierName }} ({{ s.onHand }} on hand)
@@ -758,7 +904,7 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
         </select>
       </McField>
 
-      <McField v-if="receiptType === 'OwnedIn'" label="Supplier (optional)" for-id="r-supplier-opt">
+      <McField v-if="receiptType === 'OwnedIn'" label="Wholesaler (optional)" for-id="r-supplier-opt">
         <select id="r-supplier-opt" v-model="receiptSupplierId">
           <option value="">— None —</option>
           <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
@@ -769,7 +915,7 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
         <input id="r-qty" v-model.number="receiptQty" type="number" min="1" :max="receiptMaxQty" step="1" required />
       </McField>
       <p v-if="(receiptType === 'ConsignmentToStock' || receiptType === 'ConsignmentReturn') && receiptSupplierId" class="receipt-max-hint">
-        Max: {{ receiptMaxQty }} consignment units{{ consignmentSummary.find(s => s.supplierId === receiptSupplierId) ? ' from this supplier' : '' }}
+        Max: {{ receiptMaxQty }} consignment units{{ consignmentSummary.find(s => s.supplierId === receiptSupplierId) ? ' from this wholesaler' : '' }}
       </p>
       <p v-if="receiptType === 'StockToConsignment'" class="receipt-max-hint">
         Max: {{ receiptMaxQty }} owned units available
@@ -813,7 +959,7 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
                 <tr>
                   <th>Date</th>
                   <th>Type</th>
-                  <th>Supplier</th>
+                  <th>Wholesaler</th>
                   <th>Qty</th>
                   <th>Cost</th>
                   <th>Notes</th>
@@ -1262,6 +1408,65 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
   gap: 0.6rem;
   flex-wrap: wrap;
   background: var(--mc-app-surface-2, #f9f8f6);
+}
+
+.pricing-section {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--mc-app-border-faint, #eceae5);
+  border-radius: 12px;
+  background: var(--mc-app-surface-2, #f9f8f6);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.pricing-section__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.pricing-section__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--mc-app-text, #1a1a1c);
+}
+.pricing-section__source {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--mc-app-text-muted, #5c5a56);
+  font-weight: 500;
+}
+.pricing-lock {
+  display: inline-flex;
+  gap: 0.45rem;
+  align-items: center;
+  font-size: 0.88rem;
+  color: var(--mc-app-text-secondary, #333336);
+  padding-top: 0.35rem;
+}
+.pricing-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 0.5rem 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--mc-app-border-faint, #eceae5);
+  border-radius: 10px;
+  background: #fff;
+}
+.pricing-preview__label {
+  display: block;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mc-app-text-muted, #5c5a56);
+  margin-bottom: 0.15rem;
+}
+.pricing-preview strong {
+  font-size: 0.95rem;
+  color: var(--mc-app-text, #1a1a1c);
 }
 
 .stock-drawer-fade-enter-active,

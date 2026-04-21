@@ -101,7 +101,7 @@ async function sendTest() {
           v-model="dto.from"
           type="text"
           autocomplete="off"
-          placeholder="MC Tactical POS &lt;noreply@example.com&gt;"
+          placeholder="POS &lt;noreply@example.com&gt;"
         />
       </McField>
       <McField label="API base URL" for-id="mail-base">

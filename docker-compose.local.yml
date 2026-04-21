@@ -14,6 +14,7 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: Data Source=/app/data/huntex.db
       App__PdfStoragePath: /app/data/pdfs
+      App__BrandingStoragePath: /app/data/branding
       App__PublicBaseUrl: http://localhost:5173
       Jwt__Key: ${JWT_KEY:-nf9TrSMIYib6J21xAUhkGmWXpOwjPdlE507cq8uC3ZFQgaRD}
       Jwt__Issuer: MCTacticalPos

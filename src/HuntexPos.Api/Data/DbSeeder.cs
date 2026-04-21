@@ -21,6 +21,7 @@ public static class DbSeeder
 
         await db.Database.EnsureCreatedAsync(ct);
         await EnsureMailSettingsTableAsync(db, ct);
+        await EnsureBusinessSettingsTableAsync(db, ct);
         await EnsurePricingColumnsAsync(db, ct);
         await EnsureProductColumnsAsync(db, ct);
         await EnsureInvoiceLineColumnsAsync(db, ct);
@@ -32,6 +33,10 @@ public static class DbSeeder
         await EnsureCustomersTableAsync(db, ct);
         await EnsureConsignmentBatchesTablesAsync(db, ct);
         await EnsureSpecialOrderColumnsAsync(db, ct);
+        await EnsureProductPricingColumnsAsync(db, ct);
+        await EnsurePricingRulesTableAsync(db, ct);
+        await EnsureImportPresetsSupplierNullableAsync(db, ct);
+        await EnsureQuotesTablesAsync(db, ct);
         await MergeDuplicateSkusAsync(db, log, ct);
 
         foreach (var r in Roles.All)
@@ -51,6 +56,43 @@ public static class DbSeeder
                 RoundSellToNearest = 10,
                 DefaultTaxRate = 0,
                 HideCostForSalesRole = true
+            });
+            await db.SaveChangesAsync(ct);
+        }
+
+        if (!await db.PricingRules.AnyAsync(r => r.Scope == PricingRuleScope.Global, ct))
+        {
+            var legacy = await db.PricingSettings.AsNoTracking().FirstOrDefaultAsync(ct)
+                         ?? new PricingSettings();
+            db.PricingRules.Add(new PricingRule
+            {
+                Scope = PricingRuleScope.Global,
+                ScopeKey = null,
+                SupplierId = null,
+                DefaultMarkupPercent = legacy.UseMarginPercent ? legacy.DefaultMarginPercent : 0m,
+                MaxDiscountPercent = 100m,
+                RoundToNearest = legacy.RoundSellToNearest > 0 ? legacy.RoundSellToNearest : 10m,
+                MinMarginPercent = null,
+                IsActive = true,
+                UpdatedAt = DateTimeOffset.UtcNow
+            });
+            await db.SaveChangesAsync(ct);
+        }
+
+        var appCfg = scope.ServiceProvider.GetRequiredService<IOptions<AppOptions>>().Value;
+        if (!await db.BusinessSettings.AnyAsync(ct))
+        {
+            db.BusinessSettings.Add(new BusinessSettings
+            {
+                BusinessName = (appCfg.CompanyDisplayName ?? "").Trim(),
+                LegalName = (appCfg.CompanyDisplayName ?? "").Trim(),
+                VatNumber = (appCfg.CompanyVatNumber ?? "").Trim(),
+                Email = (appCfg.CompanyEmail ?? "").Trim(),
+                Phone = (appCfg.CompanyPhone ?? "").Trim(),
+                Address = (appCfg.CompanyAddress ?? "").Trim(),
+                Website = (appCfg.CompanyWebsite ?? "").Trim(),
+                WebsiteLabel = (appCfg.CompanyWebsiteLabel ?? "").Trim(),
+                UpdatedAt = DateTimeOffset.UtcNow
             });
             await db.SaveChangesAsync(ct);
         }
@@ -327,6 +369,200 @@ public static class DbSeeder
         {
             log.LogWarning(ex, "Could not create unique SKU index — duplicates may still exist.");
         }
+    }
+
+    /// <summary>Adds product-level pricing override columns on older DBs.</summary>
+    private static async Task EnsureProductPricingColumnsAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "PricingMethod" TEXT NOT NULL DEFAULT 'default';""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "CustomMarkupPercent" TEXT;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "FixedSellPrice" TEXT;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "MinSellPrice" TEXT;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "PriceLocked" INTEGER NOT NULL DEFAULT 0;""", ct); } catch { }
+    }
+
+    /// <summary>
+    /// Older deployments had ImportPresets.SupplierId as NOT NULL. The wholesaler-agnostic
+    /// wizard now allows null. SQLite does not support relaxing nullability with ALTER, so we
+    /// rebuild the table only when the existing column is still NOT NULL.
+    /// </summary>
+    private static async Task EnsureImportPresetsSupplierNullableAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        try
+        {
+            var connection = db.Database.GetDbConnection();
+            if (connection.State != System.Data.ConnectionState.Open) await connection.OpenAsync(ct);
+            bool needsRebuild = false;
+            await using (var cmd = connection.CreateCommand())
+            {
+                cmd.CommandText = "PRAGMA table_info(\"ImportPresets\");";
+                await using var reader = await cmd.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                {
+                    var name = reader["name"]?.ToString();
+                    if (string.Equals(name, "SupplierId", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var notnull = Convert.ToInt32(reader["notnull"]);
+                        if (notnull == 1) needsRebuild = true;
+                        break;
+                    }
+                }
+            }
+            if (!needsRebuild) return;
+
+            await db.Database.ExecuteSqlRawAsync(
+                """
+                CREATE TABLE IF NOT EXISTS "ImportPresets_new" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_ImportPresets_new" PRIMARY KEY,
+                    "SupplierId" TEXT NULL,
+                    "Name" TEXT NOT NULL,
+                    "ColumnMappingJson" TEXT NOT NULL,
+                    "UpdatedAt" TEXT NOT NULL
+                );
+                """, ct);
+            await db.Database.ExecuteSqlRawAsync(
+                """INSERT INTO "ImportPresets_new" ("Id","SupplierId","Name","ColumnMappingJson","UpdatedAt")
+                   SELECT "Id","SupplierId","Name","ColumnMappingJson","UpdatedAt" FROM "ImportPresets";""", ct);
+            await db.Database.ExecuteSqlRawAsync("""DROP TABLE "ImportPresets";""", ct);
+            await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "ImportPresets_new" RENAME TO "ImportPresets";""", ct);
+        }
+        catch
+        {
+            /* migration is best-effort; a future deploy will retry */
+        }
+    }
+
+    /// <summary>Creates the PricingRules table on older DBs; global row seeded in SeedAsync.</summary>
+    private static async Task EnsurePricingRulesTableAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS "PricingRules" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_PricingRules" PRIMARY KEY,
+                "Scope" TEXT NOT NULL DEFAULT 'Global',
+                "ScopeKey" TEXT,
+                "SupplierId" TEXT,
+                "DefaultMarkupPercent" TEXT,
+                "MaxDiscountPercent" TEXT,
+                "RoundToNearest" TEXT,
+                "MinMarginPercent" TEXT,
+                "IsActive" INTEGER NOT NULL DEFAULT 1,
+                "UpdatedAt" TEXT NOT NULL
+            );
+            """, ct);
+        try { await db.Database.ExecuteSqlRawAsync(
+            """CREATE UNIQUE INDEX IF NOT EXISTS "IX_PricingRules_Scope_Key_Supplier" ON "PricingRules" ("Scope", "ScopeKey", "SupplierId");""", ct); } catch { }
+    }
+
+    /// <summary>Creates Quotes and QuoteLines tables on older DBs.</summary>
+    private static async Task EnsureQuotesTablesAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS "Quotes" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_Quotes" PRIMARY KEY,
+                "QuoteNumber" TEXT NOT NULL,
+                "Status" TEXT NOT NULL DEFAULT 'Draft',
+                "CustomerId" TEXT,
+                "CustomerName" TEXT,
+                "CustomerEmail" TEXT,
+                "CustomerPhone" TEXT,
+                "CustomerCompany" TEXT,
+                "CustomerAddress" TEXT,
+                "CustomerVatNumber" TEXT,
+                "SubTotal" TEXT NOT NULL DEFAULT '0',
+                "DiscountTotal" TEXT NOT NULL DEFAULT '0',
+                "TaxRate" TEXT NOT NULL DEFAULT '0',
+                "TaxAmount" TEXT NOT NULL DEFAULT '0',
+                "GrandTotal" TEXT NOT NULL DEFAULT '0',
+                "PublicNotes" TEXT,
+                "InternalNotes" TEXT,
+                "ValidUntil" TEXT,
+                "PublicToken" TEXT NOT NULL,
+                "PdfStorageKey" TEXT,
+                "ConvertedInvoiceId" TEXT,
+                "ConvertedAt" TEXT,
+                "CreatedByUserId" TEXT,
+                "CreatedAt" TEXT NOT NULL,
+                "UpdatedAt" TEXT
+            );
+            """, ct);
+        try { await db.Database.ExecuteSqlRawAsync(
+            """CREATE UNIQUE INDEX IF NOT EXISTS "IX_Quotes_QuoteNumber" ON "Quotes" ("QuoteNumber");""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync(
+            """CREATE UNIQUE INDEX IF NOT EXISTS "IX_Quotes_PublicToken" ON "Quotes" ("PublicToken");""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_Quotes_Status" ON "Quotes" ("Status");""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_Quotes_CreatedAt" ON "Quotes" ("CreatedAt");""", ct); } catch { }
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS "QuoteLines" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_QuoteLines" PRIMARY KEY,
+                "QuoteId" TEXT NOT NULL,
+                "ProductId" TEXT,
+                "Sku" TEXT,
+                "ItemName" TEXT NOT NULL DEFAULT '',
+                "Description" TEXT,
+                "Quantity" INTEGER NOT NULL DEFAULT 1,
+                "UnitCost" TEXT,
+                "UnitPrice" TEXT NOT NULL DEFAULT '0',
+                "DiscountPercent" TEXT,
+                "DiscountAmount" TEXT,
+                "TaxRate" TEXT NOT NULL DEFAULT '0',
+                "LineTotal" TEXT NOT NULL DEFAULT '0',
+                "SortOrder" INTEGER NOT NULL DEFAULT 0,
+                CONSTRAINT "FK_QuoteLines_Quotes" FOREIGN KEY ("QuoteId") REFERENCES "Quotes"("Id") ON DELETE CASCADE
+            );
+            """, ct);
+        try { await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_QuoteLines_QuoteId" ON "QuoteLines" ("QuoteId");""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_QuoteLines_ProductId" ON "QuoteLines" ("ProductId");""", ct); } catch { }
+    }
+
+    /// <summary>Creates BusinessSettings table on older DBs (singleton row seeded in SeedAsync).</summary>
+    private static async Task EnsureBusinessSettingsTableAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS "BusinessSettings" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_BusinessSettings" PRIMARY KEY,
+                "BusinessName" TEXT NOT NULL DEFAULT '',
+                "LegalName" TEXT NOT NULL DEFAULT '',
+                "VatNumber" TEXT NOT NULL DEFAULT '',
+                "Currency" TEXT NOT NULL DEFAULT 'ZAR',
+                "TimeZone" TEXT NOT NULL DEFAULT 'Africa/Johannesburg',
+                "Email" TEXT NOT NULL DEFAULT '',
+                "Phone" TEXT NOT NULL DEFAULT '',
+                "Address" TEXT NOT NULL DEFAULT '',
+                "Website" TEXT NOT NULL DEFAULT '',
+                "WebsiteLabel" TEXT NOT NULL DEFAULT '',
+                "LogoStorageKey" TEXT,
+                "FaviconStorageKey" TEXT,
+                "PrimaryColor" TEXT NOT NULL DEFAULT '',
+                "SecondaryColor" TEXT NOT NULL DEFAULT '',
+                "AccentColor" TEXT NOT NULL DEFAULT '',
+                "ReceiptFooter" TEXT NOT NULL DEFAULT '',
+                "QuoteTerms" TEXT NOT NULL DEFAULT '',
+                "InvoiceTerms" TEXT NOT NULL DEFAULT '',
+                "ReturnPolicy" TEXT NOT NULL DEFAULT '',
+                "QuoteLabel" TEXT NOT NULL DEFAULT 'Quote',
+                "InvoiceLabel" TEXT NOT NULL DEFAULT 'Invoice',
+                "CustomerLabel" TEXT NOT NULL DEFAULT 'Customer',
+                "EnableQuotes" INTEGER NOT NULL DEFAULT 1,
+                "EnableDiscounts" INTEGER NOT NULL DEFAULT 1,
+                "EnableBrandPricingRules" INTEGER NOT NULL DEFAULT 1,
+                "UpdatedAt" TEXT NOT NULL
+            );
+            """,
+            ct);
     }
 
     /// <summary>Upgrades SQLite DBs created before MailSettings existed (EnsureCreated does not alter schema).</summary>

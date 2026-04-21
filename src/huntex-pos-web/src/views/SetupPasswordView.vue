@@ -3,9 +3,12 @@ import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { http } from '@/api/http'
 import { logoDark } from '@/branding'
+import { useBranding } from '@/composables/useBranding'
 import McButton from '@/components/ui/McButton.vue'
 import McField from '@/components/ui/McField.vue'
 import McAlert from '@/components/ui/McAlert.vue'
+
+const { businessName, logoUrl } = useBranding()
 
 const route = useRoute()
 const router = useRouter()
@@ -58,7 +61,7 @@ async function submit() {
   <div class="auth-layout">
     <div class="auth-panel">
       <div class="auth-panel__brand">
-        <img class="auth-panel__logo" :src="logoDark" alt="MC Tactical" />
+        <img class="auth-panel__logo" :src="logoUrl ?? logoDark" :alt="businessName" />
       </div>
       <p class="auth-panel__title">Set your password</p>
       <p class="auth-panel__sub">

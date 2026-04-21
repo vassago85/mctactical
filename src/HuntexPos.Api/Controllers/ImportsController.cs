@@ -71,8 +71,8 @@ public class ImportsController : ControllerBase
     [RequestSizeLimit(50_000_000)]
     public async Task<ActionResult<object>> ImportWholesaler(
         [FromForm] IFormFile file,
-        [FromForm] Guid supplierId,
         [FromForm] string mappingJson,
+        [FromForm] Guid? supplierId = null,
         [FromForm] bool commit = false,
         CancellationToken ct = default)
     {
@@ -97,6 +97,24 @@ public class ImportsController : ControllerBase
         if (supplierId.HasValue)
             q = q.Where(p => p.SupplierId == supplierId);
         var list = await q.OrderBy(p => p.Name).ToListAsync(ct);
+        return list.Select(p => new ImportPresetDto
+        {
+            Id = p.Id,
+            SupplierId = p.SupplierId,
+            Name = p.Name,
+            Mapping = ImportService.DeserializeMapping(p.ColumnMappingJson)
+        }).ToList();
+    }
+
+    /// <summary>
+    /// Compatibility endpoint for the wholesaler-agnostic wizard: returns every preset
+    /// regardless of supplier. New presets can be saved via POST /presets with a null supplierId.
+    /// </summary>
+    [HttpGet("presets/all")]
+    public async Task<List<ImportPresetDto>> ListAllPresets(CancellationToken ct)
+    {
+        var list = await _db.ImportPresets.AsNoTracking().Include(p => p.Supplier)
+            .OrderBy(p => p.Name).ToListAsync(ct);
         return list.Select(p => new ImportPresetDto
         {
             Id = p.Id,

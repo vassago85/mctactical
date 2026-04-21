@@ -11,8 +11,12 @@ import McBadge from '@/components/ui/McBadge.vue'
 import McModal from '@/components/ui/McModal.vue'
 import { ChevronRight, AlertTriangle } from 'lucide-vue-next'
 
-type Supplier = { id: string; name: string }
-type Preset = { id: string; supplierId: string; name: string; mapping: Record<string, string | undefined> }
+type Preset = {
+  id: string
+  supplierId?: string | null
+  name: string
+  mapping: Record<string, string | undefined>
+}
 type PreviewRow = {
   rowIndex: number
   sku: string
@@ -27,8 +31,6 @@ type PreviewRow = {
 }
 
 const toast = useToast()
-const suppliers = ref<Supplier[]>([])
-const supplierId = ref('')
 const sheetName = ref('huntex 2026')
 const huntexFile = ref<File | null>(null)
 const huntexPreview = ref<PreviewRow[]>([])
@@ -46,25 +48,23 @@ const err = ref<string | null>(null)
 const busy = ref(false)
 const presets = ref<Preset[]>([])
 
-const showSupplierModal = ref(false)
-const newSupplierName = ref('')
 const showPresetModal = ref(false)
 const newPresetName = ref('')
 
 async function loadPresets() {
-  if (!supplierId.value) return
-  const { data } = await http.get<Preset[]>('/api/imports/presets', { params: { supplierId: supplierId.value } })
-  presets.value = data
+  try {
+    const { data } = await http.get<Preset[]>('/api/imports/presets/all')
+    presets.value = data
+  } catch {
+    presets.value = []
+  }
 }
 
 onMounted(async () => {
-  const { data } = await http.get<Supplier[]>('/api/suppliers')
-  suppliers.value = data
-  if (data[0]) supplierId.value = data[0].id
-  await loadPresets().catch(() => {})
+  await loadPresets()
 })
 
-async function applyPreset(p: Preset) {
+function applyPreset(p: Preset) {
   mappingJson.value = JSON.stringify(p.mapping, null, 2)
   toast.success(`Applied preset “${p.name}”`)
 }
@@ -76,7 +76,7 @@ function openPresetModal() {
 
 async function confirmSavePreset() {
   const name = newPresetName.value.trim()
-  if (!name || !supplierId.value) return
+  if (!name) return
   let mapping: Record<string, string | undefined>
   try {
     mapping = JSON.parse(mappingJson.value) as Record<string, string | undefined>
@@ -86,32 +86,12 @@ async function confirmSavePreset() {
     return
   }
   try {
-    await http.post('/api/imports/presets', { supplierId: supplierId.value, name, mapping })
+    await http.post('/api/imports/presets', { supplierId: null, name, mapping })
     await loadPresets()
     showPresetModal.value = false
     toast.success('Preset saved')
   } catch {
     toast.error('Could not save preset')
-  }
-}
-
-function openSupplierModal() {
-  newSupplierName.value = ''
-  showSupplierModal.value = true
-}
-
-async function confirmAddSupplier() {
-  const name = newSupplierName.value.trim()
-  if (!name) return
-  try {
-    const { data } = await http.post<Supplier>('/api/suppliers', { name })
-    suppliers.value.push(data)
-    supplierId.value = data.id
-    showSupplierModal.value = false
-    await loadPresets()
-    toast.success(`Supplier “${name}” added`)
-  } catch {
-    toast.error('Could not add supplier')
   }
 }
 
@@ -123,7 +103,6 @@ async function previewHuntex() {
     const fd = new FormData()
     fd.append('file', huntexFile.value)
     fd.append('sheetName', sheetName.value)
-    if (supplierId.value) fd.append('supplierId', supplierId.value)
     fd.append('commit', 'false')
     const { data } = await http.post<{ preview: PreviewRow[]; warnings: string[] }>('/api/imports/huntex', fd)
     huntexPreview.value = data.preview
@@ -145,7 +124,6 @@ async function commitHuntex() {
     const fd = new FormData()
     fd.append('file', huntexFile.value)
     fd.append('sheetName', sheetName.value)
-    if (supplierId.value) fd.append('supplierId', supplierId.value)
     fd.append('commit', 'true')
     const { data } = await http.post<{ imported: number }>('/api/imports/huntex', fd)
     toast.success(`Imported ${data.imported} rows`)
@@ -160,12 +138,11 @@ async function commitHuntex() {
 
 async function previewWholesaler() {
   err.value = null
-  if (!wholesalerFile.value || !supplierId.value) return
+  if (!wholesalerFile.value) return
   busy.value = true
   try {
     const fd = new FormData()
     fd.append('file', wholesalerFile.value)
-    fd.append('supplierId', supplierId.value)
     fd.append('mappingJson', mappingJson.value)
     fd.append('commit', 'false')
     const { data } = await http.post<{ preview: PreviewRow[] }>('/api/imports/wholesaler', fd)
@@ -181,12 +158,11 @@ async function previewWholesaler() {
 
 async function commitWholesaler() {
   err.value = null
-  if (!wholesalerFile.value || !supplierId.value) return
+  if (!wholesalerFile.value) return
   busy.value = true
   try {
     const fd = new FormData()
     fd.append('file', wholesalerFile.value)
-    fd.append('supplierId', supplierId.value)
     fd.append('mappingJson', mappingJson.value)
     fd.append('commit', 'true')
     const { data } = await http.post<{ imported: number }>('/api/imports/wholesaler', fd)
@@ -206,7 +182,7 @@ async function commitWholesaler() {
     <McPageHeader title="Stock import">
       <template #default>
         After importing, open <RouterLink to="/stock">Stock list</RouterLink> to verify. Use <strong>Preview</strong> before
-        <strong>Commit</strong> so you can catch mapping issues.
+        <strong>Commit</strong> so you can catch mapping issues. Wholesalers/suppliers can be assigned to products later in stock list.
       </template>
     </McPageHeader>
 
@@ -214,7 +190,7 @@ async function commitWholesaler() {
 
     <div class="imp-steps" aria-hidden="true">
       <McBadge variant="accent">1</McBadge>
-      <span class="imp-steps__txt">Supplier &amp; presets</span>
+      <span class="imp-steps__txt">Presets &amp; mapping</span>
       <span class="imp-steps__sep"><ChevronRight :size="14" /></span>
       <McBadge variant="neutral">2</McBadge>
       <span class="imp-steps__txt">File + preview</span>
@@ -223,26 +199,18 @@ async function commitWholesaler() {
       <span class="imp-steps__txt">Commit</span>
     </div>
 
-    <McCard title="Supplier & mapping presets">
-      <div class="imp-row">
-        <div class="imp-grow">
-          <McField label="Supplier" for-id="imp-supplier">
-            <select id="imp-supplier" v-model="supplierId" @change="loadPresets">
-              <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
-            </select>
-          </McField>
-        </div>
-        <McButton variant="secondary" type="button" @click="openSupplierModal">New supplier</McButton>
+    <McCard v-if="presets.length" title="Mapping presets">
+      <p class="imp-lead" style="margin:0 0 0.75rem">Saved column-mapping presets apply to the wholesaler JSON editor below.</p>
+      <div class="imp-presets__btns">
+        <McButton v-for="p in presets" :key="p.id" variant="secondary" type="button" @click="applyPreset(p)">
+          {{ p.name }}
+        </McButton>
+        <McButton variant="secondary" type="button" @click="openPresetModal">Save mapping as preset…</McButton>
       </div>
-      <div v-if="presets.length" class="imp-presets">
-        <p class="imp-presets__label">Presets</p>
-        <div class="imp-presets__btns">
-          <McButton v-for="p in presets" :key="p.id" variant="secondary" type="button" @click="applyPreset(p)">
-            {{ p.name }}
-          </McButton>
-          <McButton variant="secondary" type="button" @click="openPresetModal">Save mapping as preset…</McButton>
-        </div>
-      </div>
+    </McCard>
+    <McCard v-else title="Mapping presets">
+      <p class="imp-lead" style="margin:0 0 0.75rem">No saved presets yet. Edit the mapping JSON below and save it as a preset for reuse.</p>
+      <McButton variant="secondary" type="button" @click="openPresetModal">Save current mapping as preset…</McButton>
     </McCard>
 
     <McCard title="Huntex workbook or CSV">
@@ -303,7 +271,7 @@ async function commitWholesaler() {
     <McCard title="Wholesaler CSV / Excel">
       <p class="imp-lead">
         Column mapping JSON: CSV header names or Excel columns (<code>A</code>, <code>B</code>, …). Adjust to match your
-        file.
+        file. Uploaded products are not auto-assigned to a wholesaler — assign them from the stock list after import.
       </p>
       <textarea v-model="mappingJson" class="imp-json" rows="8" spellcheck="false" />
       <input
@@ -351,18 +319,6 @@ async function commitWholesaler() {
       </div>
     </McCard>
 
-    <McModal v-model="showSupplierModal" title="New supplier">
-      <McField label="Supplier name" for-id="imp-new-sup">
-        <input id="imp-new-sup" v-model="newSupplierName" type="text" autocomplete="off" @keyup.enter="confirmAddSupplier" />
-      </McField>
-      <template #footer>
-        <McButton variant="secondary" type="button" @click="showSupplierModal = false">Cancel</McButton>
-        <McButton variant="primary" type="button" :disabled="!newSupplierName.trim()" @click="confirmAddSupplier">
-          Add
-        </McButton>
-      </template>
-    </McModal>
-
     <McModal v-model="showPresetModal" title="Save mapping preset">
       <McField label="Preset name" for-id="imp-preset-name">
         <input id="imp-preset-name" v-model="newPresetName" type="text" autocomplete="off" @keyup.enter="confirmSavePreset" />
@@ -396,36 +352,6 @@ async function commitWholesaler() {
   display: inline-flex;
   align-items: center;
   color: #d4d2cd;
-}
-
-.imp-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: flex-end;
-}
-
-.imp-grow {
-  flex: 1 1 220px;
-}
-
-.imp-grow :deep(.mc-field) {
-  margin-bottom: 0;
-}
-
-.imp-presets {
-  margin-top: 1.25rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--mc-app-border-faint, #eceae5);
-}
-
-.imp-presets__label {
-  margin: 0 0 0.5rem;
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: var(--mc-app-text-muted, #5c5a56);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
 
 .imp-presets__btns {

@@ -10,17 +10,53 @@ namespace HuntexPos.Api.Services;
 public class InvoicePdfService
 {
     private readonly AppOptions _app;
-    private static readonly string AccentHex = "#F47A20";
+    private readonly IEffectiveBusinessSettings _business;
+    private const string DefaultAccentHex = "#F47A20";
     private static readonly string TextDark = "#1A1A1C";
     private static readonly string TextMuted = "#5C5A56";
     private static readonly string TextLight = "#7A7874";
     private static readonly string BorderLight = "#ECEAE6";
     private static readonly string TableHeadBg = "#FAFAF8";
 
-    public InvoicePdfService(IOptions<AppOptions> app) => _app = app.Value;
-
-    private static byte[]? LoadLogo()
+    public InvoicePdfService(IOptions<AppOptions> app, IEffectiveBusinessSettings business)
     {
+        _app = app.Value;
+        _business = business;
+    }
+
+    private static string DeriveInitials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "";
+        var parts = name.Trim()
+            .Split(new[] { ' ', '-', '_', '.', '/' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(p => p.Trim())
+            .Where(p => p.Length > 0)
+            .Take(2)
+            .ToArray();
+        if (parts.Length == 0) return name.Substring(0, Math.Min(2, name.Length)).ToUpperInvariant();
+        if (parts.Length == 1) return parts[0].Substring(0, Math.Min(2, parts[0].Length)).ToUpperInvariant();
+        return (parts[0][0].ToString() + parts[1][0]).ToUpperInvariant();
+    }
+
+    private byte[]? LoadLogoFile()
+    {
+        var eff = _business.GetAsync().GetAwaiter().GetResult();
+        if (string.IsNullOrWhiteSpace(eff.LogoStorageKey)) return null;
+        var dir = Path.IsPathRooted(_app.BrandingStoragePath)
+            ? _app.BrandingStoragePath
+            : Path.Combine(Directory.GetCurrentDirectory(), _app.BrandingStoragePath);
+        var path = Path.Combine(dir, eff.LogoStorageKey);
+        if (!System.IO.File.Exists(path)) return null;
+        // SVG can't be rendered by QuestPDF image — skip and fall back to bundled default.
+        if (path.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)) return null;
+        try { return System.IO.File.ReadAllBytes(path); } catch { return null; }
+    }
+
+    private byte[]? LoadLogo()
+    {
+        var uploaded = LoadLogoFile();
+        if (uploaded != null) return uploaded;
+
         var asm = Assembly.GetExecutingAssembly();
         var name = asm.GetManifestResourceNames()
             .FirstOrDefault(n => n.EndsWith("logo-dark.png", StringComparison.OrdinalIgnoreCase));
@@ -32,11 +68,23 @@ public class InvoicePdfService
         return ms.ToArray();
     }
 
+    private static string ResolveAccent(EffectiveBusinessSettings eff)
+    {
+        if (!string.IsNullOrWhiteSpace(eff.AccentColor) && IsHex(eff.AccentColor)) return eff.AccentColor;
+        if (!string.IsNullOrWhiteSpace(eff.PrimaryColor) && IsHex(eff.PrimaryColor)) return eff.PrimaryColor;
+        return DefaultAccentHex;
+    }
+
+    private static bool IsHex(string v)
+        => v.StartsWith('#') && (v.Length == 4 || v.Length == 7 || v.Length == 9);
+
     public byte[] BuildPdf(Invoice invoice)
     {
+        var eff = _business.GetAsync().GetAwaiter().GetResult();
         var logoBytes = LoadLogo();
-        var hasVat = !string.IsNullOrWhiteSpace(_app.CompanyVatNumber);
-        var title = hasVat ? "TAX INVOICE" : "INVOICE";
+        var accent = ResolveAccent(eff);
+        var hasVat = !string.IsNullOrWhiteSpace(eff.VatNumber);
+        var title = hasVat ? $"TAX {eff.InvoiceLabel.ToUpperInvariant()}" : eff.InvoiceLabel.ToUpperInvariant();
 
         return Document.Create(container =>
         {
@@ -56,7 +104,7 @@ public class InvoicePdfService
                             row.ConstantItem(120).AlignMiddle().Image(logoBytes).FitWidth();
                         else
                             row.ConstantItem(120).AlignMiddle()
-                                .Text("MC").Bold().FontSize(28).FontColor(AccentHex);
+                                .Text(DeriveInitials(eff.BusinessName)).Bold().FontSize(28).FontColor(accent);
 
                         row.RelativeItem().AlignRight().AlignMiddle().Column(right =>
                         {
@@ -68,7 +116,7 @@ public class InvoicePdfService
                     });
 
                     header.Item().PaddingTop(8)
-                        .LineHorizontal(2).LineColor(AccentHex);
+                        .LineHorizontal(2).LineColor(accent);
                 });
 
                 page.Content().PaddingTop(14).Column(col =>
@@ -76,26 +124,25 @@ public class InvoicePdfService
                     // ── Seller / Buyer blocks ──
                     col.Item().Row(row =>
                     {
-                        // Left: seller (MC Tactical)
                         row.RelativeItem().Column(seller =>
                         {
                             seller.Item().Text("FROM").FontSize(7).Bold()
                                 .FontColor(TextLight).LetterSpacing(0.08f);
                             seller.Item().PaddingTop(2)
-                                .Text(_app.CompanyDisplayName).Bold().FontSize(10);
-                            if (!string.IsNullOrWhiteSpace(_app.CompanyAddress))
+                                .Text(eff.BusinessName).Bold().FontSize(10);
+                            if (!string.IsNullOrWhiteSpace(eff.Address))
                             {
-                                foreach (var chunk in _app.CompanyAddress
+                                foreach (var chunk in eff.Address
                                     .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                                     seller.Item().Text(chunk).FontSize(9).FontColor(TextMuted);
                             }
-                            if (!string.IsNullOrWhiteSpace(_app.CompanyPhone))
-                                seller.Item().Text($"Tel: {_app.CompanyPhone}").FontSize(9).FontColor(TextMuted);
-                            if (!string.IsNullOrWhiteSpace(_app.CompanyEmail))
-                                seller.Item().Text(_app.CompanyEmail).FontSize(9).FontColor(TextMuted);
+                            if (!string.IsNullOrWhiteSpace(eff.Phone))
+                                seller.Item().Text($"Tel: {eff.Phone}").FontSize(9).FontColor(TextMuted);
+                            if (!string.IsNullOrWhiteSpace(eff.Email))
+                                seller.Item().Text(eff.Email).FontSize(9).FontColor(TextMuted);
                             if (hasVat)
                                 seller.Item().PaddingTop(2)
-                                    .Text($"VAT No: {_app.CompanyVatNumber}").FontSize(9).Bold();
+                                    .Text($"VAT No: {eff.VatNumber}").FontSize(9).Bold();
                         });
 
                         // Right: buyer / customer
@@ -277,8 +324,7 @@ public class InvoicePdfService
                             });
                     });
 
-                    // ── Footer: company details ──
-                    var (footerTitle, footerLines) = ReceiptCompanyContact.ToPdfFooter(_app);
+                    var (footerTitle, footerLines) = ReceiptCompanyContact.ToPdfFooter(eff);
                     col.Item().PaddingTop(30)
                         .LineHorizontal(1).LineColor(BorderLight);
                     col.Item().PaddingTop(10)
@@ -286,7 +332,7 @@ public class InvoicePdfService
                     foreach (var line in footerLines)
                         col.Item().Text(line).FontSize(9).FontColor(TextMuted);
                     if (hasVat)
-                        col.Item().Text($"VAT No: {_app.CompanyVatNumber}").FontSize(9).FontColor(TextMuted);
+                        col.Item().Text($"VAT No: {eff.VatNumber}").FontSize(9).FontColor(TextMuted);
                 });
             });
         }).GeneratePdf();
@@ -294,7 +340,9 @@ public class InvoicePdfService
 
     public byte[] BuildOrderConfirmationPdf(Invoice invoice)
     {
+        var eff = _business.GetAsync().GetAwaiter().GetResult();
         var logoBytes = LoadLogo();
+        var accent = ResolveAccent(eff);
 
         return Document.Create(container =>
         {
@@ -313,7 +361,7 @@ public class InvoicePdfService
                             row.ConstantItem(120).AlignMiddle().Image(logoBytes).FitWidth();
                         else
                             row.ConstantItem(120).AlignMiddle()
-                                .Text("MC").Bold().FontSize(28).FontColor(AccentHex);
+                                .Text(DeriveInitials(eff.BusinessName)).Bold().FontSize(28).FontColor(accent);
 
                         row.RelativeItem().AlignRight().AlignMiddle().Column(right =>
                         {
@@ -325,7 +373,7 @@ public class InvoicePdfService
                     });
 
                     header.Item().PaddingTop(8)
-                        .LineHorizontal(2).LineColor(AccentHex);
+                        .LineHorizontal(2).LineColor(accent);
                 });
 
                 page.Content().PaddingTop(14).Column(col =>
@@ -337,17 +385,17 @@ public class InvoicePdfService
                             seller.Item().Text("FROM").FontSize(7).Bold()
                                 .FontColor(TextLight).LetterSpacing(0.08f);
                             seller.Item().PaddingTop(2)
-                                .Text(_app.CompanyDisplayName).Bold().FontSize(10);
-                            if (!string.IsNullOrWhiteSpace(_app.CompanyAddress))
+                                .Text(eff.BusinessName).Bold().FontSize(10);
+                            if (!string.IsNullOrWhiteSpace(eff.Address))
                             {
-                                foreach (var chunk in _app.CompanyAddress
+                                foreach (var chunk in eff.Address
                                     .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                                     seller.Item().Text(chunk).FontSize(9).FontColor(TextMuted);
                             }
-                            if (!string.IsNullOrWhiteSpace(_app.CompanyPhone))
-                                seller.Item().Text($"Tel: {_app.CompanyPhone}").FontSize(9).FontColor(TextMuted);
-                            if (!string.IsNullOrWhiteSpace(_app.CompanyEmail))
-                                seller.Item().Text(_app.CompanyEmail).FontSize(9).FontColor(TextMuted);
+                            if (!string.IsNullOrWhiteSpace(eff.Phone))
+                                seller.Item().Text($"Tel: {eff.Phone}").FontSize(9).FontColor(TextMuted);
+                            if (!string.IsNullOrWhiteSpace(eff.Email))
+                                seller.Item().Text(eff.Email).FontSize(9).FontColor(TextMuted);
                         });
 
                         row.RelativeItem().Column(buyer =>
@@ -394,7 +442,7 @@ public class InvoicePdfService
 
                     col.Item().PaddingTop(14).Background("#FFF5EB")
                         .Border(1).BorderColor("#F9C89B").Padding(10)
-                        .Text("Items will be delivered once available. Payment secures your Huntex pricing.")
+                        .Text($"Items will be delivered once available. Payment secures your {eff.BusinessName} pricing.")
                         .FontSize(9.5f).FontColor(TextDark);
 
                     col.Item().PaddingTop(14).Table(table =>
@@ -463,7 +511,7 @@ public class InvoicePdfService
                             });
                     });
 
-                    var (footerTitle, footerLines) = ReceiptCompanyContact.ToPdfFooter(_app);
+                    var (footerTitle, footerLines) = ReceiptCompanyContact.ToPdfFooter(eff);
                     col.Item().PaddingTop(30)
                         .LineHorizontal(1).LineColor(BorderLight);
                     col.Item().PaddingTop(10)

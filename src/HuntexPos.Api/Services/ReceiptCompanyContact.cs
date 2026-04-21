@@ -1,34 +1,31 @@
 using System.Net;
 using HuntexPos.Api.DTOs;
-using HuntexPos.Api.Options;
 
 namespace HuntexPos.Api.Services;
 
-/// <summary>Formats MC Tactical (or configured) shop contact for receipts sent to customers.</summary>
+/// <summary>Formats configured shop contact details for receipts/emails/PDFs. Prefers the DB-backed business settings over hardcoded defaults.</summary>
 public static class ReceiptCompanyContact
 {
-    public static CompanyContactDto ToDto(AppOptions app)
+    public static CompanyContactDto ToDto(EffectiveBusinessSettings eff)
     {
-        var name = string.IsNullOrWhiteSpace(app.CompanyDisplayName)
-            ? "MC Tactical"
-            : app.CompanyDisplayName.Trim();
-        var site = TrimOrNull(app.CompanyWebsite);
+        var name = string.IsNullOrWhiteSpace(eff.BusinessName) ? "Our Shop" : eff.BusinessName.Trim();
+        var site = TrimOrNull(eff.Website);
         return new CompanyContactDto
         {
             DisplayName = name,
-            Phone = TrimOrNull(app.CompanyPhone),
-            Email = TrimOrNull(app.CompanyEmail),
-            Address = TrimOrNull(app.CompanyAddress),
+            Phone = TrimOrNull(eff.Phone),
+            Email = TrimOrNull(eff.Email),
+            Address = TrimOrNull(eff.Address),
             Website = site,
-            WebsiteLabel = string.IsNullOrWhiteSpace(app.CompanyWebsiteLabel)
+            WebsiteLabel = string.IsNullOrWhiteSpace(eff.WebsiteLabel)
                 ? DeriveWebsiteLabel(site)
-                : app.CompanyWebsiteLabel.Trim()
+                : eff.WebsiteLabel.Trim()
         };
     }
 
-    public static string ToEmailHtmlFooter(AppOptions app)
+    public static string ToEmailHtmlFooter(EffectiveBusinessSettings eff)
     {
-        var d = ToDto(app);
+        var d = ToDto(eff);
         var parts = new List<string>();
         if (!string.IsNullOrEmpty(d.Phone))
             parts.Add($"Tel: {WebUtility.HtmlEncode(d.Phone)}");
@@ -61,9 +58,9 @@ public static class ReceiptCompanyContact
             """;
     }
 
-    public static (string Title, IReadOnlyList<string> DetailLines) ToPdfFooter(AppOptions app)
+    public static (string Title, IReadOnlyList<string> DetailLines) ToPdfFooter(EffectiveBusinessSettings eff)
     {
-        var d = ToDto(app);
+        var d = ToDto(eff);
         var lines = new List<string>();
         if (!string.IsNullOrEmpty(d.Phone))
             lines.Add($"Tel: {d.Phone}");

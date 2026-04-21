@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { http } from '@/api/http'
 import { useToast } from '@/composables/useToast'
+import { useBranding } from '@/composables/useBranding'
 import { formatZAR } from '@/utils/format'
 import McPageHeader from '@/components/ui/McPageHeader.vue'
 import McCard from '@/components/ui/McCard.vue'
@@ -17,6 +18,7 @@ import McSpinner from '@/components/ui/McSpinner.vue'
 import { X } from 'lucide-vue-next'
 
 const toast = useToast()
+const { businessName } = useBranding()
 const dto = ref({
   defaultMarginPercent: 50,
   defaultFixedMarkup: 0,
@@ -270,7 +272,7 @@ async function toggleSpecialActive(s: ProductSpecial) {
     </McCard>
 
     <McCard title="POS display">
-      <p class="set-hint" style="margin-top: 0">MC Tactical is not VAT registered — customer invoices do not add VAT.</p>
+      <p class="set-hint" style="margin-top: 0">{{ businessName }} is not VAT registered — customer invoices do not add VAT.</p>
       <McCheckbox v-model="dto.hideCostForSalesRole" label="Hide product cost for Sales role" hint="Sales staff won't see cost or margin values" />
     </McCard>
 

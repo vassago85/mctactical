@@ -95,11 +95,17 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<JwtTokenService>();
 builder.Services.AddScoped<IEffectiveMailgunProvider, EffectiveMailgunProvider>();
+builder.Services.AddSingleton<IEffectiveBusinessSettings, EffectiveBusinessSettingsProvider>();
+builder.Services.AddSingleton<IBrandingAssetProvider, BrandingAssetProvider>();
 builder.Services.AddScoped<IEmailSender, MailgunEmailSender>();
 builder.Services.AddScoped<InvoicePdfService>();
+builder.Services.AddScoped<ConsignmentPdfService>();
+builder.Services.AddScoped<QuotePdfService>();
 builder.Services.AddScoped<InvoiceService>();
+builder.Services.AddScoped<QuoteService>();
 builder.Services.AddScoped<ImportService>();
 builder.Services.AddScoped<StocktakeService>();
+builder.Services.AddScoped<IPricingService, PricingService>();
 
 builder.Services.AddCors(o =>
 {
@@ -109,6 +115,12 @@ builder.Services.AddCors(o =>
 var app = builder.Build();
 
 await DbSeeder.SeedAsync(app.Services);
+
+// Wire the static LabelPdfService to use the current uploaded logo when present.
+{
+    var brandingAssets = app.Services.GetRequiredService<IBrandingAssetProvider>();
+    HuntexPos.Api.Services.LabelPdfService.LogoProvider = () => brandingAssets.GetLogoBytes();
+}
 
 if (app.Environment.IsDevelopment())
 {

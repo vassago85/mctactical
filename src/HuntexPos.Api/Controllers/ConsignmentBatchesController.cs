@@ -14,8 +14,13 @@ namespace HuntexPos.Api.Controllers;
 public class ConsignmentBatchesController : ControllerBase
 {
     private readonly HuntexDbContext _db;
+    private readonly ConsignmentPdfService _pdf;
 
-    public ConsignmentBatchesController(HuntexDbContext db) => _db = db;
+    public ConsignmentBatchesController(HuntexDbContext db, ConsignmentPdfService pdf)
+    {
+        _db = db;
+        _pdf = pdf;
+    }
 
     [HttpPost]
     public async Task<ActionResult<ConsignmentBatchDto>> Create([FromBody] CreateConsignmentBatchRequest req, CancellationToken ct)
@@ -316,7 +321,7 @@ public class ConsignmentBatchesController : ControllerBase
             .FirstOrDefaultAsync(b => b.Id == id, ct);
         if (batch == null) return NotFound(new { error = "Batch not found." });
 
-        var pdf = ConsignmentPdfService.BuildPdf(batch);
+        var pdf = _pdf.BuildPdf(batch);
         var label = batch.Type == ConsignmentBatchType.Receive ? "receive-check" : "return-packing";
         return File(pdf, "application/pdf", $"consignment-{label}-{batch.CreatedAt:yyyyMMdd}.pdf");
     }

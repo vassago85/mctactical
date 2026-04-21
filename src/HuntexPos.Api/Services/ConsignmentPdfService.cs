@@ -6,17 +6,28 @@ using QuestPDF.Infrastructure;
 
 namespace HuntexPos.Api.Services;
 
-public static class ConsignmentPdfService
+public class ConsignmentPdfService
 {
-    private static readonly string AccentHex = "#F47A20";
+    private readonly IEffectiveBusinessSettings _business;
+    private readonly IBrandingAssetProvider _brandingAssets;
+
+    private const string DefaultAccentHex = "#F47A20";
     private static readonly string TextDark = "#1A1A1C";
     private static readonly string TextMuted = "#5C5A56";
     private static readonly string TextLight = "#7A7874";
     private static readonly string BorderLight = "#ECEAE6";
     private static readonly string TableHeadBg = "#FAFAF8";
 
-    private static byte[]? LoadLogo()
+    public ConsignmentPdfService(IEffectiveBusinessSettings business, IBrandingAssetProvider brandingAssets)
     {
+        _business = business;
+        _brandingAssets = brandingAssets;
+    }
+
+    private byte[]? LoadLogo()
+    {
+        var dbLogo = _brandingAssets.GetLogoBytes();
+        if (dbLogo != null) return dbLogo;
         var asm = Assembly.GetExecutingAssembly();
         var name = asm.GetManifestResourceNames()
             .FirstOrDefault(n => n.EndsWith("logo-dark.png", StringComparison.OrdinalIgnoreCase));
@@ -28,16 +39,34 @@ public static class ConsignmentPdfService
         return ms.ToArray();
     }
 
-    public static byte[] BuildPdf(ConsignmentBatch batch)
+    private static string ResolveAccent(EffectiveBusinessSettings eff)
     {
-        return batch.Type == ConsignmentBatchType.Receive
-            ? BuildReceiveCheckSheet(batch)
-            : BuildReturnPackingList(batch);
+        static bool IsHex(string v) => v.StartsWith('#') && (v.Length == 4 || v.Length == 7 || v.Length == 9);
+        if (!string.IsNullOrWhiteSpace(eff.AccentColor) && IsHex(eff.AccentColor)) return eff.AccentColor;
+        if (!string.IsNullOrWhiteSpace(eff.PrimaryColor) && IsHex(eff.PrimaryColor)) return eff.PrimaryColor;
+        return DefaultAccentHex;
     }
 
-    private static byte[] BuildReceiveCheckSheet(ConsignmentBatch batch)
+    private static string DeriveInitials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "•";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 1) return parts[0].Substring(0, Math.Min(2, parts[0].Length)).ToUpperInvariant();
+        return (parts[0][0].ToString() + parts[1][0].ToString()).ToUpperInvariant();
+    }
+
+    public byte[] BuildPdf(ConsignmentBatch batch)
+    {
+        var eff = _business.GetAsync().GetAwaiter().GetResult();
+        return batch.Type == ConsignmentBatchType.Receive
+            ? BuildReceiveCheckSheet(batch, eff)
+            : BuildReturnPackingList(batch, eff);
+    }
+
+    private byte[] BuildReceiveCheckSheet(ConsignmentBatch batch, EffectiveBusinessSettings eff)
     {
         var logoBytes = LoadLogo();
+        var accent = ResolveAccent(eff);
         var title = "CONSIGNMENT RECEIVE";
         var sast = batch.CreatedAt.ToOffset(TimeSpan.FromHours(2));
 
@@ -57,7 +86,7 @@ public static class ConsignmentPdfService
                         if (logoBytes != null)
                             row.ConstantItem(120).AlignMiddle().Image(logoBytes).FitWidth();
                         else
-                            row.ConstantItem(120).AlignMiddle().Text("MC").Bold().FontSize(28).FontColor(AccentHex);
+                            row.ConstantItem(120).AlignMiddle().Text(DeriveInitials(eff.BusinessName)).Bold().FontSize(28).FontColor(accent);
 
                         row.RelativeItem().AlignRight().AlignMiddle().Column(right =>
                         {
@@ -65,7 +94,7 @@ public static class ConsignmentPdfService
                             right.Item().Text($"Ref: {batch.Id:N}"[..20]).FontSize(9).FontColor(TextMuted);
                         });
                     });
-                    header.Item().PaddingTop(8).LineHorizontal(2).LineColor(AccentHex);
+                    header.Item().PaddingTop(8).LineHorizontal(2).LineColor(accent);
                 });
 
                 page.Content().PaddingTop(14).Column(col =>
@@ -137,9 +166,10 @@ public static class ConsignmentPdfService
         }).GeneratePdf();
     }
 
-    private static byte[] BuildReturnPackingList(ConsignmentBatch batch)
+    private byte[] BuildReturnPackingList(ConsignmentBatch batch, EffectiveBusinessSettings eff)
     {
         var logoBytes = LoadLogo();
+        var accent = ResolveAccent(eff);
         var title = "CONSIGNMENT RETURN";
         var sast = batch.CommittedAt?.ToOffset(TimeSpan.FromHours(2))
                    ?? batch.CreatedAt.ToOffset(TimeSpan.FromHours(2));
@@ -160,7 +190,7 @@ public static class ConsignmentPdfService
                         if (logoBytes != null)
                             row.ConstantItem(120).AlignMiddle().Image(logoBytes).FitWidth();
                         else
-                            row.ConstantItem(120).AlignMiddle().Text("MC").Bold().FontSize(28).FontColor(AccentHex);
+                            row.ConstantItem(120).AlignMiddle().Text(DeriveInitials(eff.BusinessName)).Bold().FontSize(28).FontColor(accent);
 
                         row.RelativeItem().AlignRight().AlignMiddle().Column(right =>
                         {
@@ -168,7 +198,7 @@ public static class ConsignmentPdfService
                             right.Item().Text($"Ref: {batch.Id:N}"[..20]).FontSize(9).FontColor(TextMuted);
                         });
                     });
-                    header.Item().PaddingTop(8).LineHorizontal(2).LineColor(AccentHex);
+                    header.Item().PaddingTop(8).LineHorizontal(2).LineColor(accent);
                 });
 
                 page.Content().PaddingTop(14).Column(col =>
@@ -228,7 +258,7 @@ public static class ConsignmentPdfService
                             row.RelativeItem().Column(left =>
                             {
                                 left.Item().LineHorizontal(1).LineColor(BorderLight);
-                                left.Item().PaddingTop(4).Text("Packed by (MC Tactical)").FontSize(8).FontColor(TextLight);
+                                left.Item().PaddingTop(4).Text($"Packed by ({eff.BusinessName})").FontSize(8).FontColor(TextLight);
                             });
                             row.ConstantItem(30);
                             row.RelativeItem().Column(right =>

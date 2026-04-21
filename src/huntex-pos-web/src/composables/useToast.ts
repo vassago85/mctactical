@@ -19,5 +19,12 @@ export function useToast() {
     toasts.value = toasts.value.filter((t) => t.id !== id)
   }
 
-  return { toasts, push, dismiss, success: (m: string) => push(m, 'success'), error: (m: string) => push(m, 'error') }
+  return {
+    toasts,
+    push,
+    dismiss,
+    success: (m: string) => push(m, 'success'),
+    error: (m: string) => push(m, 'error'),
+    info: (m: string) => push(m, 'info')
+  }
 }

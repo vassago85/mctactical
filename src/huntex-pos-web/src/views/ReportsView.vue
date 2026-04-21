@@ -318,7 +318,7 @@ function exportSohCsv() {
   if (!stockReport.value) return
   const lines = stockReport.value.onHand.lines
   const rows = [
-    ['SKU', 'Name', 'Supplier', 'Owned', 'Consignment', 'Cost', 'Sell', 'Owned Value'].join(','),
+    ['SKU', 'Name', 'Wholesaler', 'Owned', 'Consignment', 'Cost', 'Sell', 'Owned Value'].join(','),
     ...lines.map(p => [
       csvEsc(p.sku), csvEsc(p.name), csvEsc(p.supplierName ?? ''),
       p.qtyOwned, p.qtyConsignment, p.cost.toFixed(2), p.sellPrice.toFixed(2), p.ownedValue.toFixed(2)
@@ -374,7 +374,7 @@ async function purgeData() {
     <div v-if="showPurgeConfirm" class="rep-overlay" @click.self="showPurgeConfirm = false">
       <McCard title="Purge all transactional data?" class="rep-dialog">
         <p>This will <strong>permanently delete</strong> all invoices, stock receipts, stocktake sessions, and invoice PDFs. Product quantities will be reset to zero.</p>
-        <p style="margin-top: 0.5rem; color: var(--mc-app-text-muted, #5c5a56);">Products, suppliers, users, and settings are not affected.</p>
+        <p style="margin-top: 0.5rem; color: var(--mc-app-text-muted, #5c5a56);">Products, wholesalers, users, and settings are not affected.</p>
         <div class="rep-dialog__actions">
           <McButton variant="secondary" type="button" @click="showPurgeConfirm = false">Cancel</McButton>
           <McButton variant="danger" type="button" :disabled="purging" @click="purgeData">
@@ -450,13 +450,13 @@ async function purgeData() {
           </div>
         </div>
 
-        <!-- Consignment by supplier -->
-        <McCard v-if="stockReport.consignmentBySupplier.length" title="Consignment stock by supplier">
+        <!-- Consignment by wholesaler -->
+        <McCard v-if="stockReport.consignmentBySupplier.length" title="Consignment stock by wholesaler">
           <div class="rep-table-wrap">
             <table class="mc-table">
               <thead>
                 <tr>
-                  <th>Supplier</th>
+                  <th>Wholesaler</th>
                   <th class="rep-num">Received</th>
                   <th class="rep-num">Moved to stock</th>
                   <th class="rep-num">Returned</th>
@@ -543,7 +543,7 @@ async function purgeData() {
                   <th>Date</th>
                   <th>SKU</th>
                   <th>Name</th>
-                  <th>Supplier</th>
+                  <th>Wholesaler</th>
                   <th>Type</th>
                   <th class="rep-num">Qty</th>
                 </tr>
@@ -583,7 +583,7 @@ async function purgeData() {
                 <tr>
                   <th>SKU</th>
                   <th>Name</th>
-                  <th>Supplier</th>
+                  <th>Wholesaler</th>
                   <th class="rep-num">Owned</th>
                   <th class="rep-num">Consign</th>
                   <th class="rep-num">Cost</th>
@@ -625,9 +625,9 @@ async function purgeData() {
           <McButton v-for="p in presets" :key="p.label" variant="ghost" dense type="button" @click="applyConsignPreset(p)">{{ p.label }}</McButton>
         </div>
         <div class="rep-date-row">
-          <McField label="Supplier" for-id="cr-supplier">
+          <McField label="Wholesaler" for-id="cr-supplier">
             <select id="cr-supplier" v-model="consignSupplierId" style="min-width: 180px">
-              <option value="">All suppliers</option>
+              <option value="">All wholesalers</option>
               <option v-for="s in supplierList" :key="s.id" :value="s.id">{{ s.name }}</option>
             </select>
           </McField>
@@ -673,7 +673,7 @@ async function purgeData() {
             <strong class="rep-kpi__value">{{ formatZAR(consignReport.totalSoldRevenue) }}</strong>
           </div>
           <div class="rep-kpi">
-            <span class="rep-kpi__label">Returned to supplier</span>
+            <span class="rep-kpi__label">Returned to wholesaler</span>
             <strong class="rep-kpi__value">{{ formatNumber(consignReport.totalReturned) }}</strong>
           </div>
         </div>
@@ -766,7 +766,7 @@ async function purgeData() {
         </McCard>
 
         <McCard v-if="!consignReport.suppliers.length" title="No consignment data">
-          <p>No consignment stock movements found{{ consignSupplierId ? ' for the selected supplier' : '' }}.</p>
+          <p>No consignment stock movements found{{ consignSupplierId ? ' for the selected wholesaler' : '' }}.</p>
         </McCard>
       </template>
     </template>

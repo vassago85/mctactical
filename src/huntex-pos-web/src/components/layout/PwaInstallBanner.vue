@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
 import McButton from '@/components/ui/McButton.vue'
+import { useBranding } from '@/composables/useBranding'
+
+const { businessName } = useBranding()
 
 const STORAGE_KEY = 'mc-pos-pwa-install-dismissed'
 
@@ -115,7 +118,7 @@ const showIosBanner = () => !dismissed.value && showIosHint.value && deferredPro
     >
       <div class="pwa-banner__inner">
         <div class="pwa-banner__text">
-          <strong class="pwa-banner__title">Install MC Tactical POS</strong>
+          <strong class="pwa-banner__title">Install {{ businessName }} POS</strong>
           <p v-if="showChromeBanner()" class="pwa-banner__desc">
             Add this app to your device for quicker access and offline support.
           </p>

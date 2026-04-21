@@ -25,8 +25,18 @@ public static class LabelPdfService
     private static byte[]? _logoCached;
     private static bool _logoLoaded;
 
+    /// <summary>
+    /// Optional provider for branded logo bytes. Wired up at app startup so that
+    /// labels can use the current business's uploaded logo. Falls back to the embedded logo.
+    /// </summary>
+    public static Func<byte[]?>? LogoProvider { get; set; }
+
     private static byte[]? LoadLogo()
     {
+        // Prefer the injected (branded) logo first so white-label deployments work.
+        var branded = LogoProvider?.Invoke();
+        if (branded != null) return branded;
+
         if (_logoLoaded) return _logoCached;
         _logoLoaded = true;
         var asm = Assembly.GetExecutingAssembly();

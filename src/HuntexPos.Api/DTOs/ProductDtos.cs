@@ -24,6 +24,17 @@ public class ProductDto
     public decimal? SpecialPrice { get; set; }
     /// <summary>Name of the special's promotion, or "Standalone" for non-promo specials.</summary>
     public string? SpecialLabel { get; set; }
+
+    public string PricingMethod { get; set; } = "default";
+    public decimal? CustomMarkupPercent { get; set; }
+    public decimal? FixedSellPrice { get; set; }
+    public decimal? MinSellPrice { get; set; }
+    public bool PriceLocked { get; set; }
+
+    /// <summary>Human-readable label describing which pricing rule / override produced <see cref="SellPrice"/>.</summary>
+    public string? PricingSource { get; set; }
+    /// <summary>Minimum price a sales user may discount to — computed from max-discount, min-margin, and product floor.</summary>
+    public decimal? MinAllowedPrice { get; set; }
 }
 
 public class ProductSearchQuery
@@ -65,6 +76,11 @@ public class CreateProductRequest
     public decimal Cost { get; set; }
     public decimal SellPrice { get; set; }
     public int QtyOnHand { get; set; }
+    public string? PricingMethod { get; set; }
+    public decimal? CustomMarkupPercent { get; set; }
+    public decimal? FixedSellPrice { get; set; }
+    public decimal? MinSellPrice { get; set; }
+    public bool? PriceLocked { get; set; }
 }
 
 public class UpdateProductRequest
@@ -81,6 +97,11 @@ public class UpdateProductRequest
     public decimal? SellPrice { get; set; }
     public int? QtyOnHand { get; set; }
     public bool? Active { get; set; }
+    public string? PricingMethod { get; set; }
+    public decimal? CustomMarkupPercent { get; set; }
+    public decimal? FixedSellPrice { get; set; }
+    public decimal? MinSellPrice { get; set; }
+    public bool? PriceLocked { get; set; }
 }
 
 public class LabelBatchRequest
