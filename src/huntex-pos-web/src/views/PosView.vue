@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { http } from '@/api/http'
 import { useToast } from '@/composables/useToast'
 import { formatZAR } from '@/utils/format'
@@ -123,6 +123,126 @@ watch(q, () => {
   searchTimer = setTimeout(() => void runSearch(), 250)
 })
 
+// ── Scanner heuristic ─────────────────────────────────────────────────────────
+// Hand scanners emit every character within a few ms and (almost always) finish
+// with Enter. We watch inter-key gaps on the POS search field: if 3+ characters
+// arrive within 35ms of each other we flag the current buffer as a scan. When
+// Enter then fires we add the matched product and clear, ready for the next
+// scan. If the heuristic didn't trip (slow typing) Enter falls through to the
+// existing "search and add if single hit" behaviour.
+const SCAN_MAX_GAP_MS = 35
+const SCAN_MIN_FAST_KEYS = 3
+const SCAN_RESET_GAP_MS = 500
+let lastKeyAt = 0
+let fastKeyCount = 0
+let scannerBufferActive = false
+
+function noteKeyTimingFromKey(ev: KeyboardEvent) {
+  // Ignore modifier/navigation-only presses so Shift etc. don't count as fast keys.
+  if (ev.key.length !== 1 && ev.key !== 'Enter') return
+  const now = performance.now()
+  if (lastKeyAt === 0 || now - lastKeyAt > SCAN_RESET_GAP_MS) {
+    lastKeyAt = now
+    fastKeyCount = 1
+    scannerBufferActive = false
+    return
+  }
+  const gap = now - lastKeyAt
+  lastKeyAt = now
+  if (gap <= SCAN_MAX_GAP_MS) {
+    fastKeyCount += 1
+    if (fastKeyCount >= SCAN_MIN_FAST_KEYS) scannerBufferActive = true
+  } else {
+    fastKeyCount = 1
+  }
+}
+
+function resetScannerHeuristic() {
+  lastKeyAt = 0
+  fastKeyCount = 0
+  scannerBufferActive = false
+}
+
+watch(q, (val) => { if (!val) resetScannerHeuristic() })
+
+function findExactMatch(code: string, list: Product[]): Product | null {
+  const trimmed = code.trim()
+  if (!trimmed) return null
+  const byBarcode = list.find((p) => p.barcode === trimmed)
+  if (byBarcode) return byBarcode
+  const bySku = list.find((p) => p.sku === trimmed)
+  if (bySku) return bySku
+  if (list.length === 1) return list[0]
+  return null
+}
+
+async function refocusSearch() {
+  await nextTick()
+  const el = document.getElementById('pos-search') as HTMLInputElement | null
+  el?.focus()
+}
+
+/**
+ * Add the product that matches the current query, then clear the field and
+ * refocus it. Used by the physical scanner (Enter on a fast buffer), the camera
+ * BarcodeScanner component, and the keyboard "exact-one-hit + Enter" flow.
+ * Returns true when a line was added.
+ */
+async function commitEntry(rawCode: string, options?: { forceExact?: boolean }): Promise<boolean> {
+  const code = rawCode.trim()
+  if (!code) return false
+
+  // Try to match against currently loaded results first — this is the common
+  // case when the search debounce already fired before Enter arrived.
+  let match = findExactMatch(code, results.value)
+  if (!match) {
+    try {
+      const { data } = await http.get<Product[]>('/api/products', { params: { q: code, take: 5 } })
+      match = findExactMatch(code, data)
+    } catch {
+      match = null
+    }
+  }
+
+  if (!match) {
+    if (options?.forceExact) {
+      toast.error(`Not found: ${code}`)
+      q.value = ''
+      resetScannerHeuristic()
+      await refocusSearch()
+    }
+    return false
+  }
+
+  if (!isManager.value && match.qtyOnHand < 1) {
+    toast.error(`${match.name} is out of stock`)
+    q.value = ''
+    resetScannerHeuristic()
+    await refocusSearch()
+    return false
+  }
+
+  addToCart(match)
+  toast.success(`Added: ${match.name}`)
+  q.value = ''
+  results.value = []
+  resetScannerHeuristic()
+  await refocusSearch()
+  return true
+}
+
+function onSearchKeydown(ev: KeyboardEvent) {
+  noteKeyTimingFromKey(ev)
+  if (ev.key !== 'Enter') return
+  ev.preventDefault()
+  const code = q.value.trim()
+  if (!code) return
+  // Scanner-shaped input: treat Enter as a firm commit (error toast on miss).
+  // Slow manual typing: only commit if there's a single, unambiguous hit.
+  const forceExact = scannerBufferActive
+  void commitEntry(code, { forceExact })
+}
+
 async function runSearch() {
   err.value = null
   const s = q.value.trim()
@@ -157,14 +277,10 @@ function addToCart(p: Product) {
 }
 
 function onScan(code: string) {
-  q.value = code.trim()
+  const trimmed = code.trim()
+  q.value = trimmed
   scanOpen.value = false
-  void (async () => {
-    await runSearch()
-    const exact =
-      results.value.find((p) => p.barcode === code.trim() || p.sku === code.trim()) ?? results.value[0]
-    if (exact) addToCart(exact)
-  })()
+  void commitEntry(trimmed, { forceExact: true })
 }
 
 function bumpQty(l: Line, delta: number) {
@@ -365,6 +481,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
               autocomplete="off"
               placeholder="SKU, barcode, or name…"
               class="pos-search-input"
+              @keydown="onSearchKeydown"
             />
           </McField>
 
