@@ -4,7 +4,7 @@
 
 - **Server**: `cha021-truserv1230-jhb1-001` (SSH user: `paul`)
 - **Repo path on server**: `/opt/mctactical`
-- **Domain**: `mctactical.charsleydigital.co.za`
+- **Domain**: `pos.mctactical.co.za`
 - **Web port**: `8095` (set via `WEB_PORT=8095` in `.env`)
 - **API internal port**: `8080` (container-only, proxied by nginx in the web container)
 - **Database**: SQLite at `/opt/mctactical/data/huntex.db`
@@ -31,7 +31,7 @@ OWNER_EMAIL=...
 OWNER_PASSWORD=...
 JWT_KEY=...
 MCTACTICAL_DATA_DIR=/opt/mctactical/data
-PUBLIC_BASE_URL=https://mctactical.charsleydigital.co.za
+PUBLIC_BASE_URL=https://pos.mctactical.co.za
 WEB_PORT=8095
 ```
 
