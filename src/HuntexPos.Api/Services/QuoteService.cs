@@ -150,9 +150,9 @@ public class QuoteService
                 (x.CustomerCompany != null && x.CustomerCompany.Contains(needle)) ||
                 (x.CustomerEmail != null && x.CustomerEmail.Contains(needle)));
         }
-        return await q.OrderByDescending(x => x.CreatedAt)
-            .Take(Math.Clamp(take, 1, 500))
-            .Select(x => new QuoteListItemDto
+        // SQLite cannot ORDER BY DateTimeOffset, so project first then order/take client-side.
+        // The working set is bounded by status/search + hard cap — safe to materialize.
+        var raw = await q.Select(x => new QuoteListItemDto
             {
                 Id = x.Id,
                 QuoteNumber = x.QuoteNumber,
@@ -165,6 +165,11 @@ public class QuoteService
                 ConvertedInvoiceId = x.ConvertedInvoiceId
             })
             .ToListAsync(ct);
+
+        return raw
+            .OrderByDescending(x => x.CreatedAt)
+            .Take(Math.Clamp(take, 1, 500))
+            .ToList();
     }
 
     public async Task<byte[]?> GetPdfBytesAsync(Guid id, CancellationToken ct)
