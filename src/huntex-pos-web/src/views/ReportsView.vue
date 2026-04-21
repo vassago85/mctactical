@@ -89,7 +89,7 @@ const daily = ref<Daily[]>([])
 const err = ref<string | null>(null)
 const salesBusy = ref(false)
 
-const isDev = computed(() => auth.hasRole('Dev'))
+const isDev = computed(() => auth.hasRole('Dev', 'Owner'))
 
 /* Stock report state */
 const stockReport = ref<StockReport | null>(null)

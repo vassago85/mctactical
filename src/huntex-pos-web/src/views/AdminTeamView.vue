@@ -38,7 +38,7 @@ const resetPassword = ref('')
 
 onMounted(async () => {
   canCreateAdmin.value = auth.hasRole('Owner', 'Dev')
-  canCreateOwner.value = auth.hasRole('Dev')
+  canCreateOwner.value = auth.hasRole('Owner', 'Dev')
   await load()
 })
 
@@ -128,8 +128,7 @@ async function applyReset() {
   <div class="team-page">
     <McPageHeader title="Team & sales logins">
       <template #default>
-        Sales staff use POS and stocktake with tighter rules. Only Owner or Dev can create Admin users; only Dev can
-        create Owner.
+        Sales staff use POS and stocktake with tighter rules. Only Owner or Dev can create Admin or Owner users.
       </template>
     </McPageHeader>
 

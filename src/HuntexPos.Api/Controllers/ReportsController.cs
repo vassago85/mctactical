@@ -439,7 +439,7 @@ public class ReportsController : ControllerBase
     }
 
     [HttpPost("purge")]
-    [Authorize(Roles = Roles.Dev)]
+    [Authorize(Roles = $"{Roles.Owner},{Roles.Dev}")]
     public async Task<IActionResult> PurgeData(CancellationToken ct)
     {
         await _db.Database.ExecuteSqlRawAsync("DELETE FROM InvoiceLines", ct);
