@@ -423,8 +423,10 @@ public static class DbSeeder
                 );
                 """, ct);
             await db.Database.ExecuteSqlRawAsync(
-                """INSERT INTO "ImportPresets_new" ("Id","SupplierId","Name","ColumnMappingJson","UpdatedAt")
-                   SELECT "Id","SupplierId","Name","ColumnMappingJson","UpdatedAt" FROM "ImportPresets";""", ct);
+                """
+                INSERT INTO "ImportPresets_new" ("Id","SupplierId","Name","ColumnMappingJson","UpdatedAt")
+                SELECT "Id","SupplierId","Name","ColumnMappingJson","UpdatedAt" FROM "ImportPresets";
+                """, ct);
             await db.Database.ExecuteSqlRawAsync("""DROP TABLE "ImportPresets";""", ct);
             await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "ImportPresets_new" RENAME TO "ImportPresets";""", ct);
         }
