@@ -60,9 +60,10 @@ public class InvoicesController : ControllerBase
     [Authorize(Roles = $"{Roles.Owner},{Roles.Admin},{Roles.Dev}")]
     public async Task<IActionResult> Void(Guid id, [FromBody] VoidInvoiceRequest req, CancellationToken ct)
     {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         try
         {
-            await _invoices.VoidAsync(id, req.Reason, ct);
+            await _invoices.VoidAsync(id, req.Reason, userId, ct);
             return NoContent();
         }
         catch (InvalidOperationException ex)

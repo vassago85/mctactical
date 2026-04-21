@@ -19,6 +19,9 @@ type Row = {
   grandTotal: number
   createdAt: string
   customerName?: string | null
+  voidReason?: string | null
+  voidedAt?: string | null
+  voidedByName?: string | null
 }
 type Daily = { date: string; invoiceCount: number; grandTotal: number }
 
@@ -90,6 +93,43 @@ const err = ref<string | null>(null)
 const salesBusy = ref(false)
 
 const isDev = computed(() => auth.hasRole('Dev', 'Owner'))
+const canReverse = computed(() => auth.hasRole('Owner', 'Admin', 'Dev'))
+
+const reverseTarget = ref<Row | null>(null)
+const reverseReason = ref('')
+const reverseBusy = ref(false)
+
+function openReverse(r: Row) {
+  reverseTarget.value = r
+  reverseReason.value = ''
+}
+function closeReverse() {
+  if (reverseBusy.value) return
+  reverseTarget.value = null
+  reverseReason.value = ''
+}
+async function confirmReverse() {
+  const target = reverseTarget.value
+  if (!target) return
+  const reason = reverseReason.value.trim()
+  if (reason.length < 3) {
+    toast.error('Reason is required (min 3 characters)')
+    return
+  }
+  reverseBusy.value = true
+  try {
+    await http.post(`/api/invoices/${target.id}/void`, { reason })
+    toast.success(`Invoice ${target.invoiceNumber} reversed — stock returned`)
+    reverseTarget.value = null
+    reverseReason.value = ''
+    await loadSales()
+  } catch (e: unknown) {
+    const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to reverse invoice'
+    toast.error(msg)
+  } finally {
+    reverseBusy.value = false
+  }
+}
 
 /* Stock report state */
 const stockReport = ref<StockReport | null>(null)
@@ -846,14 +886,26 @@ async function purgeData() {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="r in invoices" :key="r.id">
+              <tr v-for="r in invoices" :key="r.id" :class="{ 'rep-row--voided': r.status === 'Voided' }">
                 <td class="rep-mono">{{ r.invoiceNumber }}</td>
                 <td>{{ new Date(r.createdAt).toLocaleString() }}</td>
                 <td>{{ r.customerName ?? '—' }}</td>
                 <td class="rep-num">{{ formatZAR(r.grandTotal) }}</td>
-                <td>{{ r.status }}</td>
                 <td>
-                  <McButton variant="secondary" type="button" @click="openPdf(r.id)">PDF</McButton>
+                  <McBadge v-if="r.status === 'Voided'" variant="danger" :title="r.voidReason ? `${r.voidReason}${r.voidedByName ? ' — ' + r.voidedByName : ''}${r.voidedAt ? ' (' + new Date(r.voidedAt).toLocaleString() + ')' : ''}` : undefined">Reversed</McBadge>
+                  <span v-else>{{ r.status }}</span>
+                </td>
+                <td>
+                  <div class="rep-row-actions">
+                    <McButton variant="secondary" type="button" @click="openPdf(r.id)">PDF</McButton>
+                    <McButton
+                      v-if="canReverse && r.status !== 'Voided'"
+                      variant="danger"
+                      type="button"
+                      dense
+                      @click="openReverse(r)"
+                    >Reverse</McButton>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -861,6 +913,33 @@ async function purgeData() {
         </div>
       </McCard>
     </template>
+
+    <div v-if="reverseTarget" class="rep-overlay" @click.self="closeReverse">
+      <McCard :title="`Reverse invoice ${reverseTarget.invoiceNumber}?`" class="rep-dialog">
+        <p>
+          This will mark the invoice as <strong>Reversed</strong> and
+          <strong>return {{ reverseTarget.customerName ? 'the items from ' + reverseTarget.customerName : 'all line items' }} to stock</strong>.
+          The invoice record, line items, and PDF are kept for audit.
+        </p>
+        <McField label="Reason" for-id="rev-reason">
+          <textarea
+            id="rev-reason"
+            v-model="reverseReason"
+            rows="3"
+            maxlength="500"
+            placeholder="e.g. Customer returned items, duplicate sale, wrong product rang up…"
+            :disabled="reverseBusy"
+          ></textarea>
+        </McField>
+        <div class="rep-dialog__actions">
+          <McButton variant="secondary" type="button" :disabled="reverseBusy" @click="closeReverse">Cancel</McButton>
+          <McButton variant="danger" type="button" :disabled="reverseBusy || reverseReason.trim().length < 3" @click="confirmReverse">
+            <McSpinner v-if="reverseBusy" />
+            <span v-else>Reverse & return stock</span>
+          </McButton>
+        </div>
+      </McCard>
+    </div>
   </div>
 </template>
 
@@ -997,6 +1076,23 @@ async function purgeData() {
   flex-wrap: wrap;
   gap: 0.375rem;
   margin-bottom: 0.75rem;
+}
+
+.rep-row-actions {
+  display: flex;
+  gap: 0.375rem;
+  justify-content: flex-end;
+}
+
+.rep-row--voided td {
+  color: var(--mc-app-text-muted, #5c5a56);
+  text-decoration: line-through;
+  text-decoration-color: rgba(200, 50, 50, 0.55);
+}
+
+.rep-row--voided td:last-child,
+.rep-row--voided td:nth-child(5) {
+  text-decoration: none;
 }
 
 .rep-overlay {

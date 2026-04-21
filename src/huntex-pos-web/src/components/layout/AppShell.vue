@@ -6,7 +6,7 @@ import { logoLight } from '@/branding'
 import { useBranding } from '@/composables/useBranding'
 import {
   Menu, ChevronLeft, ChevronRight,
-  ShoppingCart, Search, Package, ClipboardList, Truck,
+  ShoppingCart, Search, Package, ClipboardList, Truck, PackagePlus,
   PackageCheck, Upload, BarChart3, DollarSign, Mail, Users, Building2,
   Settings as SettingsIcon,
   FileText,
@@ -74,7 +74,8 @@ function logout() {
           <RouterLink class="mc-nav-link" to="/stock" @click="sidebarOpen = false"><Package :size="16" />Stock list</RouterLink>
           <RouterLink class="mc-nav-link" to="/stock/labels" @click="sidebarOpen = false"><Printer :size="16" />Print labels</RouterLink>
           <RouterLink class="mc-nav-link" to="/stocktake" @click="sidebarOpen = false"><ClipboardList :size="16" />Stocktake</RouterLink>
-          <RouterLink class="mc-nav-link" to="/consignment" @click="sidebarOpen = false"><Truck :size="16" />Consignment</RouterLink>
+          <RouterLink class="mc-nav-link" to="/consignment" @click="sidebarOpen = false"><Truck :size="16" />Stock batches</RouterLink>
+          <RouterLink v-if="auth.hasRole('Admin', 'Owner', 'Dev')" class="mc-nav-link" to="/receiving" @click="sidebarOpen = false"><PackagePlus :size="16" />Receive stock</RouterLink>
         </div>
         <div v-if="auth.hasRole('Admin', 'Owner', 'Dev')" class="mc-nav-group">
           <p class="mc-nav-group__label">Office</p>

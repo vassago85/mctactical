@@ -101,6 +101,7 @@ builder.Services.AddScoped<IEmailSender, MailgunEmailSender>();
 builder.Services.AddScoped<InvoicePdfService>();
 builder.Services.AddScoped<ConsignmentPdfService>();
 builder.Services.AddScoped<QuotePdfService>();
+builder.Services.AddSingleton<SupplierInvoicePdfParser>();
 builder.Services.AddScoped<InvoiceService>();
 builder.Services.AddScoped<QuoteService>();
 builder.Services.AddScoped<ImportService>();

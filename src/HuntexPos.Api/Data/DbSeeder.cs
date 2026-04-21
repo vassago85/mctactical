@@ -27,12 +27,14 @@ public static class DbSeeder
         await EnsureInvoiceLineColumnsAsync(db, ct);
         await EnsureStockReceiptsTableAsync(db, ct);
         await EnsureSupplierColumnsAsync(db, ct);
+        await EnsureInvoiceVoidColumnsAsync(db, ct);
         await EnsurePromotionsTablesAsync(db, ct);
         await EnsureInvoiceDiscountColumnsAsync(db, ct);
         await EnsureStockReceiptCostColumnAsync(db, ct);
         await EnsureInvoiceBusinessColumnsAsync(db, ct);
         await EnsureCustomersTableAsync(db, ct);
         await EnsureConsignmentBatchesTablesAsync(db, ct);
+        await EnsureConsignmentBatchColumnsAsync(db, ct);
         await EnsureSpecialOrderColumnsAsync(db, ct);
         await EnsureProductPricingColumnsAsync(db, ct);
         await EnsurePricingRulesTableAsync(db, ct);
@@ -172,6 +174,16 @@ public static class DbSeeder
             """ALTER TABLE "Suppliers" ADD COLUMN "UpdatedAt" TEXT NOT NULL DEFAULT '0001-01-01 00:00:00';""", ct); } catch { }
     }
 
+    /// <summary>Add VoidedAt + VoidedByUserId to Invoices if missing (older DBs).</summary>
+    private static async Task EnsureInvoiceVoidColumnsAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        try { await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Invoices" ADD COLUMN "VoidedAt" TEXT NULL;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Invoices" ADD COLUMN "VoidedByUserId" TEXT NULL;""", ct); } catch { }
+    }
+
     /// <summary>Add CostAtSale to InvoiceLines for GP reporting (older DBs).</summary>
     private static async Task EnsureInvoiceLineColumnsAsync(HuntexDbContext db, CancellationToken ct)
     {
@@ -306,6 +318,20 @@ public static class DbSeeder
             """, ct);
         try { await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_ConsignmentBatchLines_BatchId" ON "ConsignmentBatchLines" ("BatchId");""", ct); } catch { }
         try { await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_ConsignmentBatchLines_ProductId" ON "ConsignmentBatchLines" ("ProductId");""", ct); } catch { }
+    }
+
+    /// <summary>Add SourceDocumentRef/SourceDocumentPath to batches + UnitCost/UnitCostChanged to lines (older DBs).</summary>
+    private static async Task EnsureConsignmentBatchColumnsAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        try { await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "ConsignmentBatches" ADD COLUMN "SourceDocumentRef" TEXT NULL;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "ConsignmentBatches" ADD COLUMN "SourceDocumentPath" TEXT NULL;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "ConsignmentBatchLines" ADD COLUMN "UnitCost" TEXT NULL;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "ConsignmentBatchLines" ADD COLUMN "UnitCostChanged" INTEGER NOT NULL DEFAULT 0;""", ct); } catch { }
     }
 
     private static async Task EnsureSpecialOrderColumnsAsync(HuntexDbContext db, CancellationToken ct)

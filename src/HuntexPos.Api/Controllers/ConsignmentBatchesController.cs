@@ -1,10 +1,12 @@
 using HuntexPos.Api.Data;
 using HuntexPos.Api.Domain;
 using HuntexPos.Api.DTOs;
+using HuntexPos.Api.Options;
 using HuntexPos.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace HuntexPos.Api.Controllers;
 
@@ -15,18 +17,26 @@ public class ConsignmentBatchesController : ControllerBase
 {
     private readonly HuntexDbContext _db;
     private readonly ConsignmentPdfService _pdf;
+    private readonly SupplierInvoicePdfParser _invoicePdfParser;
+    private readonly AppOptions _app;
 
-    public ConsignmentBatchesController(HuntexDbContext db, ConsignmentPdfService pdf)
+    public ConsignmentBatchesController(
+        HuntexDbContext db,
+        ConsignmentPdfService pdf,
+        SupplierInvoicePdfParser invoicePdfParser,
+        IOptions<AppOptions> app)
     {
         _db = db;
         _pdf = pdf;
+        _invoicePdfParser = invoicePdfParser;
+        _app = app.Value;
     }
 
     [HttpPost]
     public async Task<ActionResult<ConsignmentBatchDto>> Create([FromBody] CreateConsignmentBatchRequest req, CancellationToken ct)
     {
         if (!Enum.TryParse<ConsignmentBatchType>(req.Type, true, out var type))
-            return BadRequest(new { error = "Type must be 'Receive' or 'Return'." });
+            return BadRequest(new { error = "Type must be 'Receive', 'Return', or 'OwnedReceive'." });
 
         if (!await _db.Suppliers.AnyAsync(s => s.Id == req.SupplierId, ct))
             return BadRequest(new { error = "Supplier not found." });
@@ -38,6 +48,7 @@ public class ConsignmentBatchesController : ControllerBase
             Type = type,
             Status = ConsignmentBatchStatus.Draft,
             Notes = req.Notes?.Trim(),
+            SourceDocumentRef = string.IsNullOrWhiteSpace(req.SourceDocumentRef) ? null : req.SourceDocumentRef.Trim(),
             CreatedBy = User.Identity?.Name,
             CreatedAt = DateTimeOffset.UtcNow
         };
@@ -106,16 +117,18 @@ public class ConsignmentBatchesController : ControllerBase
         if (existing != null)
         {
             existing.ExpectedQty += req.ExpectedQty;
+            if (req.UnitCost.HasValue) existing.UnitCost = req.UnitCost;
         }
         else
         {
-            batch.Lines.Add(new ConsignmentBatchLine
+            _db.ConsignmentBatchLines.Add(new ConsignmentBatchLine
             {
                 Id = Guid.NewGuid(),
                 BatchId = id,
                 ProductId = req.ProductId,
                 ExpectedQty = req.ExpectedQty,
-                Notes = req.Notes?.Trim()
+                Notes = req.Notes?.Trim(),
+                UnitCost = req.UnitCost
             });
         }
 
@@ -137,6 +150,7 @@ public class ConsignmentBatchesController : ControllerBase
         if (req.CheckedQty.HasValue) line.CheckedQty = req.CheckedQty.Value;
         if (req.ExpectedQty.HasValue) line.ExpectedQty = req.ExpectedQty.Value;
         if (req.Notes != null) line.Notes = req.Notes.Trim();
+        if (req.UnitCost.HasValue) line.UnitCost = req.UnitCost;
 
         await _db.SaveChangesAsync(ct);
         return Ok(await MapBatchAsync(id, ct));
@@ -170,22 +184,24 @@ public class ConsignmentBatchesController : ControllerBase
         var product = await _db.Products.AsNoTracking()
             .FirstOrDefaultAsync(p => p.Barcode == barcode || p.Sku == barcode, ct);
         if (product == null)
-            return BadRequest(new { error = $"No product found for barcode '{barcode}'." });
+            return NotFound(new { error = $"No product found for barcode '{barcode}'.", barcode });
 
         var line = batch.Lines.FirstOrDefault(l => l.ProductId == product.Id);
         if (line != null)
         {
             line.CheckedQty += req.Qty;
+            if (req.UnitCost.HasValue) line.UnitCost = req.UnitCost;
         }
         else
         {
-            batch.Lines.Add(new ConsignmentBatchLine
+            _db.ConsignmentBatchLines.Add(new ConsignmentBatchLine
             {
                 Id = Guid.NewGuid(),
                 BatchId = id,
                 ProductId = product.Id,
                 ExpectedQty = 0,
-                CheckedQty = req.Qty
+                CheckedQty = req.Qty,
+                UnitCost = req.UnitCost
             });
         }
 
@@ -193,9 +209,55 @@ public class ConsignmentBatchesController : ControllerBase
         return Ok(await MapBatchAsync(id, ct));
     }
 
+    [HttpPost("{id:guid}/lines-inline-create")]
+    public async Task<ActionResult<ConsignmentBatchDto>> InlineCreate(Guid id, [FromBody] InlineCreateProductRequest req, CancellationToken ct)
+    {
+        var batch = await _db.ConsignmentBatches.Include(b => b.Lines).FirstOrDefaultAsync(b => b.Id == id, ct);
+        if (batch == null) return NotFound(new { error = "Batch not found." });
+        if (batch.Status == ConsignmentBatchStatus.Committed)
+            return BadRequest(new { error = "Batch is already committed." });
+
+        var sku = req.Sku.Trim();
+        var name = req.Name.Trim();
+        var barcode = string.IsNullOrWhiteSpace(req.Barcode) ? sku : req.Barcode.Trim();
+
+        var existing = await _db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Sku == sku, ct);
+        if (existing != null)
+            return BadRequest(new { error = $"A product with SKU '{sku}' already exists.", existingProductId = existing.Id });
+
+        var product = new Product
+        {
+            Id = Guid.NewGuid(),
+            Sku = sku,
+            Name = name,
+            Barcode = barcode,
+            SupplierId = batch.SupplierId,
+            Cost = req.UnitCost ?? 0m,
+            SellPrice = 0m,
+            QtyOnHand = 0,
+            QtyConsignment = 0,
+            Active = true,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        _db.Products.Add(product);
+
+        _db.ConsignmentBatchLines.Add(new ConsignmentBatchLine
+        {
+            Id = Guid.NewGuid(),
+            BatchId = id,
+            ProductId = product.Id,
+            ExpectedQty = req.Qty,
+            CheckedQty = batch.Type == ConsignmentBatchType.OwnedReceive || batch.Type == ConsignmentBatchType.Receive ? req.Qty : 0,
+            UnitCost = req.UnitCost
+        });
+
+        await _db.SaveChangesAsync(ct);
+        return Ok(await MapBatchAsync(id, ct));
+    }
+
     [HttpPost("{id:guid}/import")]
     [RequestSizeLimit(50_000_000)]
-    public async Task<ActionResult<ConsignmentBatchDto>> Import(Guid id, [FromForm] IFormFile file, CancellationToken ct)
+    public async Task<ActionResult<object>> Import(Guid id, [FromForm] IFormFile file, CancellationToken ct)
     {
         var batch = await _db.ConsignmentBatches.Include(b => b.Lines).FirstOrDefaultAsync(b => b.Id == id, ct);
         if (batch == null) return NotFound(new { error = "Batch not found." });
@@ -211,6 +273,7 @@ public class ConsignmentBatchesController : ControllerBase
         var cols = header.Split(',').Select(c => c.Trim().ToUpperInvariant()).ToList();
         var skuIdx = cols.FindIndex(c => c is "SKU" or "ITEM CODE" or "CODE" or "PRODUCT CODE");
         var qtyIdx = cols.FindIndex(c => c is "QTY" or "QUANTITY" or "COUNT");
+        var costIdx = cols.FindIndex(c => c is "COST" or "UNIT COST" or "PRICE" or "UNIT PRICE");
 
         if (skuIdx < 0) return BadRequest(new { error = "CSV must have a SKU/Code column." });
         if (qtyIdx < 0) return BadRequest(new { error = "CSV must have a Qty/Quantity column." });
@@ -229,6 +292,14 @@ public class ConsignmentBatchesController : ControllerBase
             var sku = parts[skuIdx].Trim().Trim('"');
             if (!int.TryParse(parts[qtyIdx].Trim().Trim('"'), out var qty) || qty < 1) qty = 1;
 
+            decimal? unitCost = null;
+            if (costIdx >= 0 && costIdx < parts.Length)
+            {
+                var raw = parts[costIdx].Trim().Trim('"').Replace(" ", "").Replace(",", "");
+                if (decimal.TryParse(raw, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var c) && c >= 0)
+                    unitCost = c;
+            }
+
             var product = await _db.Products.AsNoTracking()
                 .FirstOrDefaultAsync(p => p.Sku == sku || p.Barcode == sku, ct);
 
@@ -242,15 +313,17 @@ public class ConsignmentBatchesController : ControllerBase
             if (existing != null)
             {
                 existing.ExpectedQty += qty;
+                if (unitCost.HasValue) existing.UnitCost = unitCost;
             }
             else
             {
-                batch.Lines.Add(new ConsignmentBatchLine
+                _db.ConsignmentBatchLines.Add(new ConsignmentBatchLine
                 {
                     Id = Guid.NewGuid(),
                     BatchId = id,
                     ProductId = product.Id,
-                    ExpectedQty = qty
+                    ExpectedQty = qty,
+                    UnitCost = unitCost
                 });
                 added++;
             }
@@ -261,8 +334,87 @@ public class ConsignmentBatchesController : ControllerBase
         return Ok(new { batch = dto, added, notFound });
     }
 
+    [HttpPost("{id:guid}/import-pdf")]
+    [RequestSizeLimit(50_000_000)]
+    public async Task<ActionResult<PdfImportResultDto>> ImportPdf(Guid id, [FromForm] IFormFile file, CancellationToken ct)
+    {
+        var batch = await _db.ConsignmentBatches.Include(b => b.Lines).FirstOrDefaultAsync(b => b.Id == id, ct);
+        if (batch == null) return NotFound(new { error = "Batch not found." });
+        if (batch.Status == ConsignmentBatchStatus.Committed)
+            return BadRequest(new { error = "Batch is already committed." });
+        if (file == null || file.Length == 0)
+            return BadRequest(new { error = "File required." });
+
+        SupplierInvoicePdfParser.ParseResult parseResult;
+        var pdfBytes = new byte[file.Length];
+        await using (var ms = new MemoryStream())
+        {
+            await file.CopyToAsync(ms, ct);
+            pdfBytes = ms.ToArray();
+        }
+
+        using (var parseStream = new MemoryStream(pdfBytes))
+        {
+            parseResult = _invoicePdfParser.Parse(parseStream);
+        }
+
+        var dir = Path.Combine(Directory.GetCurrentDirectory(), _app.PdfStoragePath);
+        Directory.CreateDirectory(dir);
+        var relative = $"batch-{batch.Id:N}.pdf";
+        var absolute = Path.Combine(dir, relative);
+        await System.IO.File.WriteAllBytesAsync(absolute, pdfBytes, ct);
+        batch.SourceDocumentPath = relative;
+
+        var notFound = new List<string>();
+        var matched = 0;
+
+        foreach (var parsed in parseResult.Lines)
+        {
+            var product = await _db.Products.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Sku == parsed.Sku || p.Barcode == parsed.Sku, ct);
+            if (product == null)
+            {
+                notFound.Add(parsed.Sku);
+                continue;
+            }
+
+            var existing = batch.Lines.FirstOrDefault(l => l.ProductId == product.Id);
+            if (existing != null)
+            {
+                existing.ExpectedQty += parsed.Qty;
+                if (parsed.UnitCost.HasValue) existing.UnitCost = parsed.UnitCost;
+            }
+            else
+            {
+                _db.ConsignmentBatchLines.Add(new ConsignmentBatchLine
+                {
+                    Id = Guid.NewGuid(),
+                    BatchId = id,
+                    ProductId = product.Id,
+                    ExpectedQty = parsed.Qty,
+                    UnitCost = parsed.UnitCost
+                });
+            }
+            matched++;
+        }
+
+        await _db.SaveChangesAsync(ct);
+        var dto = await MapBatchAsync(id, ct);
+        return Ok(new PdfImportResultDto
+        {
+            Batch = dto!,
+            Parsed = matched,
+            NotFound = notFound,
+            UnparsedLines = parseResult.UnparsedLines,
+            RawText = parseResult.Lines.Count == 0 ? parseResult.RawText : null
+        });
+    }
+
     [HttpPost("{id:guid}/commit")]
-    public async Task<ActionResult<ConsignmentBatchDto>> Commit(Guid id, CancellationToken ct)
+    public async Task<ActionResult<ConsignmentBatchDto>> Commit(
+        Guid id,
+        [FromQuery] bool updateCosts,
+        CancellationToken ct)
     {
         var batch = await _db.ConsignmentBatches
             .Include(b => b.Lines)
@@ -273,22 +425,45 @@ public class ConsignmentBatchesController : ControllerBase
         if (!batch.Lines.Any())
             return BadRequest(new { error = "Batch has no lines." });
 
-        var receiptType = batch.Type == ConsignmentBatchType.Receive
-            ? StockReceiptType.ConsignmentIn
-            : StockReceiptType.ConsignmentReturn;
+        var receiptType = batch.Type switch
+        {
+            ConsignmentBatchType.Receive => StockReceiptType.ConsignmentIn,
+            ConsignmentBatchType.Return => StockReceiptType.ConsignmentReturn,
+            ConsignmentBatchType.OwnedReceive => StockReceiptType.OwnedIn,
+            _ => throw new InvalidOperationException($"Unsupported batch type '{batch.Type}'.")
+        };
 
         foreach (var line in batch.Lines)
         {
-            var qty = batch.Type == ConsignmentBatchType.Receive ? line.CheckedQty : line.ExpectedQty;
+            var qty = batch.Type == ConsignmentBatchType.Return ? line.ExpectedQty : line.CheckedQty;
+            if (batch.Type == ConsignmentBatchType.Return && qty == 0)
+                qty = line.ExpectedQty;
             if (qty < 1) continue;
 
             var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == line.ProductId, ct);
             if (product == null) continue;
 
-            if (receiptType == StockReceiptType.ConsignmentIn)
-                product.QtyConsignment += qty;
-            else
-                product.QtyConsignment = Math.Max(0, product.QtyConsignment - qty);
+            switch (receiptType)
+            {
+                case StockReceiptType.ConsignmentIn:
+                    product.QtyConsignment += qty;
+                    break;
+                case StockReceiptType.ConsignmentReturn:
+                    product.QtyConsignment = Math.Max(0, product.QtyConsignment - qty);
+                    break;
+                case StockReceiptType.OwnedIn:
+                    product.QtyOnHand += qty;
+                    break;
+            }
+
+            if (line.UnitCost.HasValue && line.UnitCost.Value > 0 && line.UnitCost.Value != product.Cost)
+            {
+                line.UnitCostChanged = true;
+                if (updateCosts)
+                {
+                    product.Cost = line.UnitCost.Value;
+                }
+            }
 
             product.UpdatedAt = DateTimeOffset.UtcNow;
 
@@ -299,7 +474,10 @@ public class ConsignmentBatchesController : ControllerBase
                 SupplierId = batch.SupplierId,
                 Type = receiptType,
                 Quantity = qty,
-                Notes = $"Batch {batch.Id:N}",
+                CostPrice = line.UnitCost,
+                Notes = string.IsNullOrEmpty(batch.SourceDocumentRef)
+                    ? $"Batch {batch.Id:N}"
+                    : $"Batch {batch.Id:N} · {batch.SourceDocumentRef}",
                 ProcessedBy = User.Identity?.Name,
                 CreatedAt = DateTimeOffset.UtcNow
             });
@@ -322,8 +500,23 @@ public class ConsignmentBatchesController : ControllerBase
         if (batch == null) return NotFound(new { error = "Batch not found." });
 
         var pdf = _pdf.BuildPdf(batch);
-        var label = batch.Type == ConsignmentBatchType.Receive ? "receive-check" : "return-packing";
-        return File(pdf, "application/pdf", $"consignment-{label}-{batch.CreatedAt:yyyyMMdd}.pdf");
+        var label = batch.Type == ConsignmentBatchType.Receive ? "receive-check"
+                  : batch.Type == ConsignmentBatchType.Return ? "return-packing"
+                  : "owned-receive";
+        return File(pdf, "application/pdf", $"batch-{label}-{batch.CreatedAt:yyyyMMdd}.pdf");
+    }
+
+    [HttpGet("{id:guid}/source-document")]
+    public async Task<IActionResult> SourceDocument(Guid id, CancellationToken ct)
+    {
+        var batch = await _db.ConsignmentBatches.AsNoTracking().FirstOrDefaultAsync(b => b.Id == id, ct);
+        if (batch == null) return NotFound();
+        if (string.IsNullOrEmpty(batch.SourceDocumentPath)) return NotFound(new { error = "No source document." });
+
+        var path = Path.Combine(Directory.GetCurrentDirectory(), _app.PdfStoragePath, batch.SourceDocumentPath);
+        if (!System.IO.File.Exists(path)) return NotFound();
+        var bytes = await System.IO.File.ReadAllBytesAsync(path, ct);
+        return File(bytes, "application/pdf", batch.SourceDocumentPath);
     }
 
     [HttpGet("returnable-stock")]
@@ -359,7 +552,6 @@ public class ConsignmentBatchesController : ControllerBase
             .OrderBy(x => x.Sku)
             .ToList();
 
-        // Also include products assigned to this supplier that have consignment qty but no receipts
         var receiptProductIds = result.Select(r => r.ProductId).ToHashSet();
         var untracked = await _db.Products.AsNoTracking()
             .Where(p => p.SupplierId == supplierId && p.QtyConsignment > 0 && !receiptProductIds.Contains(p.Id))
@@ -400,6 +592,8 @@ public class ConsignmentBatchesController : ControllerBase
         CreatedBy = b.CreatedBy,
         CreatedAt = b.CreatedAt,
         CommittedAt = b.CommittedAt,
+        SourceDocumentRef = b.SourceDocumentRef,
+        HasSourceDocument = !string.IsNullOrEmpty(b.SourceDocumentPath),
         Lines = b.Lines.Select(l => new ConsignmentBatchLineDto
         {
             Id = l.Id,
@@ -409,7 +603,10 @@ public class ConsignmentBatchesController : ControllerBase
             ProductName = l.Product?.Name ?? "",
             ExpectedQty = l.ExpectedQty,
             CheckedQty = l.CheckedQty,
-            Notes = l.Notes
+            Notes = l.Notes,
+            UnitCost = l.UnitCost,
+            CurrentProductCost = l.Product?.Cost ?? 0m,
+            UnitCostChanged = l.UnitCostChanged
         }).OrderBy(l => l.Sku).ToList()
     };
 }

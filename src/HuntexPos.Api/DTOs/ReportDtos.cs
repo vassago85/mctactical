@@ -16,6 +16,9 @@ public class InvoiceListItemDto
     public DateTimeOffset CreatedAt { get; set; }
     public string? CustomerName { get; set; }
     public string? CreatedByUserId { get; set; }
+    public string? VoidReason { get; set; }
+    public DateTimeOffset? VoidedAt { get; set; }
+    public string? VoidedByName { get; set; }
 }
 
 /* ── Stock report DTOs ── */

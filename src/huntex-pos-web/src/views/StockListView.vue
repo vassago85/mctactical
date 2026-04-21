@@ -654,7 +654,10 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
     <McPageHeader title="Stock list" description="Full inventory. Use Import to load items from your Huntex workbook or CSV.">
       <template v-if="canManage" #actions>
         <McButton variant="primary" type="button" @click="openAdd">Add product</McButton>
-        <RouterLink v-if="canManage" to="/stock/labels" custom v-slot="{ navigate }">
+        <RouterLink to="/receiving" custom v-slot="{ navigate }">
+          <McButton variant="secondary" type="button" @click="navigate">Receive stock</McButton>
+        </RouterLink>
+        <RouterLink to="/stock/labels" custom v-slot="{ navigate }">
           <McButton variant="secondary" type="button" @click="navigate">Bulk labels</McButton>
         </RouterLink>
         <McButton v-if="canExport" variant="secondary" type="button" @click="exportCsv">Export CSV</McButton>

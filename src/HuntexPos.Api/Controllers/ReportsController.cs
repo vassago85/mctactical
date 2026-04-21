@@ -39,17 +39,33 @@ public class ReportsController : ControllerBase
         if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<InvoiceStatus>(status, true, out var st))
             rows = rows.Where(i => i.Status == st);
 
-        return rows.OrderByDescending(i => i.CreatedAt).Take(500)
-            .Select(i => new InvoiceListItemDto
-            {
-                Id = i.Id,
-                InvoiceNumber = i.InvoiceNumber,
-                Status = i.Status.ToString(),
-                GrandTotal = i.GrandTotal,
-                CreatedAt = i.CreatedAt,
-                CustomerName = i.CustomerName,
-                CreatedByUserId = i.CreatedByUserId
-            }).ToList();
+        var page = rows.OrderByDescending(i => i.CreatedAt).Take(500).ToList();
+
+        var voidUserIds = page
+            .Where(i => !string.IsNullOrEmpty(i.VoidedByUserId))
+            .Select(i => i.VoidedByUserId!)
+            .Distinct()
+            .ToList();
+        var voidUsers = voidUserIds.Count == 0
+            ? new Dictionary<string, string?>()
+            : await _db.Users.AsNoTracking()
+                .Where(u => voidUserIds.Contains(u.Id))
+                .Select(u => new { u.Id, Name = u.DisplayName ?? u.UserName ?? u.Email })
+                .ToDictionaryAsync(x => x.Id, x => x.Name, ct);
+
+        return page.Select(i => new InvoiceListItemDto
+        {
+            Id = i.Id,
+            InvoiceNumber = i.InvoiceNumber,
+            Status = i.Status.ToString(),
+            GrandTotal = i.GrandTotal,
+            CreatedAt = i.CreatedAt,
+            CustomerName = i.CustomerName,
+            CreatedByUserId = i.CreatedByUserId,
+            VoidReason = i.VoidReason,
+            VoidedAt = i.VoidedAt,
+            VoidedByName = i.VoidedByUserId != null && voidUsers.TryGetValue(i.VoidedByUserId, out var n) ? n : null
+        }).ToList();
     }
 
     [HttpGet("daily")]

@@ -298,7 +298,7 @@ public class InvoiceService
         return await GetPdfBytesAsync(inv.Id, ct);
     }
 
-    public async Task VoidAsync(Guid id, string reason, CancellationToken ct)
+    public async Task VoidAsync(Guid id, string reason, string? userId, CancellationToken ct)
     {
         var inv = await _db.Invoices.Include(i => i.Lines).FirstOrDefaultAsync(i => i.Id == id, ct)
                   ?? throw new InvalidOperationException("Invoice not found");
@@ -307,6 +307,8 @@ public class InvoiceService
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
         inv.Status = InvoiceStatus.Voided;
         inv.VoidReason = reason;
+        inv.VoidedAt = DateTimeOffset.UtcNow;
+        inv.VoidedByUserId = userId;
 
         foreach (var line in inv.Lines)
         {

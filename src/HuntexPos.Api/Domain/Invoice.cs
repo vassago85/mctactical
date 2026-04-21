@@ -29,6 +29,9 @@ public class Invoice
     public string? PdfStorageKey { get; set; }
 
     public string? VoidReason { get; set; }
+    public DateTimeOffset? VoidedAt { get; set; }
+    public string? VoidedByUserId { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public string? CreatedByUserId { get; set; }
 

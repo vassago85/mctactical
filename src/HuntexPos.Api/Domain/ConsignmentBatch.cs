@@ -1,6 +1,6 @@
 namespace HuntexPos.Api.Domain;
 
-public enum ConsignmentBatchType { Receive, Return }
+public enum ConsignmentBatchType { Receive, Return, OwnedReceive }
 public enum ConsignmentBatchStatus { Draft, Committed }
 
 public class ConsignmentBatch
@@ -14,6 +14,13 @@ public class ConsignmentBatch
     public string? CreatedBy { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? CommittedAt { get; set; }
+
+    /// <summary>Supplier-side invoice / PO reference typed by staff.</summary>
+    public string? SourceDocumentRef { get; set; }
+
+    /// <summary>Relative path (under the PDF data dir) to an uploaded supplier invoice PDF, if any.</summary>
+    public string? SourceDocumentPath { get; set; }
+
     public List<ConsignmentBatchLine> Lines { get; set; } = new();
 }
 
@@ -27,4 +34,10 @@ public class ConsignmentBatchLine
     public int ExpectedQty { get; set; }
     public int CheckedQty { get; set; }
     public string? Notes { get; set; }
+
+    /// <summary>Per-line unit cost ex VAT, from the supplier's delivery note. Optional.</summary>
+    public decimal? UnitCost { get; set; }
+
+    /// <summary>Set at commit time when UnitCost differs from the product's current Cost.</summary>
+    public bool UnitCostChanged { get; set; }
 }
