@@ -551,6 +551,10 @@ public class ProductsController : ControllerBase
 
     private async Task<bool> ShouldHideCostAsync(CancellationToken ct)
     {
+        // Role hierarchy: Dev > Owner > Admin > Sales. Seeded/promoted users often carry Sales
+        // alongside a higher role; cost must only be hidden from pure-Sales accounts.
+        if (User.IsInRole(Roles.Dev) || User.IsInRole(Roles.Owner) || User.IsInRole(Roles.Admin))
+            return false;
         if (!User.IsInRole(Roles.Sales)) return false;
         var settings = await _db.PricingSettings.AsNoTracking().FirstOrDefaultAsync(ct);
         var hide = settings?.HideCostForSalesRole ?? _app.HideCostForSalesRole;
