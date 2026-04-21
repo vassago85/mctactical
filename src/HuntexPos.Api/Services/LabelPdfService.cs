@@ -25,6 +25,12 @@ public static class LabelPdfService
     private static byte[]? _logoCached;
     private static bool _logoLoaded;
 
+    // Monochrome cache keyed by source bytes' hash so we only re-binarize when the branded
+    // logo actually changes. Thermal labels (Brother QL-800) print 1-bit, so any colour or
+    // grey pixel dithers into muddy stripes unless we flatten to pure black/transparent.
+    private static byte[]? _monoCached;
+    private static int _monoSourceHash;
+
     /// <summary>
     /// Optional provider for branded logo bytes. Wired up at app startup so that
     /// labels can use the current business's uploaded logo. Falls back to the embedded logo.
@@ -32,6 +38,13 @@ public static class LabelPdfService
     public static Func<byte[]?>? LogoProvider { get; set; }
 
     private static byte[]? LoadLogo()
+    {
+        var source = LoadSourceLogo();
+        if (source == null) return null;
+        return ToMonochromeBlack(source);
+    }
+
+    private static byte[]? LoadSourceLogo()
     {
         // Prefer the injected (branded) logo first so white-label deployments work.
         var branded = LogoProvider?.Invoke();
@@ -49,6 +62,61 @@ public static class LabelPdfService
         stream.CopyTo(ms);
         _logoCached = ms.ToArray();
         return _logoCached;
+    }
+
+    /// <summary>
+    /// Flattens the source image to pure black on transparent: every visible pixel becomes
+    /// fully opaque black, every faint/transparent pixel becomes fully transparent. No greys,
+    /// no colours — exactly what a monochrome thermal printer needs.
+    /// </summary>
+    private static byte[] ToMonochromeBlack(byte[] source)
+    {
+        var hash = ComputeHash(source);
+        if (_monoCached != null && _monoSourceHash == hash) return _monoCached;
+
+        try
+        {
+            using var img = SixLabors.ImageSharp.Image.Load<Rgba32>(source);
+            img.ProcessPixelRows(accessor =>
+            {
+                for (var y = 0; y < accessor.Height; y++)
+                {
+                    var row = accessor.GetRowSpan(y);
+                    for (var x = 0; x < row.Length; x++)
+                    {
+                        ref var px = ref row[x];
+                        // Alpha threshold: drop faint antialias pixels so edges stay crisp.
+                        // Luminance threshold: treat bright pixels as background (transparent)
+                        // so a light logo on a dark background doesn't invert.
+                        var luma = (px.R * 299 + px.G * 587 + px.B * 114) / 1000;
+                        if (px.A < 32 || luma > 235)
+                            px = new Rgba32(0, 0, 0, 0);
+                        else
+                            px = new Rgba32(0, 0, 0, 255);
+                    }
+                }
+            });
+            using var ms = new MemoryStream();
+            img.Save(ms, new PngEncoder());
+            _monoCached = ms.ToArray();
+            _monoSourceHash = hash;
+            return _monoCached;
+        }
+        catch
+        {
+            return source;
+        }
+    }
+
+    private static int ComputeHash(byte[] data)
+    {
+        unchecked
+        {
+            var hash = 17;
+            for (var i = 0; i < data.Length; i += Math.Max(1, data.Length / 64))
+                hash = hash * 31 + data[i];
+            return hash * 31 + data.Length;
+        }
     }
 
     /// <summary>
@@ -117,7 +185,7 @@ public static class LabelPdfService
                         row.RelativeItem().AlignLeft().AlignBottom().Column(nameCol =>
                         {
                             nameCol.Item().Text(product.Name).Bold().FontSize(6);
-                            nameCol.Item().Text(product.Sku).FontSize(5).FontColor(Colors.Grey.Medium);
+                            nameCol.Item().Text(product.Sku).FontSize(5).FontColor(Colors.Black);
                             if (hasPromo && !string.IsNullOrWhiteSpace(pricing.PromoName))
                                 nameCol.Item().Text(pricing.PromoName).FontSize(5).Bold();
                         });
