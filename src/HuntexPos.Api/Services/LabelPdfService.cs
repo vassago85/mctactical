@@ -277,16 +277,25 @@ public static class LabelPdfService
     }
 
     public static byte[] BuildMultipleLabels(IEnumerable<(Product Product, LabelPricing Pricing)> items)
+        => BuildMultipleLabels(items.Select(i => (i.Product, i.Pricing, 1)));
+
+    /// <summary>
+    /// Emit <c>Copies</c> pages per product, preserving input order. Used by the bulk label UI
+    /// so that callers can print N-per-product or one-per-unit-on-hand in a single PDF.
+    /// </summary>
+    public static byte[] BuildMultipleLabels(IEnumerable<(Product Product, LabelPricing Pricing, int Copies)> items)
     {
         var list = items.ToList();
 
         return Document.Create(container =>
         {
-            foreach (var (product, pricing) in list)
+            foreach (var (product, pricing, copies) in list)
             {
+                if (copies <= 0) continue;
                 EnsureEan13(product);
                 var (barcodeBytes, displayText) = RenderBarcodeWithText(product.Barcode ?? product.Sku);
-                container.Page(page => ConfigureLabelPage(page, product, barcodeBytes, displayText, pricing));
+                for (var i = 0; i < copies; i++)
+                    container.Page(page => ConfigureLabelPage(page, product, barcodeBytes, displayText, pricing));
             }
         }).GeneratePdf();
     }

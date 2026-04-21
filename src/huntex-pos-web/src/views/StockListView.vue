@@ -190,6 +190,12 @@ const formBusy = ref(false)
 const formErr = ref<string | null>(null)
 const sellPriceManual = ref(false)
 
+// Only Owner/Dev can correct qty-on-hand from the edit drawer (audited via adjust-stock endpoint).
+// Admin/Sales must go through Stocktake or consignment receipts instead.
+const canAdjustStock = computed(() => auth.hasRole('Owner', 'Dev'))
+const originalQtyOnHand = ref(0)
+const adjustReason = ref('')
+
 interface PricingPreview {
   sellPrice: number
   minAllowedPrice: number
@@ -218,6 +224,8 @@ function openAdd() {
     pricingMethod: 'default', customMarkupPercent: null, fixedSellPrice: null,
     minSellPrice: null, priceLocked: false
   }
+  originalQtyOnHand.value = 0
+  adjustReason.value = ''
   pricingPreview.value = null
   formErr.value = null
   showForm.value = true
@@ -244,6 +252,8 @@ function openEdit(p: Product) {
     minSellPrice: p.minSellPrice ?? null,
     priceLocked: p.priceLocked ?? false
   }
+  originalQtyOnHand.value = p.qtyOnHand
+  adjustReason.value = ''
   pricingPreview.value = null
   formErr.value = null
   showForm.value = true
@@ -331,8 +341,33 @@ async function saveProduct() {
       priceLocked: form.value.priceLocked
     }
     if (editId.value) {
+      // Validate qty adjustment up-front so we don't half-save the product.
+      const qtyChanged = canAdjustStock.value && form.value.qtyOnHand !== originalQtyOnHand.value
+      const trimmedReason = adjustReason.value.trim()
+      if (qtyChanged) {
+        if (form.value.qtyOnHand < 0) {
+          formErr.value = 'Quantity on hand cannot be negative.'
+          formBusy.value = false
+          return
+        }
+        if (!trimmedReason) {
+          formErr.value = 'A reason is required when changing quantity on hand.'
+          formBusy.value = false
+          return
+        }
+      }
+
       await http.put(`/api/products/${editId.value}`, payload)
-      toast.success('Product updated')
+
+      if (qtyChanged) {
+        await http.post(`/api/products/${editId.value}/adjust-stock`, {
+          newQtyOnHand: form.value.qtyOnHand,
+          reason: trimmedReason
+        })
+        toast.success(`Product updated · stock adjusted by ${form.value.qtyOnHand - originalQtyOnHand.value}`)
+      } else {
+        toast.success('Product updated')
+      }
     } else {
       payload.qtyOnHand = form.value.qtyOnHand
       await http.post('/api/products', payload)
@@ -476,6 +511,7 @@ function receiptTypeBadge(type: string): { label: string; variant: 'success' | '
     case 'ConsignmentToStock': return { label: 'Consign → Stock', variant: 'success' }
     case 'StockToConsignment': return { label: 'Stock → Consign', variant: 'warning' }
     case 'ConsignmentReturn': return { label: 'Returned', variant: 'error' }
+    case 'Adjustment': return { label: 'Adjustment', variant: 'neutral' }
     default: return { label: type, variant: 'neutral' }
   }
 }
@@ -618,6 +654,9 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
     <McPageHeader title="Stock list" description="Full inventory. Use Import to load items from your Huntex workbook or CSV.">
       <template v-if="canManage" #actions>
         <McButton variant="primary" type="button" @click="openAdd">Add product</McButton>
+        <RouterLink v-if="canManage" to="/stock/labels" custom v-slot="{ navigate }">
+          <McButton variant="secondary" type="button" @click="navigate">Bulk labels</McButton>
+        </RouterLink>
         <McButton v-if="canExport" variant="secondary" type="button" @click="exportCsv">Export CSV</McButton>
       </template>
     </McPageHeader>
@@ -809,6 +848,38 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
               <McField v-if="!editId" label="Initial stock qty" for-id="f-qty">
                 <input id="f-qty" v-model.number="form.qtyOnHand" type="number" step="1" min="0" />
               </McField>
+            </div>
+
+            <div v-if="editId && canAdjustStock" class="stock-drawer__adjust">
+              <header class="stock-drawer__adjust-head">
+                <h3 class="stock-drawer__adjust-title">Quantity on hand</h3>
+                <p class="stock-drawer__adjust-hint">
+                  Owner / Dev only. Changes here are written to the product's stock movement history with
+                  the reason below. For routine receiving use the stock receipts action instead.
+                </p>
+              </header>
+              <div class="stock-drawer__grid">
+                <McField label="New qty on hand" for-id="f-qty-edit" :hint="`Current: ${originalQtyOnHand}`">
+                  <input id="f-qty-edit" v-model.number="form.qtyOnHand" type="number" step="1" min="0" />
+                </McField>
+                <McField
+                  label="Reason"
+                  for-id="f-qty-reason"
+                  :hint="form.qtyOnHand !== originalQtyOnHand ? 'Required — explain why qty is being corrected.' : 'Only needed when qty changes.'"
+                >
+                  <input
+                    id="f-qty-reason"
+                    v-model="adjustReason"
+                    type="text"
+                    maxlength="500"
+                    placeholder="e.g. Stocktake variance, damaged, found unit"
+                    :required="form.qtyOnHand !== originalQtyOnHand"
+                  />
+                </McField>
+              </div>
+              <p v-if="form.qtyOnHand !== originalQtyOnHand" class="stock-drawer__adjust-delta">
+                Adjustment: {{ form.qtyOnHand - originalQtyOnHand > 0 ? '+' : '' }}{{ form.qtyOnHand - originalQtyOnHand }}
+              </p>
             </div>
 
             <section class="pricing-section">
@@ -1408,6 +1479,40 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
   gap: 0.6rem;
   flex-wrap: wrap;
   background: var(--mc-app-surface-2, #f9f8f6);
+}
+
+.stock-drawer__adjust {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--mc-app-border-faint, #eceae5);
+  border-radius: 12px;
+  background: var(--mc-app-surface-2, #f9f8f6);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.stock-drawer__adjust-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.stock-drawer__adjust-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--mc-app-text, #1b1b1b);
+}
+.stock-drawer__adjust-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--mc-app-text-muted, #6b6b6b);
+  line-height: 1.35;
+}
+.stock-drawer__adjust-delta {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--mc-accent, #a0570c);
 }
 
 .pricing-section {

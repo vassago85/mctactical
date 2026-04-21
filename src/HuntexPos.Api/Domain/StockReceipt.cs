@@ -6,7 +6,9 @@ public enum StockReceiptType
     ConsignmentIn,
     ConsignmentToStock,
     ConsignmentReturn,
-    StockToConsignment
+    StockToConsignment,
+    /// <summary>Manual stock-on-hand correction by an Owner/Dev. Quantity may be negative.</summary>
+    Adjustment
 }
 
 public class StockReceipt

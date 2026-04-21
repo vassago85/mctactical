@@ -108,4 +108,34 @@ public class LabelBatchRequest
 {
     public List<Guid> ProductIds { get; set; } = new();
     public bool UsePromo { get; set; }
+
+    /// <summary>
+    /// How many labels to print per selected product. Ignored when <see cref="CopiesFromQtyOnHand"/> is true.
+    /// Clamped to 1..50. Defaults to 1.
+    /// </summary>
+    public int? CopiesPerProduct { get; set; }
+
+    /// <summary>
+    /// When true, print one label per unit currently on hand for each selected product.
+    /// Products with 0 on hand are skipped. Per-product copies are clamped to 1..<see cref="MaxCopiesPerProduct"/>.
+    /// </summary>
+    public bool CopiesFromQtyOnHand { get; set; }
+
+    /// <summary>
+    /// Safety cap for <see cref="CopiesFromQtyOnHand"/>. Defaults server-side to 50 per product.
+    /// </summary>
+    public int? MaxCopiesPerProduct { get; set; }
+}
+
+/// <summary>
+/// Manual correction to QtyOnHand. Writes a StockReceipt audit row so the change
+/// is visible on the product's movement history.
+/// </summary>
+public class AdjustStockRequest
+{
+    /// <summary>New absolute quantity on hand after adjustment (must be ≥ 0).</summary>
+    public int NewQtyOnHand { get; set; }
+
+    /// <summary>Required free-text reason (e.g. "Stocktake variance", "Damaged").</summary>
+    public string Reason { get; set; } = string.Empty;
 }

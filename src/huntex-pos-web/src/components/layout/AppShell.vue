@@ -10,6 +10,7 @@ import {
   PackageCheck, Upload, BarChart3, DollarSign, Mail, Users,
   Settings as SettingsIcon,
   FileText,
+  Printer,
   LogOut
 } from 'lucide-vue-next'
 
@@ -71,6 +72,7 @@ function logout() {
         <div class="mc-nav-group">
           <p class="mc-nav-group__label">Inventory</p>
           <RouterLink class="mc-nav-link" to="/stock" @click="sidebarOpen = false"><Package :size="16" />Stock list</RouterLink>
+          <RouterLink class="mc-nav-link" to="/stock/labels" @click="sidebarOpen = false"><Printer :size="16" />Print labels</RouterLink>
           <RouterLink class="mc-nav-link" to="/stocktake" @click="sidebarOpen = false"><ClipboardList :size="16" />Stocktake</RouterLink>
           <RouterLink class="mc-nav-link" to="/consignment" @click="sidebarOpen = false"><Truck :size="16" />Consignment</RouterLink>
         </div>

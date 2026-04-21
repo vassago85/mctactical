@@ -157,7 +157,12 @@ public class ProductsController : ControllerBase
         }
     }
 
-    /// <summary>Generate a multi-product label PDF (one label per product).</summary>
+    /// <summary>
+    /// Generate a multi-product label PDF. Supports three copy modes:
+    /// fixed <c>copiesPerProduct</c> (default 1), or one label per unit on hand when
+    /// <c>copiesFromQtyOnHand</c> is true (capped at <c>maxCopiesPerProduct</c>, default 50).
+    /// Up to 200 distinct products and 2000 total labels per request.
+    /// </summary>
     [HttpPost("labels")]
     [Authorize(Roles = $"{Roles.Admin},{Roles.Owner},{Roles.Dev}")]
     public async Task<IActionResult> GetLabels([FromBody] LabelBatchRequest req, CancellationToken ct = default)
@@ -165,9 +170,16 @@ public class ProductsController : ControllerBase
         if (req.ProductIds == null || req.ProductIds.Count == 0)
             return BadRequest(new { error = "At least one productId is required." });
 
-        var ids = req.ProductIds.Take(200).ToList();
+        const int MaxDistinctProducts = 200;
+        const int MaxTotalLabels = 2000;
+        const int DefaultPerProductCap = 50;
+
+        var ids = req.ProductIds.Distinct().Take(MaxDistinctProducts).ToList();
         var products = await _db.Products.Where(p => ids.Contains(p.Id)).ToListAsync(ct);
         if (products.Count == 0) return NotFound();
+
+        var perProductCap = Math.Clamp(req.MaxCopiesPerProduct ?? DefaultPerProductCap, 1, 200);
+        var fixedCopies = Math.Clamp(req.CopiesPerProduct ?? 1, 1, 50);
 
         try
         {
@@ -175,15 +187,55 @@ public class ProductsController : ControllerBase
                 ? await ResolvePromoPricingBatch(products, ct)
                 : products.ToDictionary(p => p.Id, p => new LabelPdfService.LabelPricing(p.SellPrice, null, null));
 
-            var items = ids
-                .Select(id => products.FirstOrDefault(x => x.Id == id))
-                .Where(p => p != null)
-                .Select(p => (p!, pricingMap.GetValueOrDefault(p!.Id, new LabelPdfService.LabelPricing(p.SellPrice, null, null))));
+            var items = new List<(Product, LabelPdfService.LabelPricing, int)>();
+            var totalLabels = 0;
+            var skippedZeroStock = 0;
+
+            foreach (var id in ids)
+            {
+                var p = products.FirstOrDefault(x => x.Id == id);
+                if (p == null) continue;
+
+                int copies;
+                if (req.CopiesFromQtyOnHand)
+                {
+                    if (p.QtyOnHand <= 0) { skippedZeroStock++; continue; }
+                    copies = Math.Clamp(p.QtyOnHand, 1, perProductCap);
+                }
+                else
+                {
+                    copies = fixedCopies;
+                }
+
+                if (totalLabels + copies > MaxTotalLabels)
+                {
+                    copies = MaxTotalLabels - totalLabels;
+                    if (copies <= 0) break;
+                }
+
+                var pricing = pricingMap.GetValueOrDefault(p.Id, new LabelPdfService.LabelPricing(p.SellPrice, null, null));
+                items.Add((p, pricing, copies));
+                totalLabels += copies;
+                if (totalLabels >= MaxTotalLabels) break;
+            }
+
+            if (items.Count == 0)
+            {
+                var msg = req.CopiesFromQtyOnHand
+                    ? "None of the selected products have stock on hand."
+                    : "Nothing to print.";
+                return BadRequest(new { error = msg });
+            }
 
             var pdf = LabelPdfService.BuildMultipleLabels(items);
 
+            // EnsureEan13 may have mutated Barcode — persist if anything changed.
             await _db.SaveChangesAsync(ct);
 
+            Response.Headers["X-Label-Count"] = totalLabels.ToString();
+            Response.Headers["X-Products-Included"] = items.Count.ToString();
+            if (skippedZeroStock > 0)
+                Response.Headers["X-Products-Skipped-No-Stock"] = skippedZeroStock.ToString();
             return File(pdf, "application/pdf", "labels.pdf");
         }
         catch (Exception ex)
@@ -463,6 +515,53 @@ public class ProductsController : ControllerBase
         }
 
         p.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await _db.SaveChangesAsync(ct);
+        return await MapWithPricingAsync(p, false, ct);
+    }
+
+    /// <summary>
+    /// Owner/Dev-only manual stock-on-hand correction. Always writes a StockReceipt of type
+    /// Adjustment so the change is visible on the product's movement history. Reason is
+    /// required — there is no silent qty edit path for managers.
+    /// </summary>
+    [HttpPost("{id:guid}/adjust-stock")]
+    [Authorize(Roles = $"{Roles.Owner},{Roles.Dev}")]
+    public async Task<ActionResult<ProductDto>> AdjustStock(
+        Guid id,
+        [FromBody] AdjustStockRequest req,
+        CancellationToken ct)
+    {
+        if (req.NewQtyOnHand < 0)
+            return BadRequest(new { error = "New quantity cannot be negative." });
+        var reason = (req.Reason ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(reason))
+            return BadRequest(new { error = "A reason is required for stock adjustments." });
+        if (reason.Length > 500)
+            reason = reason[..500];
+
+        var p = await _db.Products.FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (p == null) return NotFound();
+
+        var delta = req.NewQtyOnHand - p.QtyOnHand;
+        if (delta == 0)
+            return await MapWithPricingAsync(p, false, ct);
+
+        p.QtyOnHand = req.NewQtyOnHand;
+        p.UpdatedAt = DateTimeOffset.UtcNow;
+
+        _db.StockReceipts.Add(new StockReceipt
+        {
+            Id = Guid.NewGuid(),
+            ProductId = p.Id,
+            SupplierId = null,
+            Type = StockReceiptType.Adjustment,
+            Quantity = delta,
+            CostPrice = null,
+            Notes = reason,
+            ProcessedBy = User.Identity?.Name,
+            CreatedAt = DateTimeOffset.UtcNow
+        });
 
         await _db.SaveChangesAsync(ct);
         return await MapWithPricingAsync(p, false, ct);
