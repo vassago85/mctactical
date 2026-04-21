@@ -129,6 +129,36 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("dev");
+
+// Global exception logging — stack traces were being swallowed into opaque 500s at the proxy.
+// Log everything and return a JSON body with the exception message so the SPA can surface a
+// useful toast instead of a blank "Could not load…". We keep the stack out of the response.
+app.Use(async (ctx, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (Exception ex)
+    {
+        var logger = ctx.RequestServices.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("UnhandledException");
+        logger.LogError(ex, "Unhandled exception handling {Method} {Path}", ctx.Request.Method, ctx.Request.Path);
+        if (!ctx.Response.HasStarted)
+        {
+            ctx.Response.Clear();
+            ctx.Response.StatusCode = 500;
+            ctx.Response.ContentType = "application/problem+json";
+            await ctx.Response.WriteAsJsonAsync(new
+            {
+                title = "Server error",
+                detail = ex.Message,
+                type = ex.GetType().Name
+            });
+        }
+    }
+});
+
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
