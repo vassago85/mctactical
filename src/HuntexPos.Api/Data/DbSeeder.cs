@@ -26,6 +26,7 @@ public static class DbSeeder
         await EnsureProductColumnsAsync(db, ct);
         await EnsureInvoiceLineColumnsAsync(db, ct);
         await EnsureStockReceiptsTableAsync(db, ct);
+        await EnsureSupplierColumnsAsync(db, ct);
         await EnsurePromotionsTablesAsync(db, ct);
         await EnsureInvoiceDiscountColumnsAsync(db, ct);
         await EnsureStockReceiptCostColumnAsync(db, ct);
@@ -159,6 +160,16 @@ public static class DbSeeder
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "Manufacturer" TEXT;""", ct); } catch { }
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "ItemType" TEXT;""", ct); } catch { }
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "QtyConsignment" INTEGER NOT NULL DEFAULT 0;""", ct); } catch { }
+    }
+
+    /// <summary>Add IsActive + UpdatedAt columns to Suppliers if missing (older DBs).</summary>
+    private static async Task EnsureSupplierColumnsAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        try { await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Suppliers" ADD COLUMN "IsActive" INTEGER NOT NULL DEFAULT 1;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Suppliers" ADD COLUMN "UpdatedAt" TEXT NOT NULL DEFAULT '0001-01-01 00:00:00';""", ct); } catch { }
     }
 
     /// <summary>Add CostAtSale to InvoiceLines for GP reporting (older DBs).</summary>

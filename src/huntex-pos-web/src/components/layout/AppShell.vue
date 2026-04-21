@@ -7,7 +7,7 @@ import { useBranding } from '@/composables/useBranding'
 import {
   Menu, ChevronLeft, ChevronRight,
   ShoppingCart, Search, Package, ClipboardList, Truck,
-  PackageCheck, Upload, BarChart3, DollarSign, Mail, Users,
+  PackageCheck, Upload, BarChart3, DollarSign, Mail, Users, Building2,
   Settings as SettingsIcon,
   FileText,
   Printer,
@@ -79,10 +79,10 @@ function logout() {
         <div v-if="auth.hasRole('Admin', 'Owner', 'Dev')" class="mc-nav-group">
           <p class="mc-nav-group__label">Office</p>
           <RouterLink class="mc-nav-link" to="/deliveries" @click="sidebarOpen = false"><PackageCheck :size="16" />Deliveries</RouterLink>
+          <RouterLink class="mc-nav-link" to="/wholesalers" @click="sidebarOpen = false"><Building2 :size="16" />Wholesalers</RouterLink>
           <RouterLink class="mc-nav-link" to="/import" @click="sidebarOpen = false"><Upload :size="16" />Import</RouterLink>
           <RouterLink class="mc-nav-link" to="/reports" @click="sidebarOpen = false"><BarChart3 :size="16" />Reports</RouterLink>
           <RouterLink class="mc-nav-link" to="/settings" @click="sidebarOpen = false"><DollarSign :size="16" />Pricing</RouterLink>
-          <RouterLink class="mc-nav-link" to="/settings/pricing-rules" @click="sidebarOpen = false"><DollarSign :size="16" />Pricing rules</RouterLink>
           <RouterLink class="mc-nav-link" to="/settings/business" @click="sidebarOpen = false"><SettingsIcon :size="16" />Business</RouterLink>
           <RouterLink class="mc-nav-link" to="/setup" @click="sidebarOpen = false"><Mail :size="16" />Email setup</RouterLink>
           <RouterLink class="mc-nav-link" to="/admin/team" @click="sidebarOpen = false"><Users :size="16" />Team</RouterLink>
