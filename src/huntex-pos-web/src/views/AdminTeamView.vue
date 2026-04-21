@@ -36,9 +36,16 @@ const showResetModal = ref(false)
 const resetUserId = ref<string | null>(null)
 const resetPassword = ref('')
 
+const showDeleteModal = ref(false)
+const deleteTarget = ref<UserRow | null>(null)
+const deleteConfirmText = ref('')
+const deleteBusy = ref(false)
+const canDelete = ref(false)
+
 onMounted(async () => {
   canCreateAdmin.value = auth.hasRole('Owner', 'Dev')
   canCreateOwner.value = auth.hasRole('Owner', 'Dev')
+  canDelete.value = auth.hasRole('Owner', 'Dev')
   await load()
 })
 
@@ -122,6 +129,37 @@ async function applyReset() {
     toast.error(err.value)
   }
 }
+
+function openDelete(u: UserRow) {
+  deleteTarget.value = u
+  deleteConfirmText.value = ''
+  showDeleteModal.value = true
+}
+
+function closeDelete() {
+  showDeleteModal.value = false
+  deleteTarget.value = null
+  deleteConfirmText.value = ''
+}
+
+async function confirmDelete() {
+  if (!deleteTarget.value) return
+  err.value = null
+  deleteBusy.value = true
+  try {
+    await http.delete(`/api/admin/users/${deleteTarget.value.id}`)
+    toast.success(`Deleted ${deleteTarget.value.email}`)
+    closeDelete()
+    await load()
+  } catch (e: unknown) {
+    const ax = e as { response?: { data?: { error?: string; errors?: string[] } } }
+    const msg = ax.response?.data?.errors?.join(' ') ?? ax.response?.data?.error ?? 'Delete failed'
+    err.value = msg
+    toast.error(msg)
+  } finally {
+    deleteBusy.value = false
+  }
+}
 </script>
 
 <template>
@@ -187,6 +225,13 @@ async function applyReset() {
                   </McButton>
                   <McButton variant="secondary" dense type="button" @click="resendInvite(u)">Resend invite</McButton>
                   <McButton variant="ghost" dense type="button" @click="openReset(u)">Set password</McButton>
+                  <McButton
+                    v-if="canDelete && u.email !== auth.email && (!u.roles.includes('Owner') || auth.hasRole('Dev'))"
+                    variant="danger"
+                    dense
+                    type="button"
+                    @click="openDelete(u)"
+                  >Delete</McButton>
                 </div>
               </td>
             </tr>
@@ -204,6 +249,37 @@ async function applyReset() {
         <McButton variant="secondary" type="button" @click="showResetModal = false">Cancel</McButton>
         <McButton variant="primary" type="button" :disabled="resetPassword.length < 10" @click="applyReset">
           Save
+        </McButton>
+      </template>
+    </McModal>
+
+    <McModal v-model="showDeleteModal" title="Delete user">
+      <p class="team-modal-hint">
+        This permanently removes
+        <strong>{{ deleteTarget?.email }}</strong>
+        and their login. Existing invoices, quotes and stocktakes they created remain, but the link to their account is lost.
+      </p>
+      <p class="team-modal-hint mc-text-muted">
+        Type <strong>DELETE</strong> to confirm.
+      </p>
+      <McField label="Confirmation" for-id="team-delete-confirm">
+        <input
+          id="team-delete-confirm"
+          v-model="deleteConfirmText"
+          type="text"
+          autocomplete="off"
+          placeholder="DELETE"
+        />
+      </McField>
+      <template #footer>
+        <McButton variant="secondary" type="button" :disabled="deleteBusy" @click="closeDelete">Cancel</McButton>
+        <McButton
+          variant="danger"
+          type="button"
+          :disabled="deleteBusy || deleteConfirmText.trim() !== 'DELETE'"
+          @click="confirmDelete"
+        >
+          {{ deleteBusy ? 'Deleting…' : 'Delete user' }}
         </McButton>
       </template>
     </McModal>

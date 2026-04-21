@@ -157,6 +157,28 @@ public class AdminUsersController : ControllerBase
         return NoContent();
     }
 
+    [HttpDelete("{id}")]
+    [Authorize(Roles = $"{Roles.Owner},{Roles.Dev}")]
+    public async Task<IActionResult> Delete(string id, CancellationToken ct)
+    {
+        var currentId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (id == currentId)
+            return BadRequest(new { error = "You cannot delete your own account." });
+
+        var user = await _users.FindByIdAsync(id);
+        if (user == null) return NotFound();
+
+        var roles = await _users.GetRolesAsync(user);
+        if (roles.Contains(Roles.Owner) && !User.IsInRole(Roles.Dev))
+            return BadRequest(new { error = "Owner accounts can only be deleted by a Dev user." });
+
+        var result = await _users.DeleteAsync(user);
+        if (!result.Succeeded)
+            return BadRequest(new { errors = result.Errors.Select(e => e.Description).ToList() });
+
+        return NoContent();
+    }
+
     private async Task SendSetupEmailAsync(ApplicationUser user, CancellationToken ct)
     {
         var eff = await _business.GetAsync(ct);
