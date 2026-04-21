@@ -35,6 +35,20 @@ const search = ref('')
 
 const statuses = ['Draft', 'Sent', 'Accepted', 'Rejected', 'Expired', 'Converted']
 
+function extractApiError(e: unknown): string | null {
+  const anyE = e as { response?: { data?: unknown; status?: number }; message?: string }
+  const data = anyE?.response?.data
+  if (typeof data === 'string' && data.trim()) return data.trim().slice(0, 300)
+  if (data && typeof data === 'object') {
+    const d = data as { title?: string; detail?: string; message?: string; error?: string }
+    const text = d.detail ?? d.title ?? d.message ?? d.error
+    if (text && typeof text === 'string') return text.slice(0, 300)
+  }
+  if (anyE?.response?.status) return `HTTP ${anyE.response.status}`
+  if (anyE?.message) return anyE.message
+  return null
+}
+
 async function load() {
   busy.value = true
   err.value = null
@@ -43,8 +57,9 @@ async function load() {
       params: { status: statusFilter.value || undefined, search: search.value || undefined, take: 200 }
     })
     items.value = data
-  } catch {
-    err.value = 'Could not load quotes'
+  } catch (e: unknown) {
+    const detail = extractApiError(e)
+    err.value = detail ? `Could not load quotes: ${detail}` : 'Could not load quotes'
   } finally {
     busy.value = false
   }
