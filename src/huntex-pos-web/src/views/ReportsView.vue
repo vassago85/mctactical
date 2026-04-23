@@ -369,6 +369,24 @@ async function exportCsv() {
   }
 }
 
+function csvEsc(s: string) {
+  if (s.includes('"') || s.includes(',') || s.includes('\n'))
+    return '"' + s.replace(/"/g, '""') + '"'
+  return s
+}
+
+function downloadCsv(filename: string, rows: string[]) {
+  // Prepend BOM so Excel reads it as UTF-8 with no mojibake on Rands / accents.
+  const blob = new Blob(['\ufeff' + rows.join('\n')], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+  toast.success('CSV downloaded')
+}
+
 function exportSohCsv() {
   if (!stockReport.value) return
   const lines = stockReport.value.onHand.lines
@@ -379,20 +397,87 @@ function exportSohCsv() {
       p.qtyOwned, p.qtyConsignment, p.cost.toFixed(2), p.sellPrice.toFixed(2), p.ownedValue.toFixed(2)
     ].join(','))
   ]
-  const blob = new Blob([rows.join('\n')], { type: 'text/csv' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = 'stock-on-hand.csv'
-  a.click()
-  URL.revokeObjectURL(url)
-  toast.success('CSV downloaded')
+  downloadCsv('stock-on-hand.csv', rows)
 }
 
-function csvEsc(s: string) {
-  if (s.includes('"') || s.includes(',') || s.includes('\n'))
-    return '"' + s.replace(/"/g, '""') + '"'
-  return s
+function exportSoldInPeriodCsv() {
+  if (!stockReport.value) return
+  const rows = [
+    ['SKU', 'Name', 'Qty Sold', 'Revenue', 'Cost Excl', 'Cost Incl', 'GP'].join(','),
+    ...stockReport.value.soldInPeriod.map(p => [
+      csvEsc(p.sku), csvEsc(p.name),
+      p.qtySold,
+      p.revenue.toFixed(2),
+      p.costExVat.toFixed(2),
+      p.costInclVat.toFixed(2),
+      (p.revenue - p.costInclVat).toFixed(2)
+    ].join(','))
+  ]
+  downloadCsv('products-sold.csv', rows)
+}
+
+function exportReceivedInPeriodCsv() {
+  if (!stockReport.value) return
+  const rows = [
+    ['Date', 'SKU', 'Name', 'Wholesaler', 'Type', 'Qty'].join(','),
+    ...stockReport.value.receivedInPeriod.map(r => [
+      csvEsc(new Date(r.createdAt).toISOString().slice(0, 10)),
+      csvEsc(r.sku), csvEsc(r.name), csvEsc(r.supplierName ?? ''),
+      csvEsc(receiptTypeLabel(r.type)),
+      r.quantity
+    ].join(','))
+  ]
+  downloadCsv('stock-received.csv', rows)
+}
+
+function exportPaymentsCsv() {
+  if (!payments.value) return
+  const rows = [
+    ['Method', 'Invoice Count', 'Grand Total'].join(','),
+    ...payments.value.byMethod.map(b => [
+      csvEsc(b.method),
+      b.count,
+      b.grandTotal.toFixed(2)
+    ].join(',')),
+    ['', '', ''].join(','),
+    ['Total', payments.value.totalCount, payments.value.totalGrand.toFixed(2)].join(',')
+  ]
+  downloadCsv('payments-by-method.csv', rows)
+}
+
+function exportConsignmentCsv() {
+  if (!consignReport.value) return
+  const rows: string[] = []
+  rows.push([
+    'Wholesaler', 'SKU', 'Name', 'Cost', 'Sell',
+    'Received', 'MovedToStock', 'StockToConsign', 'Returned',
+    'OnHand', 'OnHandValue', 'Sold', 'Revenue'
+  ].join(','))
+  for (const s of consignReport.value.suppliers) {
+    for (const p of s.products) {
+      rows.push([
+        csvEsc(s.supplierName),
+        csvEsc(p.sku), csvEsc(p.name),
+        p.cost.toFixed(2), p.sellPrice.toFixed(2),
+        p.received, p.movedToStock, p.movedFromStock, p.returned,
+        p.onHand, p.onHandValue.toFixed(2),
+        p.sold, p.soldRevenue.toFixed(2)
+      ].join(','))
+    }
+  }
+  rows.push(['', '', '', '', '', '', '', '', '', '', '', '', ''].join(','))
+  rows.push([
+    'TOTALS', '', '', '', '',
+    consignReport.value.totalReceived,
+    consignReport.value.suppliers.reduce((s, x) => s + x.totalMovedToStock, 0),
+    consignReport.value.suppliers.reduce((s, x) => s + x.totalMovedFromStock, 0),
+    consignReport.value.totalReturned,
+    consignReport.value.totalOnHand,
+    consignReport.value.totalOnHandValue.toFixed(2),
+    consignReport.value.totalSold,
+    consignReport.value.totalSoldRevenue.toFixed(2)
+  ].join(','))
+  downloadCsv('consignment-report.csv', rows)
 }
 
 async function purgeData() {
@@ -421,6 +506,8 @@ async function purgeData() {
       <template #actions>
         <McButton variant="secondary" type="button" @click="activeTab === 'sales' ? loadSales() : activeTab === 'consignment' ? loadConsignmentReport() : loadStockReport()">Refresh</McButton>
         <McButton v-if="activeTab === 'sales'" variant="primary" type="button" @click="exportCsv">Export invoices CSV</McButton>
+        <McButton v-if="activeTab === 'consignment' && consignReport && consignReport.suppliers.length" variant="primary" type="button" @click="exportConsignmentCsv">Export consignment CSV</McButton>
+        <McButton v-if="activeTab === 'stock' && stockReport" variant="primary" type="button" @click="exportSohCsv">Export stock-on-hand CSV</McButton>
         <McButton v-if="isDev" variant="danger" type="button" @click="showPurgeConfirm = true">Purge all data</McButton>
       </template>
     </McPageHeader>
@@ -551,6 +638,9 @@ async function purgeData() {
 
         <!-- Sold in period -->
         <McCard v-if="stockReport.soldInPeriod.length" title="Products sold in period">
+          <div class="rep-card-actions">
+            <McButton variant="ghost" dense type="button" @click="exportSoldInPeriodCsv">Export CSV</McButton>
+          </div>
           <div class="rep-table-wrap">
             <table class="mc-table">
               <thead>
@@ -591,6 +681,9 @@ async function purgeData() {
 
         <!-- Received in period -->
         <McCard v-if="stockReport.receivedInPeriod.length" title="Stock received in period">
+          <div class="rep-card-actions">
+            <McButton variant="ghost" dense type="button" @click="exportReceivedInPeriodCsv">Export CSV</McButton>
+          </div>
           <div class="rep-table-wrap">
             <table class="mc-table">
               <thead>
@@ -702,6 +795,9 @@ async function purgeData() {
       <McAlert v-if="consignErr" variant="error">{{ consignErr }}</McAlert>
 
       <template v-if="consignReport">
+        <div v-if="consignReport.suppliers.length" class="rep-card-actions" style="justify-content: flex-end">
+          <McButton variant="ghost" dense type="button" @click="exportConsignmentCsv">Export consignment CSV</McButton>
+        </div>
         <div class="rep-kpi-row">
           <div class="rep-kpi">
             <span class="rep-kpi__label">Consignment on hand</span>
@@ -860,6 +956,9 @@ async function purgeData() {
       </div>
 
       <McCard title="Payments by method">
+        <div v-if="payments && payments.totalCount > 0" class="rep-card-actions">
+          <McButton variant="ghost" dense type="button" @click="exportPaymentsCsv">Export CSV</McButton>
+        </div>
         <div class="rep-pay-row">
           <div v-for="b in paymentBuckets" :key="b.method" class="rep-pay-card">
             <span class="rep-pay-card__label">{{ b.method }}</span>
@@ -1110,6 +1209,14 @@ async function purgeData() {
 .rep-table-wrap {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+.rep-card-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
 }
 
 .rep-num {

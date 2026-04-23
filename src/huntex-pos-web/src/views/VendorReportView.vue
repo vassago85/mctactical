@@ -122,6 +122,65 @@ async function load() {
 }
 
 onMounted(load)
+
+function csvEsc(s: string) {
+  if (s.includes('"') || s.includes(',') || s.includes('\n'))
+    return '"' + s.replace(/"/g, '""') + '"'
+  return s
+}
+
+function downloadCsv(filename: string, rows: string[]) {
+  const blob = new Blob(['\ufeff' + rows.join('\n')], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+  toast.success('CSV downloaded')
+}
+
+function safeName() {
+  const s = report.value?.supplierName ?? 'vendor'
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'vendor'
+}
+
+function exportProductsCsv() {
+  if (!report.value) return
+  const rows = [
+    ['SKU', 'Name', 'Retail', 'Cost', 'OnHand', 'OnHandValue', 'Received', 'MovedToStock', 'Returned', 'Sold', 'Revenue'].join(','),
+    ...report.value.products.map(p => [
+      csvEsc(p.sku), csvEsc(p.name),
+      p.sellPrice.toFixed(2), p.cost.toFixed(2),
+      p.onHand, p.onHandValue.toFixed(2),
+      p.received, p.movedToStock, p.returned,
+      p.sold, p.soldRevenue.toFixed(2)
+    ].join(','))
+  ]
+  rows.push([
+    '', '', '', '', report.value.onHand, report.value.onHandValue.toFixed(2),
+    report.value.totalReceived, '', report.value.totalReturned,
+    report.value.totalSold, report.value.totalSoldRevenue.toFixed(2)
+  ].join(','))
+  downloadCsv(`${safeName()}-products.csv`, rows)
+}
+
+function exportSoldLinesCsv() {
+  if (!report.value) return
+  const rows = [
+    ['When', 'Invoice', 'SKU', 'Description', 'Qty', 'UnitPrice', 'LineTotal'].join(','),
+    ...report.value.soldLines.map(l => [
+      csvEsc(new Date(l.createdAt).toISOString()),
+      csvEsc(l.invoiceNumber),
+      csvEsc(l.sku),
+      csvEsc(l.description),
+      l.quantity,
+      l.unitPrice.toFixed(2),
+      l.lineTotal.toFixed(2)
+    ].join(','))
+  ]
+  downloadCsv(`${safeName()}-sales.csv`, rows)
+}
 </script>
 
 <template>
@@ -129,6 +188,10 @@ onMounted(load)
     <McPageHeader :title="report ? `${report.supplierName} — vendor report` : 'My vendor report'">
       <template #default>
         Stock on hand and sales for your consigned products only. Totals are VAT-inclusive.
+      </template>
+      <template #actions>
+        <McButton v-if="report && report.products.length" variant="secondary" type="button" @click="exportProductsCsv">Export products CSV</McButton>
+        <McButton v-if="report && report.soldLines.length" variant="primary" type="button" @click="exportSoldLinesCsv">Export sales CSV</McButton>
       </template>
     </McPageHeader>
 
@@ -173,6 +236,9 @@ onMounted(load)
       </div>
 
       <McCard title="Products">
+        <div v-if="report.products.length > 0" class="vend-card-actions">
+          <McButton variant="ghost" dense type="button" @click="exportProductsCsv">Export CSV</McButton>
+        </div>
         <div v-if="report.products.length === 0">
           <McEmptyState title="No stock for this vendor yet" message="When consignment stock is recorded it will appear here." />
         </div>
@@ -207,6 +273,9 @@ onMounted(load)
       </McCard>
 
       <McCard title="Recent sales">
+        <div v-if="report.soldLines.length > 0" class="vend-card-actions">
+          <McButton variant="ghost" dense type="button" @click="exportSoldLinesCsv">Export CSV</McButton>
+        </div>
         <div v-if="report.soldLines.length === 0">
           <McEmptyState title="No sales yet in this range" message="Pick a wider date range or check back after the show." />
         </div>
@@ -298,6 +367,14 @@ onMounted(load)
 .vend-table-wrap {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+.vend-card-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
 }
 
 .vend-num {
