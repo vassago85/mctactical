@@ -1,6 +1,7 @@
 using System.Linq;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using HuntexPos.Api.Data;
 using HuntexPos.Api.Domain;
 using HuntexPos.Api.DTOs;
 using HuntexPos.Api.Options;
@@ -22,26 +23,35 @@ public class AdminUsersController : ControllerBase
     private readonly IEmailSender _email;
     private readonly AppOptions _app;
     private readonly IEffectiveBusinessSettings _business;
+    private readonly HuntexDbContext _db;
 
     public AdminUsersController(
         UserManager<ApplicationUser> users,
         IEmailSender email,
         IOptions<AppOptions> app,
-        IEffectiveBusinessSettings business)
+        IEffectiveBusinessSettings business,
+        HuntexDbContext db)
     {
         _users = users;
         _email = email;
         _app = app.Value;
         _business = business;
+        _db = db;
     }
 
     [HttpGet]
     public async Task<ActionResult<List<AdminUserListDto>>> List(CancellationToken ct)
     {
+        var suppliers = await _db.Suppliers.AsNoTracking()
+            .ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+
         var list = new List<AdminUserListDto>();
         foreach (var u in await _users.Users.AsNoTracking().OrderBy(x => x.Email).ToListAsync(ct))
         {
             var roles = await _users.GetRolesAsync(u);
+            string? supplierName = null;
+            if (u.SupplierId.HasValue && suppliers.TryGetValue(u.SupplierId.Value, out var sn))
+                supplierName = sn;
             list.Add(new AdminUserListDto
             {
                 Id = u.Id,
@@ -50,7 +60,9 @@ public class AdminUsersController : ControllerBase
                 Roles = roles.OrderBy(r => r).ToList(),
                 LockoutEnabled = u.LockoutEnabled,
                 LockedOut = u.LockoutEnd.HasValue && u.LockoutEnd > DateTimeOffset.UtcNow,
-                LockoutEnd = u.LockoutEnd
+                LockoutEnd = u.LockoutEnd,
+                SupplierId = u.SupplierId,
+                SupplierName = supplierName
             });
         }
         return list;
@@ -70,7 +82,8 @@ public class AdminUsersController : ControllerBase
             UserName = req.Email.Trim(),
             Email = req.Email.Trim(),
             EmailConfirmed = true,
-            DisplayName = string.IsNullOrWhiteSpace(req.DisplayName) ? null : req.DisplayName.Trim()
+            DisplayName = string.IsNullOrWhiteSpace(req.DisplayName) ? null : req.DisplayName.Trim(),
+            SupplierId = req.SupplierId
         };
         var result = await _users.CreateAsync(user, tempPassword);
         if (!result.Succeeded)
@@ -88,6 +101,12 @@ public class AdminUsersController : ControllerBase
         }
 
         var roles = await _users.GetRolesAsync(user);
+        string? supplierName = null;
+        if (user.SupplierId.HasValue)
+            supplierName = await _db.Suppliers.AsNoTracking()
+                .Where(s => s.Id == user.SupplierId.Value)
+                .Select(s => s.Name)
+                .FirstOrDefaultAsync(ct);
         return new AdminUserListDto
         {
             Id = user.Id,
@@ -96,8 +115,130 @@ public class AdminUsersController : ControllerBase
             Roles = roles.ToList(),
             LockoutEnabled = user.LockoutEnabled,
             LockedOut = false,
-            LockoutEnd = user.LockoutEnd
+            LockoutEnd = user.LockoutEnd,
+            SupplierId = user.SupplierId,
+            SupplierName = supplierName
         };
+    }
+
+    /// <summary>
+    /// Update an existing user's display name and role assignments. Role changes are gated:
+    /// only Owner/Dev may assign or remove the Owner or Admin role, and the caller cannot
+    /// demote themselves out of Owner (prevents accidental self-lockout).
+    /// </summary>
+    [HttpPut("{id}")]
+    public async Task<ActionResult<AdminUserListDto>> Update(string id, [FromBody] UpdateStaffUserRequest req, CancellationToken ct)
+    {
+        var user = await _users.FindByIdAsync(id);
+        if (user == null) return NotFound();
+
+        var requested = (req.Roles ?? new List<string>())
+            .Select(r => r?.Trim() ?? "")
+            .Where(r => !string.IsNullOrEmpty(r))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var unknown = requested.Where(r => !Roles.All.Contains(r, StringComparer.OrdinalIgnoreCase)).ToList();
+        if (unknown.Count > 0)
+            return BadRequest(new { error = $"Unknown role(s): {string.Join(", ", unknown)}" });
+        if (requested.Count == 0)
+            return BadRequest(new { error = "User must have at least one role." });
+
+        var callerIsOwnerOrDev = User.IsInRole(Roles.Owner) || User.IsInRole(Roles.Dev);
+        var existing = (await _users.GetRolesAsync(user)).ToList();
+        var added = requested.Except(existing, StringComparer.OrdinalIgnoreCase).ToList();
+        var removed = existing.Except(requested, StringComparer.OrdinalIgnoreCase).ToList();
+
+        // Only Owner/Dev can mint or strip the elevated roles.
+        if (!callerIsOwnerOrDev)
+        {
+            if (added.Any(r => string.Equals(r, Roles.Owner, StringComparison.OrdinalIgnoreCase)
+                           || string.Equals(r, Roles.Admin, StringComparison.OrdinalIgnoreCase)
+                           || string.Equals(r, Roles.Dev, StringComparison.OrdinalIgnoreCase))
+                || removed.Any(r => string.Equals(r, Roles.Owner, StringComparison.OrdinalIgnoreCase)
+                                 || string.Equals(r, Roles.Admin, StringComparison.OrdinalIgnoreCase)
+                                 || string.Equals(r, Roles.Dev, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Forbid();
+            }
+        }
+
+        // Only Dev can assign the Dev role.
+        if (added.Any(r => string.Equals(r, Roles.Dev, StringComparison.OrdinalIgnoreCase))
+            && !User.IsInRole(Roles.Dev))
+        {
+            return Forbid();
+        }
+
+        var currentId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (id == currentId
+            && existing.Contains(Roles.Owner, StringComparer.OrdinalIgnoreCase)
+            && !requested.Contains(Roles.Owner, StringComparer.OrdinalIgnoreCase))
+        {
+            return BadRequest(new { error = "You cannot remove the Owner role from your own account." });
+        }
+
+        user.DisplayName = string.IsNullOrWhiteSpace(req.DisplayName) ? null : req.DisplayName.Trim();
+        var updateResult = await _users.UpdateAsync(user);
+        if (!updateResult.Succeeded)
+            return BadRequest(new { errors = updateResult.Errors.Select(e => e.Description).ToList() });
+
+        if (removed.Count > 0)
+        {
+            var rr = await _users.RemoveFromRolesAsync(user, removed);
+            if (!rr.Succeeded)
+                return BadRequest(new { errors = rr.Errors.Select(e => e.Description).ToList() });
+        }
+        if (added.Count > 0)
+        {
+            var ar = await _users.AddToRolesAsync(user, added);
+            if (!ar.Succeeded)
+                return BadRequest(new { errors = ar.Errors.Select(e => e.Description).ToList() });
+        }
+
+        var finalRoles = await _users.GetRolesAsync(user);
+        string? supplierName = null;
+        if (user.SupplierId.HasValue)
+            supplierName = await _db.Suppliers.AsNoTracking()
+                .Where(s => s.Id == user.SupplierId.Value)
+                .Select(s => s.Name)
+                .FirstOrDefaultAsync(ct);
+
+        return new AdminUserListDto
+        {
+            Id = user.Id,
+            Email = user.Email,
+            DisplayName = user.DisplayName,
+            Roles = finalRoles.OrderBy(r => r).ToList(),
+            LockoutEnabled = user.LockoutEnabled,
+            LockedOut = user.LockoutEnd.HasValue && user.LockoutEnd > DateTimeOffset.UtcNow,
+            LockoutEnd = user.LockoutEnd,
+            SupplierId = user.SupplierId,
+            SupplierName = supplierName
+        };
+    }
+
+    /// <summary>
+    /// Links (or unlinks) a user to a Supplier so they see a vendor-scoped report filtered
+    /// to that supplier's stock/sales. Pass <c>null</c> to clear the link.
+    /// </summary>
+    [HttpPost("{id}/supplier")]
+    public async Task<IActionResult> SetSupplier(string id, [FromBody] SetUserSupplierRequest body, CancellationToken ct)
+    {
+        var user = await _users.FindByIdAsync(id);
+        if (user == null) return NotFound();
+
+        if (body.SupplierId.HasValue)
+        {
+            var exists = await _db.Suppliers.AnyAsync(s => s.Id == body.SupplierId.Value, ct);
+            if (!exists) return BadRequest(new { error = "Supplier not found." });
+        }
+
+        user.SupplierId = body.SupplierId;
+        var result = await _users.UpdateAsync(user);
+        if (!result.Succeeded)
+            return BadRequest(new { errors = result.Errors.Select(e => e.Description).ToList() });
+        return NoContent();
     }
 
     /// <summary>Resend the setup email for a user who hasn't set their password yet.</summary>

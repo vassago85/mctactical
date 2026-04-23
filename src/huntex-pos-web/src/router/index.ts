@@ -22,6 +22,7 @@ const router = createRouter({
     { path: '/wholesalers', component: () => import('@/views/WholesalersView.vue'), meta: { layout: 'app' } },
     { path: '/import', component: () => import('@/views/ImportView.vue'), meta: { layout: 'app' } },
     { path: '/reports', component: () => import('@/views/ReportsView.vue'), meta: { layout: 'app' } },
+    { path: '/vendor-report', component: () => import('@/views/VendorReportView.vue'), meta: { layout: 'app' } },
     { path: '/settings', component: () => import('@/views/SettingsView.vue'), meta: { layout: 'app' } },
     { path: '/settings/business', component: () => import('@/views/BusinessSettingsView.vue'), meta: { layout: 'app' } },
     { path: '/settings/pricing-rules', redirect: '/settings' },

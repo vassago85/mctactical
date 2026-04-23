@@ -24,6 +24,8 @@ type Row = {
   voidedByName?: string | null
 }
 type Daily = { date: string; invoiceCount: number; grandTotal: number }
+type PaymentMethodBreakdown = { method: string; count: number; grandTotal: number }
+type PaymentsSummary = { totalGrand: number; totalCount: number; byMethod: PaymentMethodBreakdown[] }
 
 /* Stock report types */
 type StockOnHandLine = {
@@ -89,6 +91,7 @@ const auth = useAuthStore()
 const toast = useToast()
 const invoices = ref<Row[]>([])
 const daily = ref<Daily[]>([])
+const payments = ref<PaymentsSummary | null>(null)
 const err = ref<string | null>(null)
 const salesBusy = ref(false)
 
@@ -249,12 +252,14 @@ async function loadSales() {
   salesBusy.value = true
   try {
     const params = buildDateParams(salesFrom.value, salesTo.value)
-    const [inv, d] = await Promise.all([
+    const [inv, d, pay] = await Promise.all([
       http.get<Row[]>('/api/reports/invoices', { params }),
-      http.get<Daily[]>('/api/reports/daily', { params })
+      http.get<Daily[]>('/api/reports/daily', { params }),
+      http.get<PaymentsSummary>('/api/reports/payments', { params })
     ])
     invoices.value = inv.data
     daily.value = d.data
+    payments.value = pay.data
   } catch (e: unknown) {
     const ax = e as { response?: { status?: number; data?: unknown; statusText?: string }; message?: string }
     const status = ax.response?.status
@@ -291,6 +296,16 @@ async function loadStockReport() {
 
 const salesGrandTotal = computed(() => daily.value.reduce((s, d) => s + d.grandTotal, 0))
 const salesInvoiceCount = computed(() => daily.value.reduce((s, d) => s + d.invoiceCount, 0))
+
+const paymentBuckets = computed(() => {
+  const methods = ['Card', 'Cash', 'EFT']
+  const map = new Map<string, PaymentMethodBreakdown>()
+  for (const row of payments.value?.byMethod ?? []) map.set(row.method, row)
+  return methods.map((m) => map.get(m) ?? { method: m, count: 0, grandTotal: 0 })
+})
+const paymentOther = computed(() =>
+  (payments.value?.byMethod ?? []).filter((r) => !['Card', 'Cash', 'EFT'].includes(r.method))
+)
 
 const totalSoldQty = computed(() => stockReport.value?.soldInPeriod.reduce((s, p) => s + p.qtySold, 0) ?? 0)
 const totalSoldRevenue = computed(() => stockReport.value?.soldInPeriod.reduce((s, p) => s + p.revenue, 0) ?? 0)
@@ -844,6 +859,23 @@ async function purgeData() {
         </div>
       </div>
 
+      <McCard title="Payments by method">
+        <div class="rep-pay-row">
+          <div v-for="b in paymentBuckets" :key="b.method" class="rep-pay-card">
+            <span class="rep-pay-card__label">{{ b.method }}</span>
+            <strong class="rep-pay-card__value">{{ formatZAR(b.grandTotal) }}</strong>
+            <span class="rep-pay-card__count">{{ formatNumber(b.count) }} invoice{{ b.count === 1 ? '' : 's' }}</span>
+          </div>
+        </div>
+        <div v-if="paymentOther.length" class="rep-pay-other">
+          <small>Other methods: 
+            <span v-for="(r, i) in paymentOther" :key="r.method">
+              <strong>{{ r.method }}</strong> {{ formatZAR(r.grandTotal) }} ({{ r.count }}){{ i < paymentOther.length - 1 ? ', ' : '' }}
+            </span>
+          </small>
+        </div>
+      </McCard>
+
       <McCard title="Daily totals (final invoices)">
         <div class="rep-table-wrap">
           <table class="mc-table">
@@ -1031,6 +1063,48 @@ async function purgeData() {
 
 .rep-kpi--sm .rep-kpi__value {
   font-size: 1.15rem;
+}
+
+.rep-pay-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.rep-pay-card {
+  flex: 1 1 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: var(--mc-app-surface-alt, #faf8f5);
+  border: 1px solid var(--mc-app-border-soft, #ddd9d3);
+  border-radius: var(--mc-app-radius-card, 18px);
+  padding: 0.875rem 1.125rem;
+}
+
+.rep-pay-card__label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--mc-app-text-muted, #5c5a56);
+}
+
+.rep-pay-card__value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--mc-app-heading, #0a0a0c);
+  font-variant-numeric: tabular-nums;
+}
+
+.rep-pay-card__count {
+  font-size: 0.8rem;
+  color: var(--mc-app-text-muted, #5c5a56);
+}
+
+.rep-pay-other {
+  margin-top: 0.75rem;
+  color: var(--mc-app-text-muted, #5c5a56);
 }
 
 .rep-table-wrap {

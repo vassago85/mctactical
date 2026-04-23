@@ -51,7 +51,7 @@ const customerVatNumber = ref('')
 const showBusinessFields = ref(false)
 const customerLoading = ref(false)
 const customerMatch = ref(false)
-const paymentMethod = ref('Cash')
+const paymentMethod = ref('Card')
 const discountTotal = ref(0)
 const sendEmail = ref(true)
 const busy = ref(false)
@@ -432,7 +432,7 @@ async function doCheckout() {
     customerVatNumber.value = ''
     showBusinessFields.value = false
     customerMatch.value = false
-    paymentMethod.value = 'Cash'
+    paymentMethod.value = 'Card'
     showSaleSummary.value = true
     results.value = []
     q.value = ''
@@ -685,9 +685,9 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
               </McField>
               <McField label="Payment" for-id="pay-meth">
                 <select id="pay-meth" v-model="paymentMethod">
-                  <option>Cash</option>
                   <option>Card</option>
-                  <option>Bank</option>
+                  <option>Cash</option>
+                  <option>EFT</option>
                 </select>
               </McField>
               <McField v-if="isManager" label="Order discount (R)" for-id="order-disc">

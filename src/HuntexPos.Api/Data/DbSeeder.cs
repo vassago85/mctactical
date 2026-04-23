@@ -40,7 +40,9 @@ public static class DbSeeder
         await EnsurePricingRulesTableAsync(db, ct);
         await EnsureImportPresetsSupplierNullableAsync(db, ct);
         await EnsureQuotesTablesAsync(db, ct);
+        await EnsureAspNetUsersSupplierColumnAsync(db, ct);
         await MergeDuplicateSkusAsync(db, log, ct);
+        await VenaticsGearSeeder.SeedAsync(db, log, ct);
 
         foreach (var r in Roles.All)
         {
@@ -162,6 +164,14 @@ public static class DbSeeder
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "Manufacturer" TEXT;""", ct); } catch { }
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "ItemType" TEXT;""", ct); } catch { }
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "QtyConsignment" INTEGER NOT NULL DEFAULT 0;""", ct); } catch { }
+    }
+
+    /// <summary>Add SupplierId column to AspNetUsers if missing (older DBs).</summary>
+    private static async Task EnsureAspNetUsersSupplierColumnAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        try { await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "AspNetUsers" ADD COLUMN "SupplierId" TEXT NULL;""", ct); } catch { }
     }
 
     /// <summary>Add IsActive + UpdatedAt columns to Suppliers if missing (older DBs).</summary>

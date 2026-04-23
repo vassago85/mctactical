@@ -28,6 +28,8 @@ public class JwtTokenService
             new(ClaimTypes.NameIdentifier, user.Id)
         };
         claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
+        if (user.SupplierId.HasValue)
+            claims.Add(new Claim("supplierId", user.SupplierId.Value.ToString()));
 
         var token = new JwtSecurityToken(
             issuer: _opt.Issuer,

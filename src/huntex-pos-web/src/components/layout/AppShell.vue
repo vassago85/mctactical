@@ -11,6 +11,7 @@ import {
   Settings as SettingsIcon,
   FileText,
   Printer,
+  Store,
   LogOut
 } from 'lucide-vue-next'
 
@@ -76,6 +77,10 @@ function logout() {
           <RouterLink class="mc-nav-link" to="/stocktake" @click="sidebarOpen = false"><ClipboardList :size="16" />Stocktake</RouterLink>
           <RouterLink class="mc-nav-link" to="/consignment" @click="sidebarOpen = false"><Truck :size="16" />Stock batches</RouterLink>
           <RouterLink v-if="auth.hasRole('Admin', 'Owner', 'Dev')" class="mc-nav-link" to="/receiving" @click="sidebarOpen = false"><PackagePlus :size="16" />Receive stock</RouterLink>
+        </div>
+        <div v-if="auth.hasVendorScope" class="mc-nav-group">
+          <p class="mc-nav-group__label">Vendor</p>
+          <RouterLink class="mc-nav-link" to="/vendor-report" @click="sidebarOpen = false"><Store :size="16" />My vendor report</RouterLink>
         </div>
         <div v-if="auth.hasRole('Admin', 'Owner', 'Dev')" class="mc-nav-group">
           <p class="mc-nav-group__label">Office</p>

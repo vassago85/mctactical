@@ -61,7 +61,7 @@ public class AuthController : ControllerBase
         var user = await _users.FindByIdAsync(id);
         if (user == null) return NotFound();
         var roles = await _users.GetRolesAsync(user);
-        return new { user.Id, user.Email, user.DisplayName, Roles = roles };
+        return new { user.Id, user.Email, user.DisplayName, Roles = roles, user.SupplierId };
     }
 
     [AllowAnonymous]

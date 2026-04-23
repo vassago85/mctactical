@@ -7,6 +7,20 @@ public class DailySummaryDto
     public decimal GrandTotal { get; set; }
 }
 
+public class PaymentMethodBreakdownDto
+{
+    public string Method { get; set; } = string.Empty;
+    public int Count { get; set; }
+    public decimal GrandTotal { get; set; }
+}
+
+public class PaymentsSummaryDto
+{
+    public decimal TotalGrand { get; set; }
+    public int TotalCount { get; set; }
+    public List<PaymentMethodBreakdownDto> ByMethod { get; set; } = new();
+}
+
 public class InvoiceListItemDto
 {
     public Guid Id { get; set; }
@@ -123,6 +137,39 @@ public class ConsignmentSupplierReportDto
     public int TotalReturned { get; set; }
     public int TotalMovedFromStock { get; set; }
     public List<ConsignmentProductReportDto> Products { get; set; } = new();
+}
+
+/// <summary>
+/// Trimmed report surface for a supplier-scoped user (e.g. a Venatics Gear helper) —
+/// summary KPIs + the full per-product breakdown + recent sold lines for that supplier.
+/// </summary>
+public class VendorReportDto
+{
+    public Guid SupplierId { get; set; }
+    public string SupplierName { get; set; } = string.Empty;
+    public DateTimeOffset? From { get; set; }
+    public DateTimeOffset? To { get; set; }
+
+    public int OnHand { get; set; }
+    public decimal OnHandValue { get; set; }
+    public int TotalReceived { get; set; }
+    public int TotalSold { get; set; }
+    public decimal TotalSoldRevenue { get; set; }
+    public int TotalReturned { get; set; }
+
+    public List<ConsignmentProductReportDto> Products { get; set; } = new();
+    public List<VendorSoldLineDto> SoldLines { get; set; } = new();
+}
+
+public class VendorSoldLineDto
+{
+    public DateTimeOffset CreatedAt { get; set; }
+    public string InvoiceNumber { get; set; } = string.Empty;
+    public string Sku { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public int Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+    public decimal LineTotal { get; set; }
 }
 
 public class ConsignmentProductReportDto

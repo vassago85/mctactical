@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
@@ -17,17 +17,23 @@ type UserRow = {
   displayName: string | null
   roles: string[]
   lockedOut: boolean
+  supplierId: string | null
+  supplierName: string | null
 }
+
+type SupplierOption = { id: string; name: string }
 
 const auth = useAuthStore()
 const toast = useToast()
 const users = ref<UserRow[]>([])
+const suppliers = ref<SupplierOption[]>([])
 const err = ref<string | null>(null)
 const busy = ref(false)
 
 const email = ref('')
 const displayName = ref('')
 const role = ref<'Sales' | 'Admin' | 'Owner'>('Sales')
+const inviteSupplierId = ref<string>('')
 
 const canCreateAdmin = ref(false)
 const canCreateOwner = ref(false)
@@ -42,11 +48,17 @@ const deleteConfirmText = ref('')
 const deleteBusy = ref(false)
 const canDelete = ref(false)
 
+const showEditModal = ref(false)
+const editTarget = ref<UserRow | null>(null)
+const editDisplayName = ref('')
+const editRoles = ref<Record<string, boolean>>({ Sales: false, Admin: false, Owner: false, Dev: false })
+const editBusy = ref(false)
+
 onMounted(async () => {
   canCreateAdmin.value = auth.hasRole('Owner', 'Dev')
   canCreateOwner.value = auth.hasRole('Owner', 'Dev')
   canDelete.value = auth.hasRole('Owner', 'Dev')
-  await load()
+  await Promise.all([load(), loadSuppliers()])
 })
 
 async function load() {
@@ -59,6 +71,31 @@ async function load() {
   }
 }
 
+async function loadSuppliers() {
+  try {
+    const { data } = await http.get<SupplierOption[]>('/api/suppliers')
+    suppliers.value = data
+  } catch {
+    // non-critical; the supplier dropdown just stays empty
+  }
+}
+
+async function setSupplier(u: UserRow, supplierId: string) {
+  err.value = null
+  try {
+    await http.post(`/api/admin/users/${u.id}/supplier`, {
+      supplierId: supplierId || null
+    })
+    toast.success(supplierId ? 'Vendor link saved' : 'Vendor link removed')
+    await load()
+  } catch (e: unknown) {
+    const ax = e as { response?: { data?: { error?: string; errors?: string[] } } }
+    const msg = ax.response?.data?.errors?.join(' ') ?? ax.response?.data?.error ?? 'Could not update vendor link'
+    err.value = msg
+    toast.error(msg)
+  }
+}
+
 async function createUser() {
   err.value = null
   busy.value = true
@@ -66,12 +103,14 @@ async function createUser() {
     await http.post('/api/admin/users', {
       email: email.value.trim(),
       displayName: displayName.value.trim() || null,
-      role: role.value
+      role: role.value,
+      supplierId: inviteSupplierId.value || null
     })
     toast.success('User created — setup email sent')
     email.value = ''
     displayName.value = ''
     role.value = 'Sales'
+    inviteSupplierId.value = ''
     await load()
   } catch (e: unknown) {
     const ax = e as { response?: { data?: { errors?: string[]; error?: string } } }
@@ -160,6 +199,52 @@ async function confirmDelete() {
     deleteBusy.value = false
   }
 }
+
+function openEdit(u: UserRow) {
+  editTarget.value = u
+  editDisplayName.value = u.displayName ?? ''
+  editRoles.value = {
+    Sales: u.roles.includes('Sales'),
+    Admin: u.roles.includes('Admin'),
+    Owner: u.roles.includes('Owner'),
+    Dev: u.roles.includes('Dev')
+  }
+  showEditModal.value = true
+}
+
+function closeEdit() {
+  showEditModal.value = false
+  editTarget.value = null
+}
+
+const editRoleList = computed(() =>
+  Object.entries(editRoles.value)
+    .filter(([, on]) => on)
+    .map(([r]) => r)
+)
+const editCanSave = computed(() => !!editTarget.value && editRoleList.value.length > 0)
+
+async function saveEdit() {
+  if (!editTarget.value || !editCanSave.value) return
+  err.value = null
+  editBusy.value = true
+  try {
+    await http.put(`/api/admin/users/${editTarget.value.id}`, {
+      displayName: editDisplayName.value.trim() || null,
+      roles: editRoleList.value
+    })
+    toast.success('User updated')
+    closeEdit()
+    await load()
+  } catch (e: unknown) {
+    const ax = e as { response?: { data?: { error?: string; errors?: string[] } } }
+    const msg = ax.response?.data?.errors?.join(' ') ?? ax.response?.data?.error ?? 'Update failed'
+    err.value = msg
+    toast.error(msg)
+  } finally {
+    editBusy.value = false
+  }
+}
 </script>
 
 <template>
@@ -190,6 +275,12 @@ async function confirmDelete() {
             <option v-if="canCreateOwner" value="Owner">Owner — full access</option>
           </select>
         </McField>
+        <McField label="Vendor scope (optional)" for-id="team-supplier" hint="Links a Sales user to a supplier. They'll see a report scoped to that supplier's stock & sales only.">
+          <select id="team-supplier" v-model="inviteSupplierId">
+            <option value="">— None —</option>
+            <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+          </select>
+        </McField>
       </div>
       <div class="team-invite-actions">
         <McButton variant="primary" type="button" :disabled="busy" @click="createUser">Create user</McButton>
@@ -204,6 +295,7 @@ async function confirmDelete() {
               <th>Email</th>
               <th>Name</th>
               <th>Roles</th>
+              <th>Vendor scope</th>
               <th>Status</th>
               <th class="team-th-actions">Actions</th>
             </tr>
@@ -214,12 +306,23 @@ async function confirmDelete() {
               <td>{{ u.displayName ?? '—' }}</td>
               <td class="team-roles">{{ u.roles.join(', ') }}</td>
               <td>
+                <select
+                  class="team-supplier-select"
+                  :value="u.supplierId ?? ''"
+                  @change="setSupplier(u, ($event.target as HTMLSelectElement).value)"
+                >
+                  <option value="">— None —</option>
+                  <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+                </select>
+              </td>
+              <td>
                 <McBadge :variant="u.lockedOut ? 'danger' : 'success'">
                   {{ u.lockedOut ? 'Locked' : 'Active' }}
                 </McBadge>
               </td>
               <td class="team-actions">
                 <div class="team-actions__inner">
+                  <McButton variant="secondary" dense type="button" @click="openEdit(u)">Edit</McButton>
                   <McButton variant="secondary" dense type="button" @click="toggleLock(u)">
                     {{ u.lockedOut ? 'Unlock' : 'Lock' }}
                   </McButton>
@@ -239,6 +342,44 @@ async function confirmDelete() {
         </table>
       </div>
     </McCard>
+
+    <McModal v-model="showEditModal" title="Edit user">
+      <p class="team-modal-hint mc-text-muted" style="margin-bottom: 0.75rem">
+        <strong>{{ editTarget?.email }}</strong>
+      </p>
+      <McField label="Display name" for-id="team-edit-name">
+        <input id="team-edit-name" v-model="editDisplayName" type="text" autocomplete="off" />
+      </McField>
+      <McField label="Roles">
+        <div class="team-edit-roles">
+          <label class="team-edit-role">
+            <input type="checkbox" v-model="editRoles.Sales" />
+            <span><strong>Sales</strong> — POS / stocktake</span>
+          </label>
+          <label class="team-edit-role" :class="{ 'team-edit-role--disabled': !canCreateAdmin }">
+            <input type="checkbox" v-model="editRoles.Admin" :disabled="!canCreateAdmin" />
+            <span><strong>Admin</strong> — import, reports, team</span>
+          </label>
+          <label class="team-edit-role" :class="{ 'team-edit-role--disabled': !canCreateOwner }">
+            <input type="checkbox" v-model="editRoles.Owner" :disabled="!canCreateOwner" />
+            <span><strong>Owner</strong> — full access</span>
+          </label>
+          <label v-if="auth.hasRole('Dev')" class="team-edit-role">
+            <input type="checkbox" v-model="editRoles.Dev" />
+            <span><strong>Dev</strong> — developer tools</span>
+          </label>
+        </div>
+      </McField>
+      <p v-if="editRoleList.length === 0" class="team-modal-hint mc-text-warn">
+        Pick at least one role.
+      </p>
+      <template #footer>
+        <McButton variant="secondary" type="button" :disabled="editBusy" @click="closeEdit">Cancel</McButton>
+        <McButton variant="primary" type="button" :disabled="editBusy || !editCanSave" @click="saveEdit">
+          {{ editBusy ? 'Saving…' : 'Save changes' }}
+        </McButton>
+      </template>
+    </McModal>
 
     <McModal v-model="showResetModal" title="Set password">
       <McField label="New password" for-id="team-reset-pw">
@@ -362,5 +503,35 @@ async function confirmDelete() {
   margin: 0.5rem 0 0;
   font-size: 0.8125rem;
   line-height: 1.4;
+}
+
+.team-supplier-select {
+  min-width: 10rem;
+  max-width: 14rem;
+  font-size: 0.875rem;
+  padding: 0.3rem 0.5rem;
+}
+
+.team-edit-roles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.team-edit-role {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.team-edit-role--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mc-text-warn {
+  color: #a84a00;
 }
 </style>

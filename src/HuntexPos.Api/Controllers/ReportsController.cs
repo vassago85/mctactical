@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Claims;
 using System.Text;
 using HuntexPos.Api.Data;
 using HuntexPos.Api.Domain;
@@ -99,6 +100,52 @@ public class ReportsController : ControllerBase
             })
             .OrderByDescending(x => x.Date)
             .ToList();
+    }
+
+    [HttpGet("payments")]
+    public async Task<PaymentsSummaryDto> Payments(
+        CancellationToken ct,
+        [FromQuery] DateTimeOffset? from = null,
+        [FromQuery] DateTimeOffset? to = null)
+    {
+        var all = await _db.Invoices.AsNoTracking().ToListAsync(ct);
+        IEnumerable<Invoice> rows = all.Where(i => i.Status == InvoiceStatus.Final);
+        if (from.HasValue) rows = rows.Where(i => i.CreatedAt >= from.Value);
+        if (to.HasValue) rows = rows.Where(i => i.CreatedAt <= to.Value);
+
+        var list = rows.ToList();
+        var byMethod = list
+            .GroupBy(i => NormalisePaymentMethod(i.PaymentMethod))
+            .Select(g => new PaymentMethodBreakdownDto
+            {
+                Method = g.Key,
+                Count = g.Count(),
+                GrandTotal = g.Sum(x => x.GrandTotal)
+            })
+            .OrderBy(m => m.Method)
+            .ToList();
+
+        return new PaymentsSummaryDto
+        {
+            TotalGrand = list.Sum(i => i.GrandTotal),
+            TotalCount = list.Count,
+            ByMethod = byMethod
+        };
+    }
+
+    /// <summary>
+    /// Maps legacy/variant payment-method strings onto the canonical Card / Cash / EFT bucket.
+    /// Historical invoices stored "Bank" for electronic transfer; treat those as EFT for rollups.
+    /// </summary>
+    private static string NormalisePaymentMethod(string? method)
+    {
+        if (string.IsNullOrWhiteSpace(method)) return "Unknown";
+        var trimmed = method.Trim();
+        if (trimmed.Equals("Bank", StringComparison.OrdinalIgnoreCase)) return "EFT";
+        if (trimmed.Equals("EFT", StringComparison.OrdinalIgnoreCase)) return "EFT";
+        if (trimmed.Equals("Cash", StringComparison.OrdinalIgnoreCase)) return "Cash";
+        if (trimmed.Equals("Card", StringComparison.OrdinalIgnoreCase)) return "Card";
+        return trimmed;
     }
 
     [HttpGet("invoices/export")]
@@ -452,6 +499,134 @@ public class ReportsController : ControllerBase
       {
           return StatusCode(500, new { error = ex.Message, detail = ex.InnerException?.Message });
       }
+    }
+
+    /// <summary>
+    /// Vendor-scoped report for any authenticated user whose account is linked to a supplier
+    /// (see <see cref="ApplicationUser.SupplierId"/>). Returns that supplier's consignment
+    /// stock + their sold lines for the period. Uses <c>AllowAnonymous</c> to opt out of
+    /// this controller's class-level Admin/Owner/Dev role gate so a Sales-only consignee
+    /// helper (e.g. Venatics Gear) can check on their own stock; the JWT bearer is still
+    /// required and enforced manually below.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpGet("my-vendor")]
+    public async Task<ActionResult<VendorReportDto>> MyVendorReport(
+        [FromQuery] DateTimeOffset? from,
+        [FromQuery] DateTimeOffset? to,
+        CancellationToken ct)
+    {
+        if (User?.Identity?.IsAuthenticated != true) return Unauthorized();
+
+        var supplierIdRaw = User.FindFirstValue("supplierId");
+        if (string.IsNullOrWhiteSpace(supplierIdRaw))
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!string.IsNullOrWhiteSpace(userId))
+            {
+                supplierIdRaw = await _db.Users.AsNoTracking()
+                    .Where(u => u.Id == userId && u.SupplierId != null)
+                    .Select(u => u.SupplierId!.Value.ToString())
+                    .FirstOrDefaultAsync(ct);
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(supplierIdRaw) || !Guid.TryParse(supplierIdRaw, out var supplierId))
+            return Forbid();
+
+        var supplier = await _db.Suppliers.AsNoTracking().FirstOrDefaultAsync(s => s.Id == supplierId, ct);
+        if (supplier == null) return NotFound();
+
+        var receipts = await _db.StockReceipts.AsNoTracking()
+            .Include(r => r.Product)
+            .Where(r => r.SupplierId == supplierId)
+            .ToListAsync(ct);
+
+        var allInvoices = await _db.Invoices.AsNoTracking()
+            .Include(i => i.Lines).ThenInclude(l => l.Product)
+            .ToListAsync(ct);
+        IEnumerable<Invoice> finalInvoices = allInvoices.Where(i => i.Status == InvoiceStatus.Final);
+        if (from.HasValue) finalInvoices = finalInvoices.Where(i => i.CreatedAt >= from.Value);
+        if (to.HasValue) finalInvoices = finalInvoices.Where(i => i.CreatedAt <= to.Value);
+        var invoiceList = finalInvoices.ToList();
+
+        var soldLinesAll = invoiceList
+            .SelectMany(i => i.Lines.Select(l => new { Invoice = i, Line = l }))
+            .Where(x => x.Line.Product != null && x.Line.Product.SupplierId == supplierId)
+            .ToList();
+
+        var soldByProduct = soldLinesAll
+            .GroupBy(x => x.Line.ProductId)
+            .ToDictionary(g => g.Key, g => new
+            {
+                Qty = g.Sum(x => x.Line.Quantity),
+                Revenue = g.Sum(x => x.Line.LineTotal)
+            });
+
+        var products = receipts
+            .GroupBy(r => r.ProductId)
+            .Select(pg =>
+            {
+                var product = pg.First().Product;
+                var consignIn = pg.Where(r => r.Type == StockReceiptType.ConsignmentIn).Sum(r => r.Quantity);
+                var movedToStock = pg.Where(r => r.Type == StockReceiptType.ConsignmentToStock).Sum(r => r.Quantity);
+                var returned = pg.Where(r => r.Type == StockReceiptType.ConsignmentReturn).Sum(r => r.Quantity);
+                var movedFromStock = pg.Where(r => r.Type == StockReceiptType.StockToConsignment).Sum(r => r.Quantity);
+                var onHand = consignIn + movedFromStock - movedToStock - returned;
+                var sellPrice = product?.SellPrice ?? 0;
+                var cost = product?.Cost ?? 0;
+                var sold = soldByProduct.TryGetValue(pg.Key, out var s) ? s : null;
+
+                return new ConsignmentProductReportDto
+                {
+                    Sku = product?.Sku ?? "",
+                    Name = product?.Name ?? "",
+                    SellPrice = sellPrice,
+                    Cost = cost,
+                    OnHand = onHand,
+                    OnHandValue = onHand * sellPrice,
+                    Received = consignIn,
+                    MovedToStock = movedToStock,
+                    Returned = returned,
+                    MovedFromStock = movedFromStock,
+                    Sold = sold?.Qty ?? 0,
+                    SoldRevenue = sold?.Revenue ?? 0
+                };
+            })
+            .Where(p => p.Received > 0 || p.MovedFromStock > 0 || p.Sold > 0)
+            .OrderBy(p => p.Name)
+            .ToList();
+
+        var soldLines = soldLinesAll
+            .OrderByDescending(x => x.Invoice.CreatedAt)
+            .Take(500)
+            .Select(x => new VendorSoldLineDto
+            {
+                CreatedAt = x.Invoice.CreatedAt,
+                InvoiceNumber = x.Invoice.InvoiceNumber,
+                Sku = x.Line.Product?.Sku ?? "",
+                Description = x.Line.Description,
+                Quantity = x.Line.Quantity,
+                UnitPrice = x.Line.UnitPrice,
+                LineTotal = x.Line.LineTotal
+            })
+            .ToList();
+
+        return new VendorReportDto
+        {
+            SupplierId = supplier.Id,
+            SupplierName = supplier.Name,
+            From = from,
+            To = to,
+            OnHand = products.Sum(p => p.OnHand),
+            OnHandValue = products.Sum(p => p.OnHandValue),
+            TotalReceived = products.Sum(p => p.Received),
+            TotalSold = products.Sum(p => p.Sold),
+            TotalSoldRevenue = products.Sum(p => p.SoldRevenue),
+            TotalReturned = products.Sum(p => p.Returned),
+            Products = products,
+            SoldLines = soldLines
+        };
     }
 
     [HttpPost("purge")]
