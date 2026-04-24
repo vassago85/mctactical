@@ -1021,6 +1021,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 @media (min-width: 1100px) {
   .pos-main {
     grid-template-columns: minmax(280px, 28fr) minmax(0, 72fr);
+    grid-template-rows: 1fr;
   }
   .pos-main--no-results {
     grid-template-columns: minmax(0, 1fr);
@@ -1084,7 +1085,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 }
 .pos-panel--cart {
   flex: 1;
-  min-height: 0;
+  min-height: 180px;
 }
 
 /* ── Results list ─────────────────────────────────────────────────────── */
