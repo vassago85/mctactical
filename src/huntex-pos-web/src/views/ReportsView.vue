@@ -54,7 +54,7 @@ type StockMovementLine = {
 }
 type ProductSoldLine = {
   sku: string; name: string
-  qtySold: number; revenue: number; costExVat: number; costInclVat: number
+  qtySold: number; revenue: number; discount: number; costExVat: number; costInclVat: number
 }
 type StockReport = {
   onHand: StockOnHandSummary
@@ -403,14 +403,14 @@ function exportSohCsv() {
 function exportSoldInPeriodCsv() {
   if (!stockReport.value) return
   const rows = [
-    ['SKU', 'Name', 'Qty Sold', 'Revenue', 'Cost Excl', 'Cost Incl', 'GP'].join(','),
+    ['SKU', 'Name', 'Qty Sold', 'Revenue', 'Discount', 'Cost Excl', 'GP'].join(','),
     ...stockReport.value.soldInPeriod.map(p => [
       csvEsc(p.sku), csvEsc(p.name),
       p.qtySold,
       p.revenue.toFixed(2),
+      p.discount.toFixed(2),
       p.costExVat.toFixed(2),
-      p.costInclVat.toFixed(2),
-      (p.revenue - p.costInclVat).toFixed(2)
+      ((p.revenue - p.discount) / 1.15 - p.costExVat).toFixed(2)
     ].join(','))
   ]
   downloadCsv('products-sold.csv', rows)
@@ -649,8 +649,8 @@ async function purgeData() {
                   <th>Name</th>
                   <th class="rep-num">Qty sold</th>
                   <th class="rep-num">Revenue</th>
+                  <th class="rep-num">Discount</th>
                   <th class="rep-num">Cost ex VAT</th>
-                  <th class="rep-num">Cost incl VAT</th>
                   <th class="rep-num">GP</th>
                 </tr>
               </thead>
@@ -660,9 +660,9 @@ async function purgeData() {
                   <td>{{ p.name }}</td>
                   <td class="rep-num">{{ formatNumber(p.qtySold) }}</td>
                   <td class="rep-num">{{ formatZAR(p.revenue) }}</td>
+                  <td class="rep-num">{{ p.discount ? formatZAR(p.discount) : '—' }}</td>
                   <td class="rep-num">{{ formatZAR(p.costExVat) }}</td>
-                  <td class="rep-num">{{ formatZAR(p.costInclVat) }}</td>
-                  <td class="rep-num">{{ formatZAR(p.revenue - p.costInclVat) }}</td>
+                  <td class="rep-num">{{ formatZAR((p.revenue - p.discount) / 1.15 - p.costExVat) }}</td>
                 </tr>
               </tbody>
               <tfoot>
@@ -670,9 +670,9 @@ async function purgeData() {
                   <td colspan="2"><strong>Totals</strong></td>
                   <td class="rep-num"><strong>{{ formatNumber(totalSoldQty) }}</strong></td>
                   <td class="rep-num"><strong>{{ formatZAR(totalSoldRevenue) }}</strong></td>
+                  <td class="rep-num"><strong>{{ formatZAR(stockReport.soldInPeriod.reduce((s, p) => s + p.discount, 0)) }}</strong></td>
                   <td class="rep-num"><strong>{{ formatZAR(stockReport.soldInPeriod.reduce((s, p) => s + p.costExVat, 0)) }}</strong></td>
-                  <td class="rep-num"><strong>{{ formatZAR(stockReport.soldInPeriod.reduce((s, p) => s + p.costInclVat, 0)) }}</strong></td>
-                  <td class="rep-num"><strong>{{ formatZAR(totalSoldRevenue - stockReport.soldInPeriod.reduce((s, p) => s + p.costInclVat, 0)) }}</strong></td>
+                  <td class="rep-num"><strong>{{ formatZAR((totalSoldRevenue - stockReport.soldInPeriod.reduce((s, p) => s + p.discount, 0)) / 1.15 - stockReport.soldInPeriod.reduce((s, p) => s + p.costExVat, 0)) }}</strong></td>
                 </tr>
               </tfoot>
             </table>

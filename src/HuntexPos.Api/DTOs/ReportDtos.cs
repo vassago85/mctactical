@@ -104,6 +104,7 @@ public class ProductSoldSummaryDto
     public string Name { get; set; } = string.Empty;
     public int QtySold { get; set; }
     public decimal Revenue { get; set; }
+    public decimal Discount { get; set; }
     public decimal CostExVat { get; set; }
     public decimal CostInclVat { get; set; }
 }
