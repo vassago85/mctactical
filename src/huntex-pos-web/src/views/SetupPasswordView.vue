@@ -61,7 +61,7 @@ async function submit() {
   <div class="auth-layout">
     <div class="auth-panel">
       <div class="auth-panel__brand">
-        <img class="auth-panel__logo" :src="logoUrl ?? logoDark" :alt="businessName" />
+        <img class="auth-panel__logo" :src="logoUrl ?? logoDark" :alt="businessName" width="240" height="72" />
       </div>
       <p class="auth-panel__title">Set your password</p>
       <p class="auth-panel__sub">

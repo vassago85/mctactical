@@ -53,7 +53,7 @@ function pdfLink() {
   <div class="inv-public">
     <div class="inv-public__sheet">
       <header class="inv-public__head">
-        <img class="inv-public__logo" :src="logoUrl ?? logoDark" :alt="businessName" />
+        <img class="inv-public__logo" :src="logoUrl ?? logoDark" :alt="businessName" width="160" height="48" />
         <div class="inv-public__head-text">
           <h1 class="inv-public__h1">Invoice</h1>
           <p v-if="inv" class="inv-public__num">{{ inv.invoiceNumber }}</p>

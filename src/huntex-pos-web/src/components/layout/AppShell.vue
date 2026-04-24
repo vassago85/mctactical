@@ -60,7 +60,7 @@ function logout() {
     />
     <aside class="mc-sidebar" :class="{ 'mc-sidebar--open': sidebarOpen }">
       <div class="mc-sidebar__brand">
-        <img class="mc-sidebar__logo" :src="brandLogo" :alt="businessName" />
+        <img class="mc-sidebar__logo" :src="brandLogo" :alt="businessName" width="140" height="36" />
         <p class="mc-sidebar__tag">Point of sale</p>
       </div>
       <nav class="mc-sidebar__nav" aria-label="Main">

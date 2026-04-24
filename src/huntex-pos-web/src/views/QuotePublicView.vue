@@ -65,7 +65,7 @@ function formatDate(iso?: string | null) {
   <div class="qp">
     <div class="qp__sheet">
       <header class="qp__head">
-        <img class="qp__logo" :src="logoUrl ?? logoDark" :alt="businessName" />
+        <img class="qp__logo" :src="logoUrl ?? logoDark" :alt="businessName" width="160" height="48" />
         <div class="qp__head-text">
           <h1 class="qp__h1">Quote</h1>
           <p v-if="q" class="qp__num">{{ q.quoteNumber }}</p>
