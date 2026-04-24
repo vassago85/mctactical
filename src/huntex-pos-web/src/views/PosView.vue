@@ -1427,7 +1427,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   .pos-main__results,
   .pos-main__cart { min-height: auto; }
   .pos-panel--cart { flex: none; }
-  .pos-panel__body--scroll { max-height: 55vh; }
+  .pos-panel__body--scroll { flex: 0 0 auto; max-height: 55vh; }
   .pos-foot { position: static; background: none; }
 }
 
