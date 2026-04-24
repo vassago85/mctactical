@@ -775,3 +775,17 @@ body.mc-body-app .mc-text-muted {
 body.mc-body-app .mc-text-secondary {
   color: var(--mc-app-text-secondary);
 }
+
+/* ── Print: hide shell chrome ───────────────────────────────────────── */
+@media print {
+  .mc-topbar,
+  .mc-sidebar,
+  .mc-sidebar-overlay { display: none !important; }
+
+  .app-main {
+    margin-left: 0 !important;
+    padding: 0 !important;
+  }
+
+  body, html { background: #fff !important; }
+}

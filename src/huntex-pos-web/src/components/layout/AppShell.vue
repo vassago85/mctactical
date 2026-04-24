@@ -88,6 +88,7 @@ function logout() {
           <RouterLink class="mc-nav-link" to="/wholesalers" @click="sidebarOpen = false"><Building2 :size="16" />Wholesalers</RouterLink>
           <RouterLink class="mc-nav-link" to="/import" @click="sidebarOpen = false"><Upload :size="16" />Import</RouterLink>
           <RouterLink class="mc-nav-link" to="/reports" @click="sidebarOpen = false"><BarChart3 :size="16" />Reports</RouterLink>
+          <RouterLink class="mc-nav-link" to="/financial-report" @click="sidebarOpen = false"><FileText :size="16" />Financial overview</RouterLink>
           <RouterLink class="mc-nav-link" to="/settings" @click="sidebarOpen = false"><DollarSign :size="16" />Pricing</RouterLink>
           <RouterLink class="mc-nav-link" to="/settings/business" @click="sidebarOpen = false"><SettingsIcon :size="16" />Business</RouterLink>
           <RouterLink class="mc-nav-link" to="/setup" @click="sidebarOpen = false"><Mail :size="16" />Email setup</RouterLink>
