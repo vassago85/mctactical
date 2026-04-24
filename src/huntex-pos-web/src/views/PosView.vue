@@ -345,14 +345,21 @@ const vatAmount = computed(() => {
   return Math.round((total - total / 1.15) * 100) / 100
 })
 
-const totalCost = computed(() =>
-  cart.value.reduce((s, l) => s + (l.product.cost ?? 0) * l.qty, 0)
+const totalCostInclVat = computed(() =>
+  cart.value.reduce((s, l) => s + Math.round((l.product.cost ?? 0) * 1.15 * 100) / 100 * l.qty, 0)
 )
 
 const belowCostWarning = computed(() => {
   if (!isManager.value || cart.value.length === 0) return null
-  if (grandPreview.value < totalCost.value && totalCost.value > 0)
-    return `Sale total ${formatZAR(grandPreview.value)} is below total cost ${formatZAR(totalCost.value)}`
+  const lines = cart.value.filter(l => {
+    const costIncl = Math.round((l.product.cost ?? 0) * 1.15 * 100) / 100
+    const linePrice = l.unitPrice * l.qty - computedLineDiscount(l)
+    return costIncl > 0 && linePrice < costIncl * l.qty
+  })
+  if (lines.length)
+    return `Below cost (incl VAT): ${lines.map(l => l.product.name).join(', ')}`
+  if (grandPreview.value < totalCostInclVat.value && totalCostInclVat.value > 0)
+    return `Sale total ${formatZAR(grandPreview.value)} is below total cost incl VAT ${formatZAR(totalCostInclVat.value)}`
   return null
 })
 

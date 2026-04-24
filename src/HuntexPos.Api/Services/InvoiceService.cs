@@ -199,13 +199,20 @@ public class InvoiceService
         var dto = MapToDto(invoice, pdfBytes);
         dto.EmailWarning = emailWarning;
 
-        var totalCost = lines.Sum(line =>
+        var belowCostNames = new List<string>();
+        var totalCostInclVat = 0m;
+        foreach (var line in lines)
         {
-            products.TryGetValue(line.ProductId, out var prod);
-            return prod != null ? prod.Cost * line.Quantity : 0m;
-        });
-        if (grandTotal < totalCost)
-            dto.BelowCostWarning = $"Sale total R{grandTotal:0.00} is below total cost R{totalCost:0.00}";
+            if (!products.TryGetValue(line.ProductId, out var prod) || prod == null) continue;
+            var costIncl = Math.Round(prod.Cost * 1.15m, 2);
+            totalCostInclVat += costIncl * line.Quantity;
+            if (line.LineTotal < costIncl * line.Quantity)
+                belowCostNames.Add(prod.Name);
+        }
+        if (belowCostNames.Count > 0)
+            dto.BelowCostWarning = $"Below cost (incl VAT): {string.Join(", ", belowCostNames)}";
+        else if (grandTotal < totalCostInclVat && totalCostInclVat > 0)
+            dto.BelowCostWarning = $"Sale total R{grandTotal:0.00} is below total cost incl VAT R{totalCostInclVat:0.00}";
 
         return dto;
     }
