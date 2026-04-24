@@ -1026,6 +1026,13 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   .pos-main--no-results {
     grid-template-columns: minmax(0, 1fr);
   }
+  .pos-main__results .pos-panel {
+    flex: 1;
+  }
+  .pos-main__results .pos-panel__body {
+    flex: 1;
+    overflow-y: auto;
+  }
 }
 .pos-main__results {
   min-height: 0;
@@ -1063,6 +1070,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   color: var(--mc-app-text-muted, #5c5a56);
   border-bottom: 1px solid var(--mc-app-border-faint, #eceae5);
   background: var(--mc-app-surface-2, #faf9f6);
+  flex-shrink: 0;
 }
 .pos-panel__meta {
   font-size: 0.75rem;
@@ -1267,6 +1275,9 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 }
 
 /* ── Customer + payment panel ─────────────────────────────────────────── */
+.pos-panel--customer .pos-panel__body {
+  overflow-y: auto;
+}
 .pos-customer-grid {
   display: grid;
   grid-template-columns: 1fr;
