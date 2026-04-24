@@ -258,6 +258,25 @@ async function printLabels() {
   }
 }
 
+const totalPages = computed(() => {
+  if (!page.value) return 1
+  return Math.max(1, Math.ceil(page.value.total / pageSize.value))
+})
+const currentPage = computed(() => Math.floor(skip.value / pageSize.value) + 1)
+
+function goToPage(p: number) {
+  const clamped = Math.max(1, Math.min(p, totalPages.value))
+  skip.value = (clamped - 1) * pageSize.value
+}
+
+const pagerButtons = computed(() => {
+  const total = totalPages.value
+  const cur = currentPage.value
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
+  const pages = new Set([1, 2, cur - 1, cur, cur + 1, total - 1, total])
+  return [...pages].filter(p => p >= 1 && p <= total).sort((a, b) => a - b)
+})
+
 const pageInfo = computed(() => {
   if (!page.value) return ''
   const shown = page.value.items.length
@@ -367,6 +386,28 @@ function effectivePrice(p: Product): { now: number; was?: number } {
           </div>
         </label>
       </div>
+
+      <footer v-if="page && totalPages > 1" class="lp-pager">
+        <McButton variant="secondary" dense type="button" :disabled="currentPage <= 1 || busy" @click="goToPage(currentPage - 1)">
+          ← Prev
+        </McButton>
+
+        <div class="lp-pager__pages">
+          <button
+            v-for="p in pagerButtons"
+            :key="p"
+            type="button"
+            class="lp-pager__btn"
+            :class="{ 'lp-pager__btn--active': p === currentPage }"
+            :disabled="p === currentPage || busy"
+            @click="goToPage(p)"
+          >{{ p }}</button>
+        </div>
+
+        <McButton variant="secondary" dense type="button" :disabled="currentPage >= totalPages || busy" @click="goToPage(currentPage + 1)">
+          Next →
+        </McButton>
+      </footer>
     </McCard>
 
     <McCard>
@@ -609,6 +650,48 @@ function effectivePrice(p: Product): { now: number; was?: number } {
   text-decoration: line-through;
   font-weight: 500;
   font-size: 0.78rem;
+}
+
+.lp-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding-top: 1rem;
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--mc-app-border-faint, #eceae5);
+}
+.lp-pager__pages {
+  display: flex;
+  gap: 0.25rem;
+}
+.lp-pager__btn {
+  min-width: 2.1rem;
+  height: 2.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--mc-app-border-faint, #eceae5);
+  border-radius: 8px;
+  background: var(--mc-app-surface, #fff);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--mc-app-text-secondary, #333);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.lp-pager__btn:hover:not(:disabled) {
+  background: var(--mc-app-surface-2, #f9f8f6);
+  border-color: var(--mc-app-border, #d5d3ce);
+}
+.lp-pager__btn--active {
+  background: var(--mc-accent, #f47a20);
+  border-color: var(--mc-accent, #f47a20);
+  color: #fff;
+  cursor: default;
+}
+.lp-pager__btn--active:hover {
+  background: var(--mc-accent, #f47a20);
 }
 
 .lp-section-title {
