@@ -554,42 +554,39 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
               title="No matches"
               hint="Try other words — order doesn't matter."
             />
-            <ul v-else class="pos-results">
-              <li v-for="p in results" :key="p.id" class="pos-result">
-                <div class="pos-result__main">
-                  <p class="pos-result__name">{{ p.name }}</p>
-                  <p class="pos-result__meta">
-                    <span>{{ p.sku }}</span>
-                    <span v-if="p.barcode">· {{ p.barcode }}</span>
-                    <span
-                      class="pos-result__stock"
-                      :class="{
-                        'pos-result__stock--low': p.qtyOnHand <= 3 && p.qtyOnHand > 0,
-                        'pos-result__stock--out': p.qtyOnHand < 1
-                      }"
-                    >{{ p.qtyOnHand < 1 ? 'Out' : `${p.qtyOnHand} in stock` }}</span>
-                  </p>
-                </div>
-                <div class="pos-result__side">
-                  <div class="pos-result__prices">
+            <div v-else class="pos-results-grid">
+              <button
+                v-for="p in results"
+                :key="p.id"
+                type="button"
+                class="pos-card"
+                :class="{ 'pos-card--out': !isManager && p.qtyOnHand < 1 }"
+                :disabled="!isManager && p.qtyOnHand < 1"
+                @click="addToCart(p)"
+              >
+                <p class="pos-card__name">{{ p.name }}</p>
+                <p class="pos-card__meta">
+                  <span>{{ p.sku }}</span>
+                  <span v-if="p.barcode"> · {{ p.barcode }}</span>
+                </p>
+                <div class="pos-card__foot">
+                  <div class="pos-card__prices">
                     <template v-if="getEffectivePrice(p).hasDiscount">
-                      <span class="pos-result__price pos-result__price--sale">{{ formatZAR(getEffectivePrice(p).price) }}</span>
-                      <span class="pos-result__price--was">{{ formatZAR(p.sellPrice) }}</span>
+                      <span class="pos-card__price pos-card__price--sale">{{ formatZAR(getEffectivePrice(p).price) }}</span>
+                      <span class="pos-card__price--was">{{ formatZAR(p.sellPrice) }}</span>
                     </template>
-                    <span v-else class="pos-result__price">{{ formatZAR(p.sellPrice) }}</span>
+                    <span v-else class="pos-card__price">{{ formatZAR(p.sellPrice) }}</span>
                   </div>
-                  <McButton
-                    variant="primary"
-                    type="button"
-                    dense
-                    :disabled="!isManager && p.qtyOnHand < 1"
-                    @click="addToCart(p)"
-                  >
-                    {{ isManager && p.qtyOnHand < 1 ? 'Special' : 'Add' }}
-                  </McButton>
+                  <span
+                    class="pos-card__stock"
+                    :class="{
+                      'pos-card__stock--low': p.qtyOnHand <= 3 && p.qtyOnHand > 0,
+                      'pos-card__stock--out': p.qtyOnHand < 1
+                    }"
+                  >{{ p.qtyOnHand < 1 ? 'Out of stock' : `${p.qtyOnHand} in stock` }}</span>
                 </div>
-              </li>
-            </ul>
+              </button>
+            </div>
           </div>
         </div>
       </aside>
@@ -1103,69 +1100,82 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   min-height: 180px;
 }
 
-/* ── Results list ─────────────────────────────────────────────────────── */
-.pos-results {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+/* ── Results card grid ────────────────────────────────────────────────── */
+.pos-results-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+  padding: 0.5rem;
 }
-.pos-result {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-  padding: 0.7rem 0.85rem;
-  border-bottom: 1px solid var(--mc-app-border-faint, #eceae5);
-  transition: background 0.12s ease;
+@media (min-width: 480px) {
+  .pos-results-grid { grid-template-columns: repeat(2, 1fr); }
 }
-.pos-result:last-child { border-bottom: none; }
-.pos-result:hover { background: var(--mc-app-surface-muted, #f6f5f1); }
-.pos-result__main { min-width: 0; }
-.pos-result__name {
-  margin: 0 0 0.2rem;
-  font-weight: 600;
-  font-size: 0.92rem;
-  color: var(--mc-app-text, #1a1a1c);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.pos-result__meta {
-  margin: 0;
-  font-size: 0.78rem;
-  color: var(--mc-app-text-muted, #5c5a56);
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  flex-wrap: wrap;
-}
-.pos-result__side {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex-shrink: 0;
-}
-.pos-result__prices {
+
+.pos-card {
   display: flex;
   flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.7rem 0.85rem;
+  background: var(--mc-app-surface, #fff);
+  border: 1.5px solid var(--mc-app-border-faint, #eceae5);
+  border-radius: 10px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+.pos-card:hover:not(:disabled) {
+  border-color: var(--mc-accent, #f47a20);
+  box-shadow: 0 2px 8px rgba(244, 122, 32, 0.12);
+}
+.pos-card:active:not(:disabled) {
+  background: rgba(244, 122, 32, 0.06);
+}
+.pos-card--out {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pos-card__name {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.88rem;
+  line-height: 1.3;
+  color: var(--mc-app-text, #1a1a1c);
+}
+.pos-card__meta {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--mc-app-text-muted, #5c5a56);
+}
+.pos-card__foot {
+  display: flex;
   align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: auto;
+  padding-top: 0.25rem;
+}
+.pos-card__prices {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
   line-height: 1.1;
 }
-.pos-result__price {
+.pos-card__price {
   font-weight: 700;
   font-size: 0.95rem;
   color: var(--mc-app-text, #1a1a1c);
 }
-.pos-result__price--sale {
+.pos-card__price--sale {
   color: #dc2626;
 }
-.pos-result__price--was {
+.pos-card__price--was {
   font-size: 0.72rem;
   color: var(--mc-app-text-muted, #5c5a56);
   text-decoration: line-through;
 }
-.pos-result__stock {
-  font-size: 0.7rem;
+.pos-card__stock {
+  font-size: 0.65rem;
   font-weight: 700;
   color: #2e7d32;
   text-transform: uppercase;
@@ -1173,9 +1183,11 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   padding: 0.1rem 0.4rem;
   border-radius: 5px;
   background: rgba(46, 125, 50, 0.1);
+  flex-shrink: 0;
+  white-space: nowrap;
 }
-.pos-result__stock--low { color: #e65100; background: rgba(230, 81, 0, 0.1); }
-.pos-result__stock--out { color: #c62828; background: rgba(198, 40, 40, 0.1); }
+.pos-card__stock--low { color: #e65100; background: rgba(230, 81, 0, 0.1); }
+.pos-card__stock--out { color: #c62828; background: rgba(198, 40, 40, 0.1); }
 
 /* ── Cart table ───────────────────────────────────────────────────────── */
 .pos-cart-table {

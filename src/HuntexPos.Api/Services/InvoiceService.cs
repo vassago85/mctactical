@@ -44,6 +44,51 @@ public class InvoiceService
         var productIds = req.Lines.Select(l => l.ProductId).Distinct().ToList();
         var products = await _db.Products.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct);
 
+        // Resolve active-promotion effective prices so Sales staff can ring up
+        // promo-discounted items without tripping the PosRules price-drift check.
+        Dictionary<Guid, decimal>? promoEffectivePrices = null;
+        if (!managerBypassPosRules)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var allActivePromos = await _db.Promotions.AsNoTracking()
+                .Where(p => p.IsActive).ToListAsync(ct);
+            var promo = allActivePromos
+                .Where(p => !p.StartsAt.HasValue || p.StartsAt <= now)
+                .Where(p => !p.EndsAt.HasValue || p.EndsAt >= now)
+                .FirstOrDefault();
+
+            if (promo != null)
+            {
+                promoEffectivePrices = new Dictionary<Guid, decimal>();
+
+                var specials = await _db.ProductSpecials.AsNoTracking()
+                    .Where(s => s.IsActive && (s.PromotionId == null || s.PromotionId == promo.Id))
+                    .ToListAsync(ct);
+                var specialsByProduct = specials
+                    .GroupBy(s => s.ProductId)
+                    .ToDictionary(g => g.Key,
+                        g => g.OrderByDescending(s => s.PromotionId.HasValue).First());
+
+                foreach (var pid in productIds)
+                {
+                    if (!products.TryGetValue(pid, out var prod)) continue;
+                    if (specialsByProduct.TryGetValue(pid, out var special))
+                    {
+                        if (special.SpecialPrice.HasValue)
+                            promoEffectivePrices[pid] = special.SpecialPrice.Value;
+                        else if (special.DiscountPercent.HasValue)
+                            promoEffectivePrices[pid] = PricingCalculator.RoundToR10(
+                                prod.SellPrice * (1 - special.DiscountPercent.Value / 100m));
+                    }
+                    else if (promo.DiscountPercent > 0)
+                    {
+                        promoEffectivePrices[pid] = PricingCalculator.RoundToR10(
+                            prod.SellPrice * (1 - promo.DiscountPercent / 100m));
+                    }
+                }
+            }
+        }
+
         var lines = new List<InvoiceLine>();
         decimal subTotal = 0;
         bool isSpecialOrder = false;
@@ -71,7 +116,9 @@ public class InvoiceService
 
                 if (l.UnitPriceOverride.HasValue)
                 {
-                    var list = p.SellPrice;
+                    var list = promoEffectivePrices != null && promoEffectivePrices.TryGetValue(p.Id, out var promoPrice)
+                        ? promoPrice
+                        : p.SellPrice;
                     var minUnit = PricingCalculator.Round2(list * (1 - _posRules.MaxPriceDecreasePercentFromList / 100m));
                     var maxUnit = PricingCalculator.Round2(list * (1 + _posRules.MaxPriceIncreasePercentFromList / 100m));
                     if (unit < minUnit || unit > maxUnit)
