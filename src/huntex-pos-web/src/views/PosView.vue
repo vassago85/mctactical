@@ -719,42 +719,43 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
           </div>
         </div>
 
-        <!-- Sticky totals + checkout: always visible -->
-        <div class="pos-foot">
-          <div class="pos-totals" :class="{ 'pos-totals--pulse': totalPulse }">
-            <div class="pos-totals__rows">
-              <div class="pos-totals__row">
-                <span>Subtotal</span>
-                <strong>{{ formatZAR(subTotal) }}</strong>
-              </div>
-              <div v-if="isManager && discountTotal > 0" class="pos-totals__row pos-totals__row--muted">
-                <span>After order discount</span>
-                <strong>{{ formatZAR(grandPreview) }}</strong>
-              </div>
-              <div v-if="grandPreview > 0" class="pos-totals__row pos-totals__row--muted">
-                <span>Incl. VAT (15%)</span>
-                <span>{{ formatZAR(vatAmount) }}</span>
-              </div>
-            </div>
-            <div class="pos-totals__grand">
-              <span>Total due</span>
-              <strong>{{ formatZAR(grandPreview) }}</strong>
-            </div>
-          </div>
-          <McAlert v-if="belowCostWarning" variant="warning" class="pos-foot__warn">{{ belowCostWarning }}</McAlert>
-          <McButton
-            variant="primary"
-            type="button"
-            block
-            :disabled="busy || !cart.length"
-            class="pos-checkout-btn"
-            @click="requestCheckout"
-          >
-            <McSpinner v-if="busy" />
-            <span v-else>Complete sale</span>
-          </McButton>
-        </div>
       </section>
+    </div>
+
+    <!-- Fixed totals + checkout: always visible at bottom -->
+    <div class="pos-foot">
+      <div class="pos-totals" :class="{ 'pos-totals--pulse': totalPulse }">
+        <div class="pos-totals__rows">
+          <div class="pos-totals__row">
+            <span>Subtotal</span>
+            <strong>{{ formatZAR(subTotal) }}</strong>
+          </div>
+          <div v-if="isManager && discountTotal > 0" class="pos-totals__row pos-totals__row--muted">
+            <span>After order discount</span>
+            <strong>{{ formatZAR(grandPreview) }}</strong>
+          </div>
+          <div v-if="grandPreview > 0" class="pos-totals__row pos-totals__row--muted">
+            <span>Incl. VAT (15%)</span>
+            <span>{{ formatZAR(vatAmount) }}</span>
+          </div>
+        </div>
+        <div class="pos-totals__grand">
+          <span>Total due</span>
+          <strong>{{ formatZAR(grandPreview) }}</strong>
+        </div>
+      </div>
+      <McAlert v-if="belowCostWarning" variant="warning" class="pos-foot__warn">{{ belowCostWarning }}</McAlert>
+      <McButton
+        variant="primary"
+        type="button"
+        block
+        :disabled="busy || !cart.length"
+        class="pos-checkout-btn"
+        @click="requestCheckout"
+      >
+        <McSpinner v-if="busy" />
+        <span v-else>Complete sale</span>
+      </McButton>
     </div>
 
     <McModal v-model="showBelowCostModal" title="Below cost">
@@ -1020,7 +1021,8 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   display: grid;
   grid-template-columns: 1fr;
   gap: 0.85rem;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 @media (min-width: 1100px) {
   .pos-main {
@@ -1344,17 +1346,15 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   text-decoration: underline;
 }
 
-/* ── Sticky totals + checkout ─────────────────────────────────────────── */
+/* ── Fixed totals + checkout (always visible at bottom) ───────────────── */
 .pos-foot {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  position: sticky;
-  bottom: 0;
-  padding-top: 0.2rem;
-  background: linear-gradient(180deg, transparent 0%, var(--mc-app-page-bg, #eae8e3) 20%);
-  z-index: 3;
   flex-shrink: 0;
+  padding-top: 0.4rem;
+  background: var(--mc-app-page-bg, #eae8e3);
+  z-index: 5;
 }
 .pos-totals {
   display: flex;
@@ -1453,13 +1453,12 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 
 /* ── Tablet: stack results above cart ─────────────────────────────────── */
 @media (max-width: 1099px) {
-  .pos-shell { height: auto; }
-  .pos-main { overflow: visible; }
+  .pos-shell { height: 100vh; height: 100dvh; min-height: 0; }
+  .pos-main { overflow-y: auto; }
   .pos-main__results,
   .pos-main__cart { min-height: auto; }
   .pos-panel--cart { flex: none; }
   .pos-panel__body--scroll { flex: 0 0 auto; max-height: 55vh; }
-  .pos-foot { position: static; background: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
