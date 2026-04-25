@@ -58,6 +58,7 @@ async function loadReport() {
     stock.value = s.data
     daily.value = d.data
     payments.value = p.data
+    busy.value = false
     await nextTick()
     renderCharts()
   } catch {
