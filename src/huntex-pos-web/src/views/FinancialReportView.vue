@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { http } from '@/api/http'
 import { useBranding } from '@/composables/useBranding'
 import { formatZAR, formatNumber } from '@/utils/format'
 import McButton from '@/components/ui/McButton.vue'
 import McField from '@/components/ui/McField.vue'
 import McSpinner from '@/components/ui/McSpinner.vue'
+import { Chart, registerables } from 'chart.js'
+
+Chart.register(...registerables)
 
 const { businessName, logoUrl } = useBranding()
 
@@ -13,9 +16,7 @@ type ProductSoldLine = {
   sku: string; name: string
   qtySold: number; revenue: number; discount: number; costExVat: number; costInclVat: number
 }
-type StockReport = {
-  soldInPeriod: ProductSoldLine[]
-}
+type StockReport = { soldInPeriod: ProductSoldLine[] }
 type DailySummary = { date: string; invoiceCount: number; grandTotal: number }
 type PaymentMethodBreakdown = { method: string; count: number; grandTotal: number }
 type PaymentsSummary = { totalGrand: number; totalCount: number; byMethod: PaymentMethodBreakdown[] }
@@ -57,6 +58,8 @@ async function loadReport() {
     stock.value = s.data
     daily.value = d.data
     payments.value = p.data
+    await nextTick()
+    renderCharts()
   } catch {
     err.value = 'Failed to load report data'
   } finally {
@@ -79,6 +82,7 @@ const gpMargin = computed(() => {
 const totalQtySold = computed(() => sold.value.reduce((s, p) => s + p.qtySold, 0))
 const totalInvoices = computed(() => daily.value.reduce((s, d) => s + d.invoiceCount, 0))
 const totalSalesGrand = computed(() => daily.value.reduce((s, d) => s + d.grandTotal, 0))
+const avgOrderValue = computed(() => totalInvoices.value > 0 ? totalSalesGrand.value / totalInvoices.value : 0)
 
 function formatPeriod() {
   const f = new Date(fromDate.value).toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -91,6 +95,195 @@ function doPrint() { window.print() }
 const topProducts = computed(() =>
   [...sold.value].sort((a, b) => b.revenue - a.revenue).slice(0, 15)
 )
+
+// Charts
+const revenueChartRef = ref<HTMLCanvasElement | null>(null)
+const paymentChartRef = ref<HTMLCanvasElement | null>(null)
+const topProductsChartRef = ref<HTMLCanvasElement | null>(null)
+let revenueChart: Chart | null = null
+let paymentChart: Chart | null = null
+let topProductsChart: Chart | null = null
+
+const COLORS = {
+  orange: '#f47a20',
+  orangeLight: 'rgba(244, 122, 32, 0.15)',
+  green: '#2e7d32',
+  greenLight: 'rgba(46, 125, 50, 0.12)',
+  blue: '#1565c0',
+  red: '#c62828',
+  grey: '#888',
+  payMethods: ['#f47a20', '#1565c0', '#2e7d32', '#7b1fa2', '#c62828']
+}
+
+function renderCharts() {
+  renderRevenueChart()
+  renderPaymentChart()
+  renderTopProductsChart()
+}
+
+function renderRevenueChart() {
+  if (!revenueChartRef.value || !daily.value.length) return
+  if (revenueChart) revenueChart.destroy()
+
+  const sorted = [...daily.value].sort((a, b) => a.date.localeCompare(b.date))
+  const labels = sorted.map(d => {
+    const dt = new Date(d.date)
+    return dt.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })
+  })
+  const data = sorted.map(d => d.grandTotal)
+
+  let cumulative = 0
+  const cumulativeData = sorted.map(d => { cumulative += d.grandTotal; return cumulative })
+
+  revenueChart = new Chart(revenueChartRef.value, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Daily revenue',
+          data,
+          borderColor: COLORS.orange,
+          backgroundColor: COLORS.orangeLight,
+          fill: true,
+          tension: 0.3,
+          pointRadius: data.length > 30 ? 0 : 3,
+          pointHoverRadius: 5,
+          borderWidth: 2.5,
+          yAxisID: 'y'
+        },
+        {
+          label: 'Cumulative',
+          data: cumulativeData,
+          borderColor: COLORS.green,
+          backgroundColor: 'transparent',
+          borderDash: [6, 3],
+          tension: 0.3,
+          pointRadius: 0,
+          borderWidth: 1.5,
+          yAxisID: 'y1'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'top', labels: { usePointStyle: true, padding: 16, font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `${ctx.dataset.label}: R${ctx.parsed.y.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`
+          }
+        }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 10 }, maxRotation: 45 } },
+        y: {
+          position: 'left',
+          grid: { color: 'rgba(0,0,0,0.06)' },
+          ticks: { font: { size: 10 }, callback: (v) => `R${Number(v).toLocaleString()}` }
+        },
+        y1: {
+          position: 'right',
+          grid: { drawOnChartArea: false },
+          ticks: { font: { size: 10 }, callback: (v) => `R${Number(v).toLocaleString()}` }
+        }
+      }
+    }
+  })
+}
+
+function renderPaymentChart() {
+  if (!paymentChartRef.value || !payments.value?.byMethod.length) return
+  if (paymentChart) paymentChart.destroy()
+
+  const methods = payments.value.byMethod
+  paymentChart = new Chart(paymentChartRef.value, {
+    type: 'doughnut',
+    data: {
+      labels: methods.map(m => m.method),
+      datasets: [{
+        data: methods.map(m => m.grandTotal),
+        backgroundColor: COLORS.payMethods.slice(0, methods.length),
+        borderWidth: 2,
+        borderColor: '#fff'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '60%',
+      plugins: {
+        legend: { position: 'bottom', labels: { usePointStyle: true, padding: 14, font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const total = methods.reduce((s, m) => s + m.grandTotal, 0)
+              const pct = total > 0 ? ((ctx.parsed / total) * 100).toFixed(1) : '0'
+              return `${ctx.label}: R${ctx.parsed.toLocaleString('en-ZA', { minimumFractionDigits: 2 })} (${pct}%)`
+            }
+          }
+        }
+      }
+    }
+  })
+}
+
+function renderTopProductsChart() {
+  if (!topProductsChartRef.value || !topProducts.value.length) return
+  if (topProductsChart) topProductsChart.destroy()
+
+  const top10 = topProducts.value.slice(0, 10)
+  const labels = top10.map(p => p.name.length > 22 ? p.name.slice(0, 20) + '…' : p.name)
+  const revenues = top10.map(p => p.revenue)
+  const gps = top10.map(p => (p.revenue - p.discount) / 1.15 - p.costExVat)
+
+  topProductsChart = new Chart(topProductsChartRef.value, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Revenue',
+          data: revenues,
+          backgroundColor: COLORS.orangeLight,
+          borderColor: COLORS.orange,
+          borderWidth: 1.5,
+          borderRadius: 4
+        },
+        {
+          label: 'Gross Profit',
+          data: gps,
+          backgroundColor: COLORS.greenLight,
+          borderColor: COLORS.green,
+          borderWidth: 1.5,
+          borderRadius: 4
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: 'y',
+      plugins: {
+        legend: { position: 'top', labels: { usePointStyle: true, padding: 16, font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `${ctx.dataset.label}: R${ctx.parsed.x.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(0,0,0,0.06)' },
+          ticks: { font: { size: 10 }, callback: (v) => `R${Number(v).toLocaleString()}` }
+        },
+        y: { grid: { display: false }, ticks: { font: { size: 10 } } }
+      }
+    }
+  })
+}
 </script>
 
 <template>
@@ -107,12 +300,14 @@ const topProducts = computed(() =>
         <McSpinner v-if="busy" />
         <span v-else>Generate</span>
       </McButton>
-      <McButton variant="secondary" type="button" :disabled="busy || !stock" @click="doPrint">Print / PDF</McButton>
+      <McButton variant="secondary" type="button" :disabled="busy || !stock" @click="doPrint">Print / Save PDF</McButton>
     </div>
 
     <div v-if="err" class="fr-err no-print">{{ err }}</div>
 
-    <!-- Printable report body -->
+    <div v-if="busy" class="fr-loading"><McSpinner /> Loading report…</div>
+
+    <!-- Report body -->
     <div v-if="stock && !busy" class="fr-report">
       <!-- Header -->
       <header class="fr-header">
@@ -127,17 +322,17 @@ const topProducts = computed(() =>
         </div>
       </header>
 
-      <hr class="fr-divider" />
+      <hr class="fr-rule" />
 
-      <!-- KPI summary -->
+      <!-- KPI row 1 — money -->
       <section class="fr-kpis">
         <div class="fr-kpi">
           <span class="fr-kpi__label">Revenue (incl VAT)</span>
           <strong class="fr-kpi__value">{{ formatZAR(totalRevenue) }}</strong>
         </div>
-        <div class="fr-kpi">
+        <div class="fr-kpi fr-kpi--warn">
           <span class="fr-kpi__label">Discounts Given</span>
-          <strong class="fr-kpi__value fr-kpi__value--warn">{{ formatZAR(totalDiscount) }}</strong>
+          <strong class="fr-kpi__value">{{ formatZAR(totalDiscount) }}</strong>
         </div>
         <div class="fr-kpi">
           <span class="fr-kpi__label">Wholesale + VAT</span>
@@ -147,75 +342,59 @@ const topProducts = computed(() =>
           <span class="fr-kpi__label">Gross Profit</span>
           <strong class="fr-kpi__value">{{ formatZAR(totalGP) }}</strong>
         </div>
-        <div class="fr-kpi">
+      </section>
+
+      <!-- KPI row 2 — counts -->
+      <section class="fr-kpis fr-kpis--sm">
+        <div class="fr-kpi fr-kpi--compact">
           <span class="fr-kpi__label">GP Margin</span>
           <strong class="fr-kpi__value">{{ gpMargin.toFixed(1) }}%</strong>
         </div>
-        <div class="fr-kpi">
+        <div class="fr-kpi fr-kpi--compact">
           <span class="fr-kpi__label">Invoices</span>
           <strong class="fr-kpi__value">{{ formatNumber(totalInvoices) }}</strong>
         </div>
-        <div class="fr-kpi">
+        <div class="fr-kpi fr-kpi--compact">
           <span class="fr-kpi__label">Items Sold</span>
           <strong class="fr-kpi__value">{{ formatNumber(totalQtySold) }}</strong>
         </div>
-        <div class="fr-kpi">
+        <div class="fr-kpi fr-kpi--compact">
+          <span class="fr-kpi__label">Avg Order Value</span>
+          <strong class="fr-kpi__value">{{ formatZAR(avgOrderValue) }}</strong>
+        </div>
+        <div class="fr-kpi fr-kpi--compact">
           <span class="fr-kpi__label">Grand Total (paid)</span>
           <strong class="fr-kpi__value">{{ formatZAR(totalSalesGrand) }}</strong>
         </div>
       </section>
 
-      <!-- Payment breakdown -->
-      <section v-if="payments && payments.byMethod.length" class="fr-section">
-        <h3 class="fr-section__title">Payment Methods</h3>
-        <table class="fr-table">
-          <thead>
-            <tr><th>Method</th><th class="fr-r">Invoices</th><th class="fr-r">Total</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="b in payments.byMethod" :key="b.method">
-              <td>{{ b.method }}</td>
-              <td class="fr-r">{{ formatNumber(b.count) }}</td>
-              <td class="fr-r">{{ formatZAR(b.grandTotal) }}</td>
-            </tr>
-          </tbody>
-          <tfoot>
-            <tr>
-              <td><strong>Total</strong></td>
-              <td class="fr-r"><strong>{{ formatNumber(payments.totalCount) }}</strong></td>
-              <td class="fr-r"><strong>{{ formatZAR(payments.totalGrand) }}</strong></td>
-            </tr>
-          </tfoot>
-        </table>
+      <!-- Charts row -->
+      <section class="fr-charts">
+        <div class="fr-chart-card fr-chart-card--wide">
+          <h3 class="fr-chart-card__title">Daily Revenue</h3>
+          <div class="fr-chart-wrap fr-chart-wrap--line">
+            <canvas ref="revenueChartRef"></canvas>
+          </div>
+        </div>
+        <div class="fr-chart-card">
+          <h3 class="fr-chart-card__title">Payment Methods</h3>
+          <div class="fr-chart-wrap fr-chart-wrap--donut">
+            <canvas ref="paymentChartRef"></canvas>
+          </div>
+        </div>
       </section>
 
-      <!-- Daily breakdown -->
-      <section v-if="daily.length" class="fr-section">
-        <h3 class="fr-section__title">Daily Sales</h3>
-        <table class="fr-table">
-          <thead>
-            <tr><th>Date</th><th class="fr-r">Invoices</th><th class="fr-r">Total</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="d in daily" :key="d.date">
-              <td>{{ d.date }}</td>
-              <td class="fr-r">{{ formatNumber(d.invoiceCount) }}</td>
-              <td class="fr-r">{{ formatZAR(d.grandTotal) }}</td>
-            </tr>
-          </tbody>
-          <tfoot>
-            <tr>
-              <td><strong>Total</strong></td>
-              <td class="fr-r"><strong>{{ formatNumber(totalInvoices) }}</strong></td>
-              <td class="fr-r"><strong>{{ formatZAR(totalSalesGrand) }}</strong></td>
-            </tr>
-          </tfoot>
-        </table>
+      <!-- Top products bar chart -->
+      <section v-if="topProducts.length" class="fr-chart-card fr-chart-card--full">
+        <h3 class="fr-chart-card__title">Top Products — Revenue vs GP</h3>
+        <div class="fr-chart-wrap fr-chart-wrap--bar">
+          <canvas ref="topProductsChartRef"></canvas>
+        </div>
       </section>
 
-      <!-- Top products -->
-      <section v-if="topProducts.length" class="fr-section fr-section--break">
-        <h3 class="fr-section__title">Top Products by Revenue</h3>
+      <!-- Products table -->
+      <section v-if="topProducts.length" class="fr-section">
+        <h3 class="fr-section__title">Product Detail</h3>
         <table class="fr-table">
           <thead>
             <tr>
@@ -241,7 +420,7 @@ const topProducts = computed(() =>
           </tbody>
           <tfoot>
             <tr>
-              <td colspan="2"><strong>Totals (all products)</strong></td>
+              <td colspan="2"><strong>All products</strong></td>
               <td class="fr-r"><strong>{{ formatNumber(totalQtySold) }}</strong></td>
               <td class="fr-r"><strong>{{ formatZAR(totalRevenue) }}</strong></td>
               <td class="fr-r"><strong>{{ formatZAR(totalDiscount) }}</strong></td>
@@ -252,270 +431,153 @@ const topProducts = computed(() =>
         </table>
       </section>
 
-      <!-- GP formula note -->
+      <!-- Daily table -->
+      <section v-if="daily.length" class="fr-section">
+        <h3 class="fr-section__title">Daily Breakdown</h3>
+        <table class="fr-table">
+          <thead>
+            <tr><th>Date</th><th class="fr-r">Invoices</th><th class="fr-r">Total</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="d in daily" :key="d.date">
+              <td>{{ d.date }}</td>
+              <td class="fr-r">{{ formatNumber(d.invoiceCount) }}</td>
+              <td class="fr-r">{{ formatZAR(d.grandTotal) }}</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td><strong>Total</strong></td>
+              <td class="fr-r"><strong>{{ formatNumber(totalInvoices) }}</strong></td>
+              <td class="fr-r"><strong>{{ formatZAR(totalSalesGrand) }}</strong></td>
+            </tr>
+          </tfoot>
+        </table>
+      </section>
+
+      <!-- Footer -->
       <footer class="fr-footer">
-        <p>GP = (Revenue − Discounts) ÷ 1.15 − Wholesale cost</p>
-        <p>{{ businessName }} — VAT reg. All amounts in ZAR.</p>
+        <p>GP = (Revenue − Discounts) ÷ 1.15 − Wholesale cost &nbsp;|&nbsp; {{ businessName }} — VAT reg. All amounts in ZAR.</p>
       </footer>
     </div>
-
-    <div v-if="busy" class="fr-loading"><McSpinner /> Loading report…</div>
   </div>
 </template>
 
 <style scoped>
-/* ── Print control ──────────────────────────────────────────────────── */
 .no-print { }
-@media print {
-  .no-print { display: none !important; }
-}
+@media print { .no-print { display: none !important; } }
 
-/* ── Page wrapper ───────────────────────────────────────────────────── */
-.fr {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 1.5rem;
-}
+/* ── Page ────────────────────────────────────────────────────────────── */
+.fr { max-width: 1060px; margin: 0 auto; padding: 1.5rem; }
 
 .fr-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-  padding: 1rem 1.25rem;
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 1rem;
+  margin-bottom: 1.5rem; padding: 1rem 1.25rem;
   background: var(--mc-app-surface, #fff);
   border: 1px solid var(--mc-app-border-soft, #ddd9d3);
   border-radius: var(--mc-app-radius-card, 18px);
 }
-
 .fr-controls :deep(.mc-field) { margin-bottom: 0; }
 
-.fr-err {
-  padding: 0.75rem 1rem;
-  background: #fdecea;
-  color: #b71c1c;
-  border-radius: 8px;
-  margin-bottom: 1rem;
-}
+.fr-err { padding: 0.75rem 1rem; background: #fdecea; color: #b71c1c; border-radius: 8px; margin-bottom: 1rem; }
+.fr-loading { display: flex; align-items: center; gap: 0.75rem; justify-content: center; padding: 3rem; color: var(--mc-app-text-muted, #5c5a56); }
 
-.fr-loading {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  justify-content: center;
-  padding: 3rem;
-  color: var(--mc-app-text-muted, #5c5a56);
-}
-
-/* ── Report body ────────────────────────────────────────────────────── */
+/* ── Report body ─────────────────────────────────────────────────────── */
 .fr-report {
-  background: #fff;
-  color: #1a1a1c;
-  border-radius: 12px;
-  padding: 2.5rem 2.5rem 1.5rem;
+  background: #fff; color: #1a1a1c;
+  border-radius: 14px; padding: 2.5rem;
   border: 1px solid var(--mc-app-border-soft, #ddd9d3);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
 }
 
-/* ── Header ─────────────────────────────────────────────────────────── */
-.fr-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 1.5rem;
-  flex-wrap: wrap;
-}
-
-.fr-header__logo {
-  height: 54px;
-  width: auto;
-  object-fit: contain;
-}
-
-.fr-header__name {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 1.75rem;
-  font-weight: 700;
-  margin: 0;
-  color: #0a0a0b;
-}
-
+/* ── Header ──────────────────────────────────────────────────────────── */
+.fr-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1.5rem; flex-wrap: wrap; }
+.fr-header__logo { height: 54px; width: auto; object-fit: contain; }
+.fr-header__name { font-family: 'Barlow Condensed', sans-serif; font-size: 1.75rem; font-weight: 700; margin: 0; }
 .fr-header__meta { text-align: right; }
+.fr-header__title { font-family: 'Barlow Condensed', sans-serif; font-size: 1.4rem; font-weight: 700; margin: 0; text-transform: uppercase; letter-spacing: 0.06em; color: #0a0a0b; }
+.fr-header__period { margin: 0.25rem 0 0; font-size: 0.95rem; font-weight: 600; color: #333; }
+.fr-header__gen { margin: 0.1rem 0 0; font-size: 0.75rem; color: #999; }
+.fr-rule { border: none; border-top: 2.5px solid #0a0a0b; margin: 1.25rem 0 1.75rem; }
 
-.fr-header__title {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 1.5rem;
-  font-weight: 700;
-  margin: 0;
-  color: #0a0a0b;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.fr-header__period {
-  margin: 0.25rem 0 0;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #333;
-}
-
-.fr-header__gen {
-  margin: 0.15rem 0 0;
-  font-size: 0.78rem;
-  color: #888;
-}
-
-.fr-divider {
-  border: none;
-  border-top: 2px solid #0a0a0b;
-  margin: 1.25rem 0 1.5rem;
-}
-
-/* ── KPIs ───────────────────────────────────────────────────────────── */
-.fr-kpis {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1rem;
-  margin-bottom: 2rem;
-}
+/* ── KPIs ────────────────────────────────────────────────────────────── */
+.fr-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.875rem; margin-bottom: 1.25rem; }
+.fr-kpis--sm { grid-template-columns: repeat(5, 1fr); margin-bottom: 1.75rem; }
 
 .fr-kpi {
-  padding: 0.875rem 1rem;
-  border: 1.5px solid #e0ddd8;
-  border-radius: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
+  padding: 1rem 1.1rem; border: 1.5px solid #e0ddd8; border-radius: 10px;
+  display: flex; flex-direction: column; gap: 0.2rem;
+  background: #fafaf9;
+}
+.fr-kpi--accent { border-color: #f47a20; background: #fef7f0; }
+.fr-kpi--warn { border-color: #e65100; background: #fff8f0; }
+.fr-kpi--compact { padding: 0.65rem 0.85rem; }
+
+.fr-kpi__label { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #888; }
+.fr-kpi__value { font-size: 1.25rem; font-weight: 700; color: #0a0a0b; font-variant-numeric: tabular-nums; }
+.fr-kpi--compact .fr-kpi__value { font-size: 1.05rem; }
+.fr-kpi--warn .fr-kpi__value { color: #e65100; }
+
+/* ── Chart cards ─────────────────────────────────────────────────────── */
+.fr-charts { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; margin-bottom: 1.25rem; }
+
+.fr-chart-card {
+  border: 1px solid #e0ddd8; border-radius: 12px; padding: 1.25rem;
+  background: #fafaf9;
+}
+.fr-chart-card--full { margin-bottom: 1.75rem; }
+.fr-chart-card__title {
+  font-family: 'Barlow Condensed', sans-serif; font-size: 0.85rem;
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: #555; margin: 0 0 0.75rem; padding-bottom: 0.4rem;
+  border-bottom: 1.5px solid #eceae5;
 }
 
-.fr-kpi--accent {
-  border-color: #f47a20;
-  background: #fef7f0;
-}
+.fr-chart-wrap--line { height: 260px; }
+.fr-chart-wrap--donut { height: 260px; display: flex; align-items: center; justify-content: center; }
+.fr-chart-wrap--bar { height: 320px; }
 
-.fr-kpi__label {
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #777;
-}
-
-.fr-kpi__value {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: #0a0a0b;
-  font-variant-numeric: tabular-nums;
-}
-
-.fr-kpi__value--warn { color: #c45f18; }
-
-/* ── Sections ───────────────────────────────────────────────────────── */
+/* ── Sections + tables ───────────────────────────────────────────────── */
 .fr-section { margin-bottom: 2rem; }
-
 .fr-section__title {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 1.05rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #333;
-  border-bottom: 2px solid #e0ddd8;
-  padding-bottom: 0.35rem;
-  margin: 0 0 0.75rem;
+  font-family: 'Barlow Condensed', sans-serif; font-size: 0.95rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em; color: #333;
+  border-bottom: 2px solid #e0ddd8; padding-bottom: 0.35rem; margin: 0 0 0.75rem;
 }
 
-/* ── Tables ──────────────────────────────────────────────────────────── */
-.fr-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.85rem;
-}
-
-.fr-table th {
-  text-align: left;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #555;
-  padding: 0.4rem 0.5rem;
-  border-bottom: 1.5px solid #c8c5bd;
-}
-
-.fr-table td {
-  padding: 0.35rem 0.5rem;
-  border-bottom: 1px solid #eceae5;
-  color: #222;
-}
-
-.fr-table tfoot td {
-  border-top: 2px solid #c8c5bd;
-  border-bottom: none;
-  background: #faf9f6;
-}
-
+.fr-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.fr-table th { text-align: left; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #666; padding: 0.4rem 0.5rem; border-bottom: 1.5px solid #c8c5bd; }
+.fr-table td { padding: 0.3rem 0.5rem; border-bottom: 1px solid #eceae5; color: #222; }
+.fr-table tbody tr:hover td { background: #f5f4f1; }
+.fr-table tfoot td { border-top: 2px solid #c8c5bd; border-bottom: none; background: #f5f4f2; }
 .fr-r { text-align: right; font-variant-numeric: tabular-nums; }
 .fr-mono { font-weight: 600; font-variant-numeric: tabular-nums; }
 
-/* ── Footer ─────────────────────────────────────────────────────────── */
-.fr-footer {
-  margin-top: 2rem;
-  padding-top: 1rem;
-  border-top: 1px solid #e0ddd8;
-  font-size: 0.75rem;
-  color: #999;
-  text-align: center;
-}
+/* ── Footer ──────────────────────────────────────────────────────────── */
+.fr-footer { margin-top: 2rem; padding-top: 0.75rem; border-top: 1px solid #e0ddd8; font-size: 0.72rem; color: #aaa; text-align: center; }
+.fr-footer p { margin: 0; }
 
-.fr-footer p { margin: 0.15rem 0; }
-
-/* ── Print overrides ────────────────────────────────────────────────── */
+/* ── Print ───────────────────────────────────────────────────────────── */
 @media print {
-  @page {
-    size: A4;
-    margin: 15mm 12mm;
-  }
-
-  .fr {
-    max-width: none;
-    padding: 0;
-  }
-
-  .fr-report {
-    border: none;
-    border-radius: 0;
-    padding: 0;
-    box-shadow: none;
-  }
-
-  .fr-kpis { grid-template-columns: repeat(4, 1fr); }
-
-  .fr-kpi {
-    border: 1px solid #ccc;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  .fr-kpi--accent {
-    background: #fef7f0 !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  .fr-table tfoot td {
-    background: #f5f4f2 !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  .fr-section--break { page-break-before: auto; }
+  @page { size: A4 landscape; margin: 12mm; }
+  .fr { max-width: none; padding: 0; }
+  .fr-report { border: none; border-radius: 0; padding: 0; box-shadow: none; }
+  .fr-kpi, .fr-chart-card, .fr-table tfoot td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .fr-kpi--accent { background: #fef7f0 !important; }
+  .fr-kpi--warn { background: #fff8f0 !important; }
+  .fr-charts { grid-template-columns: 2fr 1fr; }
+  .fr-chart-wrap--line { height: 200px; }
+  .fr-chart-wrap--donut { height: 200px; }
+  .fr-chart-wrap--bar { height: 250px; }
+  .fr-section { page-break-inside: avoid; }
 }
 
-/* ── Responsive ─────────────────────────────────────────────────────── */
-@media screen and (max-width: 700px) {
+/* ── Responsive ──────────────────────────────────────────────────────── */
+@media screen and (max-width: 800px) {
   .fr-report { padding: 1.25rem; }
   .fr-kpis { grid-template-columns: repeat(2, 1fr); }
+  .fr-kpis--sm { grid-template-columns: repeat(3, 1fr); }
+  .fr-charts { grid-template-columns: 1fr; }
   .fr-header { flex-direction: column; }
   .fr-header__meta { text-align: left; }
 }
