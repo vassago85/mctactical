@@ -165,7 +165,7 @@ public class ReportsController : ControllerBase
             .OrderByDescending(i => i.CreatedAt).Take(2000).ToList();
 
         var sb = new StringBuilder();
-        sb.AppendLine("Date,Invoice,Customer,SKU,Description,Qty,Cost Excl,Cost Incl (15% VAT),Sale Price,Line Total,Line Discount,Order Discount,GP");
+        sb.AppendLine("Date,Invoice,Customer,SKU,Description,Qty,Wholesale (ex VAT),Wholesale + VAT,Sale Price,Line Total,Line Discount,Order Discount,GP");
 
         decimal sumCostExcl = 0, sumCostIncl = 0, sumSaleTotal = 0, sumLineTotal = 0;
         decimal sumLineDisc = 0, sumOrderDisc = 0, sumGp = 0;
@@ -224,7 +224,7 @@ public class ReportsController : ControllerBase
             sumGp.ToString("F2", CultureInfo.InvariantCulture)));
 
         sb.AppendLine();
-        sb.AppendLine("Date,Invoices,Total Sales,Total Discount,Total Cost Excl,GP");
+        sb.AppendLine("Date,Invoices,Total Sales,Total Discount,Total Wholesale + VAT,GP");
         var dailyGroups = list
             .GroupBy(i => i.CreatedAt.ToOffset(TimeSpan.FromHours(2)).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))
             .OrderByDescending(g => g.Key);
@@ -235,13 +235,14 @@ public class ReportsController : ControllerBase
             var daySales = dayLines.Sum(l => l.LineTotal);
             var dayDiscount = dayInvoices.Sum(i => i.DiscountTotal) + dayLines.Sum(l => l.LineDiscount);
             var dayCostExcl = dayLines.Sum(l => (l.CostAtSale > 0 ? l.CostAtSale : (l.Product?.Cost ?? 0)) * l.Quantity);
+            var dayCostIncl = dayLines.Sum(l => Math.Round((l.CostAtSale > 0 ? l.CostAtSale : (l.Product?.Cost ?? 0)) * 1.15m, 2) * l.Quantity);
             var dayGp = Math.Round((daySales - dayInvoices.Sum(i => i.DiscountTotal)) / 1.15m - dayCostExcl, 2);
             sb.AppendLine(string.Join(",",
                 day.Key,
                 day.Count().ToString(CultureInfo.InvariantCulture),
                 daySales.ToString("F2", CultureInfo.InvariantCulture),
                 dayDiscount.ToString("F2", CultureInfo.InvariantCulture),
-                dayCostExcl.ToString("F2", CultureInfo.InvariantCulture),
+                dayCostIncl.ToString("F2", CultureInfo.InvariantCulture),
                 dayGp.ToString("F2", CultureInfo.InvariantCulture)));
         }
 

@@ -70,6 +70,7 @@ const sold = computed(() => stock.value?.soldInPeriod ?? [])
 const totalRevenue = computed(() => sold.value.reduce((s, p) => s + p.revenue, 0))
 const totalDiscount = computed(() => sold.value.reduce((s, p) => s + p.discount, 0))
 const totalCostEx = computed(() => sold.value.reduce((s, p) => s + p.costExVat, 0))
+const totalCostInclVat = computed(() => sold.value.reduce((s, p) => s + p.costInclVat, 0))
 const totalGP = computed(() => (totalRevenue.value - totalDiscount.value) / 1.15 - totalCostEx.value)
 const gpMargin = computed(() => {
   const netRev = (totalRevenue.value - totalDiscount.value) / 1.15
@@ -139,8 +140,8 @@ const topProducts = computed(() =>
           <strong class="fr-kpi__value fr-kpi__value--warn">{{ formatZAR(totalDiscount) }}</strong>
         </div>
         <div class="fr-kpi">
-          <span class="fr-kpi__label">Cost of Sales (ex VAT)</span>
-          <strong class="fr-kpi__value">{{ formatZAR(totalCostEx) }}</strong>
+          <span class="fr-kpi__label">Wholesale + VAT</span>
+          <strong class="fr-kpi__value">{{ formatZAR(totalCostInclVat) }}</strong>
         </div>
         <div class="fr-kpi fr-kpi--accent">
           <span class="fr-kpi__label">Gross Profit</span>
@@ -223,7 +224,7 @@ const topProducts = computed(() =>
               <th class="fr-r">Qty</th>
               <th class="fr-r">Revenue</th>
               <th class="fr-r">Discount</th>
-              <th class="fr-r">Cost (ex)</th>
+              <th class="fr-r">Wholesale + VAT</th>
               <th class="fr-r">GP</th>
             </tr>
           </thead>
@@ -234,7 +235,7 @@ const topProducts = computed(() =>
               <td class="fr-r">{{ formatNumber(p.qtySold) }}</td>
               <td class="fr-r">{{ formatZAR(p.revenue) }}</td>
               <td class="fr-r">{{ p.discount ? formatZAR(p.discount) : '—' }}</td>
-              <td class="fr-r">{{ formatZAR(p.costExVat) }}</td>
+              <td class="fr-r">{{ formatZAR(p.costInclVat) }}</td>
               <td class="fr-r">{{ formatZAR((p.revenue - p.discount) / 1.15 - p.costExVat) }}</td>
             </tr>
           </tbody>
@@ -244,7 +245,7 @@ const topProducts = computed(() =>
               <td class="fr-r"><strong>{{ formatNumber(totalQtySold) }}</strong></td>
               <td class="fr-r"><strong>{{ formatZAR(totalRevenue) }}</strong></td>
               <td class="fr-r"><strong>{{ formatZAR(totalDiscount) }}</strong></td>
-              <td class="fr-r"><strong>{{ formatZAR(totalCostEx) }}</strong></td>
+              <td class="fr-r"><strong>{{ formatZAR(totalCostInclVat) }}</strong></td>
               <td class="fr-r"><strong>{{ formatZAR(totalGP) }}</strong></td>
             </tr>
           </tfoot>
@@ -253,7 +254,7 @@ const topProducts = computed(() =>
 
       <!-- GP formula note -->
       <footer class="fr-footer">
-        <p>GP = (Revenue − Discounts) ÷ 1.15 − Cost ex VAT</p>
+        <p>GP = (Revenue − Discounts) ÷ 1.15 − Wholesale cost</p>
         <p>{{ businessName }} — VAT reg. All amounts in ZAR.</p>
       </footer>
     </div>
