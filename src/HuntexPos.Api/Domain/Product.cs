@@ -15,6 +15,8 @@ public class Product
     public string? ItemType { get; set; }
 
     public decimal Cost { get; set; }
+    /// <summary>Supplier-granted discount on wholesale cost (0–100). Effective cost = Cost × (1 − SupplierDiscountPercent / 100).</summary>
+    public decimal SupplierDiscountPercent { get; set; }
     public decimal SellPrice { get; set; }
     public int QtyOnHand { get; set; }
     public int QtyConsignment { get; set; }

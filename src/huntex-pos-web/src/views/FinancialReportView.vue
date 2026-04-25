@@ -75,9 +75,9 @@ const totalRevenue = computed(() => sold.value.reduce((s, p) => s + p.revenue, 0
 const totalDiscount = computed(() => sold.value.reduce((s, p) => s + p.discount, 0))
 const totalCostEx = computed(() => sold.value.reduce((s, p) => s + p.costExVat, 0))
 const totalCostInclVat = computed(() => sold.value.reduce((s, p) => s + p.costInclVat, 0))
-const totalGP = computed(() => (totalRevenue.value - totalDiscount.value) / 1.15 - totalCostEx.value)
+const totalGP = computed(() => (totalRevenue.value - totalDiscount.value) - totalCostInclVat.value)
 const gpMargin = computed(() => {
-  const netRev = (totalRevenue.value - totalDiscount.value) / 1.15
+  const netRev = totalRevenue.value - totalDiscount.value
   return netRev > 0 ? (totalGP.value / netRev) * 100 : 0
 })
 const totalQtySold = computed(() => sold.value.reduce((s, p) => s + p.qtySold, 0))
@@ -251,7 +251,7 @@ function renderTopProductsChart() {
   const top10 = topProducts.value.slice(0, 10)
   const labels = top10.map(p => p.name.length > 22 ? p.name.slice(0, 20) + '…' : p.name)
   const revenues = top10.map(p => p.revenue)
-  const gps = top10.map(p => (p.revenue - p.discount) / 1.15 - p.costExVat)
+  const gps = top10.map(p => (p.revenue - p.discount) - p.costInclVat)
 
   topProductsChart = new Chart(topProductsChartRef.value, {
     type: 'bar',
@@ -429,7 +429,7 @@ function renderTopProductsChart() {
               <td class="fr-r">{{ formatZAR(p.revenue) }}</td>
               <td class="fr-r">{{ p.discount ? formatZAR(p.discount) : '—' }}</td>
               <td class="fr-r">{{ formatZAR(p.costInclVat) }}</td>
-              <td class="fr-r">{{ formatZAR((p.revenue - p.discount) / 1.15 - p.costExVat) }}</td>
+              <td class="fr-r">{{ formatZAR((p.revenue - p.discount) - p.costInclVat) }}</td>
             </tr>
           </tbody>
           <tfoot>
@@ -471,7 +471,7 @@ function renderTopProductsChart() {
 
       <!-- Footer -->
       <footer class="fr-footer">
-        <p>GP = (Revenue − Discounts) ÷ 1.15 − Wholesale cost &nbsp;|&nbsp; {{ businessName }} — VAT reg. All amounts in ZAR.</p>
+        <p>GP = (Revenue − Discounts) − Wholesale cost incl. VAT &nbsp;|&nbsp; {{ businessName }} — VAT reg. All amounts in ZAR.</p>
       </footer>
     </div>
   </div>

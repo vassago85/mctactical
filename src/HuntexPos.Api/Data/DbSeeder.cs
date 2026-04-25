@@ -41,6 +41,7 @@ public static class DbSeeder
         await EnsureImportPresetsSupplierNullableAsync(db, ct);
         await EnsureQuotesTablesAsync(db, ct);
         await EnsureAspNetUsersSupplierColumnAsync(db, ct);
+        await EnsureProductSupplierDiscountColumnAsync(db, ct);
         await MergeDuplicateSkusAsync(db, log, ct);
         await VenaticsGearSeeder.SeedAsync(db, log, ct);
 
@@ -436,6 +437,12 @@ public static class DbSeeder
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "FixedSellPrice" TEXT;""", ct); } catch { }
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "MinSellPrice" TEXT;""", ct); } catch { }
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "PriceLocked" INTEGER NOT NULL DEFAULT 0;""", ct); } catch { }
+    }
+
+    private static async Task EnsureProductSupplierDiscountColumnAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "SupplierDiscountPercent" TEXT NOT NULL DEFAULT '0';""", ct); } catch { }
     }
 
     /// <summary>

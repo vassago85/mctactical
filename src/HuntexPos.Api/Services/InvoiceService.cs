@@ -141,7 +141,7 @@ public class InvoiceService
                 OriginalUnitPrice = l.OriginalUnitPrice > 0 ? l.OriginalUnitPrice : p.SellPrice,
                 LineDiscount = l.LineDiscount,
                 LineTotal = lineTotal,
-                CostAtSale = p.Cost
+                CostAtSale = Math.Round(p.Cost * (1 - p.SupplierDiscountPercent / 100m), 2)
             });
 
             p.QtyOnHand -= l.Quantity;

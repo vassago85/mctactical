@@ -311,7 +311,7 @@ public class QuoteService
                 ItemName = string.IsNullOrWhiteSpace(l.ItemName) ? (prod?.Name ?? "") : l.ItemName,
                 Description = l.Description,
                 Quantity = qty,
-                UnitCost = l.UnitCost ?? prod?.Cost,
+                UnitCost = l.UnitCost ?? (prod != null ? Math.Round(prod.Cost * (1 - prod.SupplierDiscountPercent / 100m), 2) : (decimal?)null),
                 UnitPrice = unit,
                 DiscountPercent = l.DiscountPercent,
                 DiscountAmount = discAmt == 0 ? (decimal?)null : discAmt,

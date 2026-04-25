@@ -29,6 +29,8 @@ type Product = {
   supplierId?: string | null
   supplierName?: string | null
   cost?: number | null
+  supplierDiscountPercent?: number
+  effectiveCost?: number | null
   sellPrice: number
   qtyOnHand: number
   qtyConsignment: number
@@ -178,6 +180,7 @@ const form = ref({
   itemType: '',
   supplierId: '' as string,
   cost: 0,
+  supplierDiscountPercent: 0,
   sellPrice: 0,
   qtyOnHand: 0,
   pricingMethod: 'default' as 'default' | 'custom_markup' | 'fixed_price',
@@ -189,6 +192,13 @@ const form = ref({
 const formBusy = ref(false)
 const formErr = ref<string | null>(null)
 const sellPriceManual = ref(false)
+
+const formEffectiveCost = computed(() => {
+  const cost = Number(form.value.cost) || 0
+  const disc = Number(form.value.supplierDiscountPercent) || 0
+  if (cost <= 0) return 0
+  return Math.round(cost * (1 - disc / 100) * 100) / 100
+})
 
 // Only Owner/Dev can correct qty-on-hand from the edit drawer (audited via adjust-stock endpoint).
 // Admin/Sales must go through Stocktake or consignment receipts instead.
@@ -244,6 +254,7 @@ function openEdit(p: Product) {
     itemType: p.itemType ?? '',
     supplierId: p.supplierId ?? '',
     cost: p.cost ?? 0,
+    supplierDiscountPercent: p.supplierDiscountPercent ?? 0,
     sellPrice: p.sellPrice,
     qtyOnHand: p.qtyOnHand,
     pricingMethod: (p.pricingMethod as 'default' | 'custom_markup' | 'fixed_price') ?? 'default',
@@ -333,6 +344,7 @@ async function saveProduct() {
       itemType: form.value.itemType || null,
       supplierId: form.value.supplierId || null,
       cost: costVal > 0 ? costVal : null,
+      supplierDiscountPercent: Number(form.value.supplierDiscountPercent) || 0,
       sellPrice: sellVal > 0 ? sellVal : null,
       pricingMethod: form.value.pricingMethod,
       customMarkupPercent: form.value.customMarkupPercent,
@@ -743,7 +755,15 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
               <td class="stock-mono">{{ p.sku }}</td>
               <td class="stock-name">{{ p.name }}</td>
               <td>{{ p.supplierName ?? '—' }}</td>
-              <td class="text-right">{{ p.cost != null && p.cost > 0 ? formatZAR(p.cost) : '—' }}</td>
+              <td class="text-right">
+                <template v-if="p.cost != null && p.cost > 0">
+                  {{ formatZAR(p.cost) }}
+                  <span v-if="p.supplierDiscountPercent && p.supplierDiscountPercent > 0" class="stock-supplier-disc">
+                    &rarr; {{ formatZAR(p.effectiveCost ?? p.cost) }} (−{{ p.supplierDiscountPercent }}%)
+                  </span>
+                </template>
+                <template v-else>—</template>
+              </td>
               <td class="text-right" :class="{ 'stock-warn': !!p.warning }">
                 {{ formatZAR(p.sellPrice) }}
                 <AlertTriangle v-if="p.warning" :title="p.warning" class="stock-warn-icon" :size="14" />
@@ -845,6 +865,12 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
               <McField label="Cost ex VAT (R)" for-id="f-cost">
                 <input id="f-cost" v-model.number="form.cost" type="number" step="0.01" min="0" />
               </McField>
+              <McField label="Supplier discount %" for-id="f-supdisc" hint="0 = no discount">
+                <input id="f-supdisc" v-model.number="form.supplierDiscountPercent" type="number" step="1" min="0" max="100" />
+              </McField>
+              <div v-if="form.supplierDiscountPercent > 0" class="stock-drawer__effective-cost">
+                Effective cost: <strong>{{ formatZAR(formEffectiveCost) }}</strong>
+              </div>
               <McField label="Sell price (R)" for-id="f-sell" :hint="!editId && !sellPriceManual ? 'Auto-calculated from cost' : ''">
                 <input id="f-sell" v-model.number="form.sellPrice" type="number" step="0.01" min="0" @input="sellPriceManual = true" />
               </McField>
@@ -1325,6 +1351,13 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
   font-weight: 600;
 }
 
+.stock-supplier-disc {
+  display: block;
+  font-size: 0.75em;
+  color: var(--mc-app-accent, #0a7e3d);
+  font-weight: 600;
+}
+
 .stock-qty--low {
   color: #e65100;
 }
@@ -1472,6 +1505,16 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
   .stock-drawer__grid {
     grid-template-columns: 1fr 1fr;
   }
+}
+
+.stock-drawer__effective-cost {
+  grid-column: 1 / -1;
+  padding: 0.35rem 0.75rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--mc-app-text-secondary, #665);
+  background: var(--mc-app-surface-2, #f5f3ef);
+  border-radius: 6px;
 }
 
 .stock-drawer__foot {

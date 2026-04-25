@@ -101,7 +101,7 @@ public class ReportsController : ControllerBase
                 var orderDisc = dayInvoices.Sum(i => i.DiscountTotal);
                 var costEx = dayInvoices.Sum(i => i.Lines.Sum(l =>
                     (l.CostAtSale > 0 ? l.CostAtSale : 0m) * l.Quantity));
-                var gp = Math.Round((revenue - orderDisc) / 1.15m - costEx, 2);
+                var gp = Math.Round((revenue - orderDisc) - costEx * 1.15m, 2);
 
                 return new DailySummaryDto
                 {
@@ -197,8 +197,7 @@ public class ReportsController : ControllerBase
                 var orderDiscShare = invSub > 0
                     ? Math.Round(lineTotal / invSub * inv.DiscountTotal, 2)
                     : 0m;
-                // GP = (revenue - order discount) / 1.15 - cost excl VAT
-                var gp = Math.Round((lineTotal - orderDiscShare) / 1.15m - costExcl * line.Quantity, 2);
+                var gp = Math.Round((lineTotal - orderDiscShare) - costExcl * line.Quantity * 1.15m, 2);
 
                 sumCostExcl += costExcl * line.Quantity;
                 sumCostIncl += costIncl * line.Quantity;
@@ -249,7 +248,7 @@ public class ReportsController : ControllerBase
             var dayDiscount = dayInvoices.Sum(i => i.DiscountTotal) + dayLines.Sum(l => l.LineDiscount);
             var dayCostExcl = dayLines.Sum(l => (l.CostAtSale > 0 ? l.CostAtSale : (l.Product?.Cost ?? 0)) * l.Quantity);
             var dayCostIncl = dayLines.Sum(l => Math.Round((l.CostAtSale > 0 ? l.CostAtSale : (l.Product?.Cost ?? 0)) * 1.15m, 2) * l.Quantity);
-            var dayGp = Math.Round((daySales - dayInvoices.Sum(i => i.DiscountTotal)) / 1.15m - dayCostExcl, 2);
+            var dayGp = Math.Round((daySales - dayInvoices.Sum(i => i.DiscountTotal)) - dayCostExcl * 1.15m, 2);
             sb.AppendLine(string.Join(",",
                 day.Key,
                 day.Count().ToString(CultureInfo.InvariantCulture),

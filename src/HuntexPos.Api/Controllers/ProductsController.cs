@@ -494,6 +494,7 @@ public class ProductsController : ControllerBase
         if (req.ItemType != null) p.ItemType = string.IsNullOrWhiteSpace(req.ItemType) ? null : req.ItemType.Trim();
         if (req.SupplierId.HasValue) p.SupplierId = req.SupplierId;
         if (req.Cost.HasValue) p.Cost = req.Cost.Value;
+        if (req.SupplierDiscountPercent.HasValue) p.SupplierDiscountPercent = Math.Clamp(req.SupplierDiscountPercent.Value, 0, 100);
         if (req.QtyOnHand.HasValue) p.QtyOnHand = req.QtyOnHand.Value;
         if (req.Active.HasValue) p.Active = req.Active.Value;
 
@@ -729,32 +730,41 @@ public class ProductsController : ControllerBase
         return Ok(new { merged, skus = dupes });
     }
 
-    private static ProductDto Map(Domain.Product p, bool hideCost, ActiveSpecialInfo? special = null) => new()
+    private static decimal EffectiveCost(Domain.Product p) =>
+        Math.Round(p.Cost * (1 - p.SupplierDiscountPercent / 100m), 2);
+
+    private static ProductDto Map(Domain.Product p, bool hideCost, ActiveSpecialInfo? special = null)
     {
-        Id = p.Id,
-        SupplierId = p.SupplierId,
-        SupplierName = p.Supplier?.Name,
-        Sku = p.Sku,
-        Barcode = p.Barcode,
-        Name = p.Name,
-        Description = p.Description,
-        Category = p.Category,
-        Manufacturer = p.Manufacturer,
-        ItemType = p.ItemType,
-        Cost = hideCost ? null : p.Cost,
-        SellPrice = p.SellPrice,
-        QtyOnHand = p.QtyOnHand,
-        QtyConsignment = p.QtyConsignment,
-        Active = p.Active,
-        Warning = !hideCost && PricingCalculator.IsBelowDistributorCost(p.SellPrice, p.Cost)
-            ? $"Sell R{p.SellPrice:0} < distributor R{PricingCalculator.DistributorFloor(p.Cost):0.00}"
-            : null,
-        SpecialPrice = special?.EffectivePrice,
-        SpecialLabel = special?.Label,
-        PricingMethod = string.IsNullOrWhiteSpace(p.PricingMethod) ? "default" : p.PricingMethod,
-        CustomMarkupPercent = p.CustomMarkupPercent,
-        FixedSellPrice = p.FixedSellPrice,
-        MinSellPrice = p.MinSellPrice,
-        PriceLocked = p.PriceLocked
-    };
+        var effCost = EffectiveCost(p);
+        return new()
+        {
+            Id = p.Id,
+            SupplierId = p.SupplierId,
+            SupplierName = p.Supplier?.Name,
+            Sku = p.Sku,
+            Barcode = p.Barcode,
+            Name = p.Name,
+            Description = p.Description,
+            Category = p.Category,
+            Manufacturer = p.Manufacturer,
+            ItemType = p.ItemType,
+            Cost = hideCost ? null : p.Cost,
+            SupplierDiscountPercent = p.SupplierDiscountPercent,
+            EffectiveCost = hideCost ? null : effCost,
+            SellPrice = p.SellPrice,
+            QtyOnHand = p.QtyOnHand,
+            QtyConsignment = p.QtyConsignment,
+            Active = p.Active,
+            Warning = !hideCost && PricingCalculator.IsBelowDistributorCost(p.SellPrice, effCost)
+                ? $"Sell R{p.SellPrice:0} < distributor R{PricingCalculator.DistributorFloor(effCost):0.00}"
+                : null,
+            SpecialPrice = special?.EffectivePrice,
+            SpecialLabel = special?.Label,
+            PricingMethod = string.IsNullOrWhiteSpace(p.PricingMethod) ? "default" : p.PricingMethod,
+            CustomMarkupPercent = p.CustomMarkupPercent,
+            FixedSellPrice = p.FixedSellPrice,
+            MinSellPrice = p.MinSellPrice,
+            PriceLocked = p.PriceLocked
+        };
+    }
 }

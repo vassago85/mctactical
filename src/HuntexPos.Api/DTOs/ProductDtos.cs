@@ -13,6 +13,8 @@ public class ProductDto
     public string? Manufacturer { get; set; }
     public string? ItemType { get; set; }
     public decimal? Cost { get; set; }
+    public decimal SupplierDiscountPercent { get; set; }
+    public decimal? EffectiveCost { get; set; }
     public decimal SellPrice { get; set; }
     public int QtyOnHand { get; set; }
     public int QtyConsignment { get; set; }
@@ -94,6 +96,7 @@ public class UpdateProductRequest
     public string? ItemType { get; set; }
     public Guid? SupplierId { get; set; }
     public decimal? Cost { get; set; }
+    public decimal? SupplierDiscountPercent { get; set; }
     public decimal? SellPrice { get; set; }
     public int? QtyOnHand { get; set; }
     public bool? Active { get; set; }
