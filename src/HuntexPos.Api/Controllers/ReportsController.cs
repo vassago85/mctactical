@@ -76,7 +76,9 @@ public class ReportsController : ControllerBase
         [FromQuery] DateTimeOffset? from = null,
         [FromQuery] DateTimeOffset? to = null)
     {
-        var all = await _db.Invoices.AsNoTracking().ToListAsync(ct);
+        var all = await _db.Invoices.AsNoTracking()
+            .Include(i => i.Lines)
+            .ToListAsync(ct);
         IEnumerable<Invoice> rows = all.Where(i => i.Status == InvoiceStatus.Final);
 
         if (from.HasValue || to.HasValue)
@@ -92,11 +94,22 @@ public class ReportsController : ControllerBase
 
         return rows
             .GroupBy(i => DateOnly.FromDateTime(i.CreatedAt.UtcDateTime))
-            .Select(g => new DailySummaryDto
+            .Select(g =>
             {
-                Date = g.Key,
-                InvoiceCount = g.Count(),
-                GrandTotal = g.Sum(x => x.GrandTotal)
+                var dayInvoices = g.ToList();
+                var revenue = dayInvoices.Sum(i => i.Lines.Sum(l => l.LineTotal));
+                var orderDisc = dayInvoices.Sum(i => i.DiscountTotal);
+                var costEx = dayInvoices.Sum(i => i.Lines.Sum(l =>
+                    (l.CostAtSale > 0 ? l.CostAtSale : 0m) * l.Quantity));
+                var gp = Math.Round((revenue - orderDisc) / 1.15m - costEx, 2);
+
+                return new DailySummaryDto
+                {
+                    Date = g.Key,
+                    InvoiceCount = dayInvoices.Count,
+                    GrandTotal = dayInvoices.Sum(x => x.GrandTotal),
+                    GrossProfit = gp
+                };
             })
             .OrderByDescending(x => x.Date)
             .ToList();

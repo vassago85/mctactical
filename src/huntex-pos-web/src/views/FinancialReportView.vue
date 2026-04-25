@@ -17,7 +17,7 @@ type ProductSoldLine = {
   qtySold: number; revenue: number; discount: number; costExVat: number; costInclVat: number
 }
 type StockReport = { soldInPeriod: ProductSoldLine[] }
-type DailySummary = { date: string; invoiceCount: number; grandTotal: number }
+type DailySummary = { date: string; invoiceCount: number; grandTotal: number; grossProfit: number }
 type PaymentMethodBreakdown = { method: string; count: number; grandTotal: number }
 type PaymentsSummary = { totalGrand: number; totalCount: number; byMethod: PaymentMethodBreakdown[] }
 
@@ -132,6 +132,7 @@ function renderRevenueChart() {
     return dt.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })
   })
   const data = sorted.map(d => d.grandTotal)
+  const gpData = sorted.map(d => d.grossProfit)
 
   let cumulative = 0
   const cumulativeData = sorted.map(d => { cumulative += d.grandTotal; return cumulative })
@@ -151,6 +152,18 @@ function renderRevenueChart() {
           pointRadius: data.length > 30 ? 0 : 3,
           pointHoverRadius: 5,
           borderWidth: 2.5,
+          yAxisID: 'y'
+        },
+        {
+          label: 'Daily GP',
+          data: gpData,
+          borderColor: COLORS.blue,
+          backgroundColor: 'rgba(21, 101, 192, 0.08)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: data.length > 30 ? 0 : 3,
+          pointHoverRadius: 5,
+          borderWidth: 2,
           yAxisID: 'y'
         },
         {

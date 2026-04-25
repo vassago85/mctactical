@@ -5,6 +5,7 @@ public class DailySummaryDto
     public DateOnly Date { get; set; }
     public int InvoiceCount { get; set; }
     public decimal GrandTotal { get; set; }
+    public decimal GrossProfit { get; set; }
 }
 
 public class PaymentMethodBreakdownDto
