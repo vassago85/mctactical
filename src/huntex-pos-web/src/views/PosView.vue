@@ -1107,7 +1107,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   gap: 0.5rem;
   padding: 0.5rem;
 }
-@media (min-width: 480px) {
+@media (min-width: 480px) and (max-width: 1099px) {
   .pos-results-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
