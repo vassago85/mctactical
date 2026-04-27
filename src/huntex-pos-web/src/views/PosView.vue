@@ -49,7 +49,6 @@ const customerCompany = ref('')
 const customerAddress = ref('')
 const customerVatNumber = ref('')
 const showBusinessFields = ref(false)
-const showCustomerPanel = ref(false)
 const customerLoading = ref(false)
 const customerMatch = ref(false)
 const paymentMethod = ref('Card')
@@ -693,28 +692,59 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
           </div>
         </div>
 
-      </section>
+        <!-- Customer + payment: compact -->
+        <div class="pos-panel pos-panel--customer">
+          <div class="pos-panel__head">
+            <span>Customer &amp; payment</span>
+          </div>
+          <div class="pos-panel__body">
+            <div class="pos-customer-grid">
+              <McField label="Customer name" for-id="cust-name">
+                <input id="cust-name" v-model="customerName" type="text" autocomplete="name" />
+              </McField>
+              <McField label="Email (receipt)" for-id="cust-email">
+                <div class="pos-email-wrap">
+                  <input id="cust-email" v-model="customerEmail" type="email" autocomplete="email" @blur="lookupCustomer" />
+                  <McSpinner v-if="customerLoading" class="pos-email-spinner" />
+                </div>
+                <small v-if="customerMatch" class="pos-email-match">Existing customer loaded</small>
+              </McField>
+              <McField label="Customer type" for-id="cust-type">
+                <input id="cust-type" v-model="customerType" placeholder="e.g. ENT" />
+              </McField>
+              <McField label="Payment" for-id="pay-meth">
+                <select id="pay-meth" v-model="paymentMethod">
+                  <option>Card</option>
+                  <option>Cash</option>
+                  <option>EFT</option>
+                </select>
+              </McField>
+              <McField v-if="isManager" label="Order discount (R)" for-id="order-disc">
+                <input id="order-disc" v-model.number="discountTotal" type="number" step="0.01" min="0" />
+              </McField>
+            </div>
+            <div class="pos-customer-extras">
+              <McCheckbox v-model="sendEmail" label="Email invoice link" />
+              <button type="button" class="btn-link-toggle" @click="showBusinessFields = !showBusinessFields">
+                <component :is="showBusinessFields ? ChevronDown : ChevronRight" :size="14" />
+                {{ showBusinessFields ? 'Hide' : 'Add' }} business / VAT details
+              </button>
+            </div>
+            <div v-if="showBusinessFields" class="pos-customer-grid pos-customer-grid--extra">
+              <McField label="Company name" for-id="cust-company">
+                <input id="cust-company" v-model="customerCompany" type="text" placeholder="Business name" />
+              </McField>
+              <McField label="Company VAT number" for-id="cust-vat">
+                <input id="cust-vat" v-model="customerVatNumber" type="text" placeholder="e.g. 4123456789" />
+              </McField>
+              <McField label="Business address" for-id="cust-addr" class="span-full">
+                <textarea id="cust-addr" v-model="customerAddress" rows="2" placeholder="Street, City, Postal code" />
+              </McField>
+            </div>
+          </div>
+        </div>
 
-      <!-- Recent invoices -->
-      <div v-if="recentInvoices.length" class="pos-panel pos-panel--recent">
-        <div class="pos-panel__head">
-          <span>Recent invoices</span>
-        </div>
-        <div class="pos-panel__body pos-recent-list">
-          <a
-            v-for="inv in recentInvoices"
-            :key="inv.id"
-            class="pos-recent-item"
-            :href="'/#/invoice/' + inv.publicToken"
-            target="_blank"
-            rel="noreferrer"
-          >
-            <span class="pos-recent-item__num">{{ inv.invoiceNumber }}</span>
-            <span class="pos-recent-item__who">{{ inv.customerName || '—' }}</span>
-            <span class="pos-recent-item__total">{{ formatZAR(inv.grandTotal) }}</span>
-          </a>
-        </div>
-      </div>
+      </section>
     </div>
 
     <!-- Fixed totals + checkout: always visible at bottom -->
@@ -752,57 +782,24 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
         <span v-else>Complete sale</span>
       </McButton>
 
-      <!-- Customer & payment: collapsible, below checkout -->
-      <div class="pos-foot__customer">
-        <button type="button" class="pos-foot__customer-toggle" @click="showCustomerPanel = !showCustomerPanel">
-          <component :is="showCustomerPanel ? ChevronDown : ChevronRight" :size="14" />
-          Customer &amp; payment
-          <span v-if="customerName.trim()" class="pos-foot__customer-badge">{{ customerName.trim() }}</span>
-        </button>
-        <div v-if="showCustomerPanel" class="pos-foot__customer-body">
-          <div class="pos-customer-grid">
-            <McField label="Customer name" for-id="cust-name">
-              <input id="cust-name" v-model="customerName" type="text" autocomplete="name" />
-            </McField>
-            <McField label="Email (receipt)" for-id="cust-email">
-              <div class="pos-email-wrap">
-                <input id="cust-email" v-model="customerEmail" type="email" autocomplete="email" @blur="lookupCustomer" />
-                <McSpinner v-if="customerLoading" class="pos-email-spinner" />
-              </div>
-              <small v-if="customerMatch" class="pos-email-match">Existing customer loaded</small>
-            </McField>
-            <McField label="Customer type" for-id="cust-type">
-              <input id="cust-type" v-model="customerType" placeholder="e.g. ENT" />
-            </McField>
-            <McField label="Payment" for-id="pay-meth">
-              <select id="pay-meth" v-model="paymentMethod">
-                <option>Card</option>
-                <option>Cash</option>
-                <option>EFT</option>
-              </select>
-            </McField>
-            <McField v-if="isManager" label="Order discount (R)" for-id="order-disc">
-              <input id="order-disc" v-model.number="discountTotal" type="number" step="0.01" min="0" />
-            </McField>
-          </div>
-          <div class="pos-customer-extras">
-            <McCheckbox v-model="sendEmail" label="Email invoice link" />
-            <button type="button" class="btn-link-toggle" @click="showBusinessFields = !showBusinessFields">
-              <component :is="showBusinessFields ? ChevronDown : ChevronRight" :size="14" />
-              {{ showBusinessFields ? 'Hide' : 'Add' }} business / VAT details
-            </button>
-          </div>
-          <div v-if="showBusinessFields" class="pos-customer-grid pos-customer-grid--extra">
-            <McField label="Company name" for-id="cust-company">
-              <input id="cust-company" v-model="customerCompany" type="text" placeholder="Business name" />
-            </McField>
-            <McField label="Company VAT number" for-id="cust-vat">
-              <input id="cust-vat" v-model="customerVatNumber" type="text" placeholder="e.g. 4123456789" />
-            </McField>
-            <McField label="Business address" for-id="cust-addr" class="span-full">
-              <textarea id="cust-addr" v-model="customerAddress" rows="2" placeholder="Street, City, Postal code" />
-            </McField>
-          </div>
+      <!-- Recent invoices -->
+      <div v-if="recentInvoices.length" class="pos-panel pos-panel--recent pos-foot__recent">
+        <div class="pos-panel__head">
+          <span>Recent invoices</span>
+        </div>
+        <div class="pos-panel__body pos-recent-list">
+          <a
+            v-for="inv in recentInvoices"
+            :key="inv.id"
+            class="pos-recent-item"
+            :href="'/#/invoice/' + inv.publicToken"
+            target="_blank"
+            rel="noreferrer"
+          >
+            <span class="pos-recent-item__num">{{ inv.invoiceNumber }}</span>
+            <span class="pos-recent-item__who">{{ inv.customerName || '—' }}</span>
+            <span class="pos-recent-item__total">{{ formatZAR(inv.grandTotal) }}</span>
+          </a>
         </div>
       </div>
     </div>
@@ -1410,43 +1407,6 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   font-size: 0.85rem;
   padding: 0;
   text-decoration: underline;
-}
-
-/* ── Customer panel (collapsible, below checkout) ──────────────────── */
-.pos-foot__customer {
-  border: 1px solid var(--mc-app-border-soft, #ddd9d3);
-  border-radius: 10px;
-  background: var(--mc-app-surface, #fff);
-  overflow: hidden;
-}
-.pos-foot__customer-toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  width: 100%;
-  padding: 0.55rem 0.9rem;
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 0.82rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--mc-text-muted, #7a7874);
-  text-align: left;
-}
-.pos-foot__customer-toggle:hover { background: rgba(0,0,0,0.02); }
-.pos-foot__customer-badge {
-  margin-left: auto;
-  font-weight: 500;
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 0.82rem;
-  color: var(--mc-accent, #f47a20);
-}
-.pos-foot__customer-body {
-  padding: 0.4rem 0.9rem 0.7rem;
-  border-top: 1px solid var(--mc-app-border-soft, #eceae6);
 }
 
 /* ── Recent invoices panel ──────────────────────────────────────────── */
