@@ -776,6 +776,18 @@ body.mc-body-app .mc-text-secondary {
   color: var(--mc-app-text-secondary);
 }
 
+/* ── Privacy mode (blur sensitive numbers for screenshots/demos) ────── */
+.privacy-mode .sensitive-value {
+  filter: blur(7px);
+  user-select: none;
+  pointer-events: none;
+  transition: filter 0.15s ease;
+}
+.privacy-mode .sensitive-chart {
+  filter: blur(8px);
+  pointer-events: none;
+}
+
 /* ── Print: hide shell chrome ───────────────────────────────────────── */
 @media print {
   .mc-topbar,
@@ -788,4 +800,9 @@ body.mc-body-app .mc-text-secondary {
   }
 
   body, html { background: #fff !important; }
+
+  .privacy-mode .sensitive-value,
+  .privacy-mode .sensitive-chart {
+    filter: none !important;
+  }
 }

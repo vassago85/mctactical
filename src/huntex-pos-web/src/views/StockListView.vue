@@ -14,6 +14,7 @@ import McSpinner from '@/components/ui/McSpinner.vue'
 import McEmptyState from '@/components/ui/McEmptyState.vue'
 import McModal from '@/components/ui/McModal.vue'
 import McCheckbox from '@/components/ui/McCheckbox.vue'
+import McFilterToolbar from '@/components/ui/McFilterToolbar.vue'
 import { AlertTriangle, MoreHorizontal, X, Star } from 'lucide-vue-next'
 
 type Supplier = { id: string; name: string }
@@ -89,6 +90,8 @@ function toggleActionsMenu(id: string) {
 const canManage = computed(() => auth.hasRole('Admin', 'Owner', 'Dev'))
 const canExport = canManage
 const filterSpecials = ref(false)
+const filterSupplierId = ref<string>('')
+const filterInStockOnly = ref(false)
 const pageLabel = computed(() => {
   if (!page.value) return ''
   const from = page.value.total === 0 ? 0 : page.value.skip + 1
@@ -96,8 +99,14 @@ const pageLabel = computed(() => {
   return `${from}–${to} of ${page.value.total}`
 })
 
+const visibleItems = computed(() => {
+  const items = page.value?.items ?? []
+  if (!filterInStockOnly.value) return items
+  return items.filter((p) => p.qtyOnHand + p.qtyConsignment > 0)
+})
+
 let debounce: ReturnType<typeof setTimeout> | null = null
-watch([q, includeInactive], () => {
+watch([q, includeInactive, filterSupplierId], () => {
   skip.value = 0
   if (debounce) clearTimeout(debounce)
   debounce = setTimeout(() => void load(), 300)
@@ -128,6 +137,7 @@ async function load() {
         q: q.value.trim() || undefined,
         includeInactive: includeInactive.value,
         hasSpecial: filterSpecials.value || undefined,
+        supplierId: filterSupplierId.value || undefined,
         skip: skip.value,
         take: pageSize.value
       }
@@ -678,25 +688,44 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
 
     <McAlert v-if="err" variant="error">{{ err }}</McAlert>
 
-    <McCard :padded="false" title="Filters">
-      <div class="stock-toolbar">
-        <div class="stock-toolbar__search">
-          <McField label="Search" for-id="stock-q">
-            <input
-              id="stock-q"
-              v-model="q"
-              type="search"
-              placeholder="Any words, any order — matches name, SKU, barcode, category, wholesaler…"
-            />
-          </McField>
-        </div>
-        <label class="stock-toolbar__check">
-          <input v-model="includeInactive" type="checkbox" />
-          Include inactive
-        </label>
-        <div class="stock-toolbar__page">
-          <span class="stock-toolbar__label">Rows</span>
-          <select v-model.number="pageSize" class="stock-toolbar__select">
+    <McFilterToolbar sticky>
+      <input
+        v-model="q"
+        type="search"
+        placeholder="Search name, SKU, barcode, category, wholesaler…"
+        class="stock-filter-search"
+        aria-label="Search inventory"
+      />
+      <select v-model="filterSupplierId" class="stock-filter-supplier" aria-label="Filter by wholesaler">
+        <option value="">All wholesalers</option>
+        <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
+      </select>
+      <button
+        type="button"
+        class="stock-filter-toggle"
+        :class="{ 'stock-filter-toggle--on': filterInStockOnly }"
+        @click="filterInStockOnly = !filterInStockOnly"
+      >In stock</button>
+      <button
+        type="button"
+        class="stock-filter-toggle"
+        :class="{ 'stock-filter-toggle--on': filterSpecials }"
+        @click="filterSpecials = !filterSpecials"
+      >
+        <component :is="filterSpecials ? X : Star" :size="14" />
+        Specials
+      </button>
+      <button
+        type="button"
+        class="stock-filter-toggle"
+        :class="{ 'stock-filter-toggle--on': includeInactive }"
+        @click="includeInactive = !includeInactive"
+      >Inactive</button>
+
+      <template #actions>
+        <div class="stock-filter-rows">
+          <span class="stock-filter-rows__label">Rows</span>
+          <select v-model.number="pageSize" aria-label="Rows per page">
             <option :value="100">100</option>
             <option :value="250">250</option>
             <option :value="500">500</option>
@@ -704,42 +733,27 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
             <option :value="5000">5000</option>
           </select>
         </div>
-        <div class="stock-toolbar__nav">
-          <McButton variant="secondary" type="button" :disabled="busy || skip <= 0" @click="prevPage">Previous</McButton>
+        <div class="stock-filter-pager">
+          <McButton variant="secondary" dense type="button" :disabled="busy || skip <= 0" @click="prevPage">Prev</McButton>
+          <span class="stock-filter-pager__meta">{{ pageLabel }}</span>
           <McButton
             variant="secondary"
+            dense
             type="button"
             :disabled="busy || !page || skip + page.take >= page.total"
             @click="nextPage"
-          >
-            Next
-          </McButton>
-          <span class="stock-toolbar__meta">{{ pageLabel }}</span>
+          >Next</McButton>
           <McSpinner v-if="busy" />
         </div>
-      </div>
-    </McCard>
-
-    <div class="stock-specials-bar">
-      <button
-        type="button"
-        class="stock-specials-chip"
-        :class="{ 'stock-specials-chip--active': filterSpecials }"
-        @click="filterSpecials = !filterSpecials"
-      >
-        <span class="stock-specials-chip__icon"><component :is="filterSpecials ? X : Star" :size="14" /></span>
-        {{ filterSpecials ? 'Showing specials only — click to clear' : 'Show products with specials' }}
-        <span v-if="filterSpecials && page" class="stock-specials-chip__count">({{ page.total }})</span>
-      </button>
-    </div>
+      </template>
+    </McFilterToolbar>
 
     <McCard :padded="false" title="Products">
       <div class="stock-table-wrap">
-        <table v-if="page?.items.length" class="stock-table mc-table">
+        <table v-if="visibleItems.length" class="stock-table mc-table">
           <thead>
             <tr>
-              <th>SKU</th>
-              <th>Name</th>
+              <th>Product</th>
               <th>Wholesaler</th>
               <th class="text-right">Cost</th>
               <th class="text-right">Sell</th>
@@ -751,9 +765,14 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
             </tr>
           </thead>
           <tbody>
-            <tr v-for="p in page.items" :key="p.id">
-              <td class="stock-mono">{{ p.sku }}</td>
-              <td class="stock-name">{{ p.name }}</td>
+            <tr v-for="p in visibleItems" :key="p.id">
+              <td class="stock-product">
+                <div class="stock-product__name">{{ p.name }}</div>
+                <div class="stock-product__meta">
+                  <span class="stock-product__sku">{{ p.sku }}</span>
+                  <span v-if="p.barcode" class="stock-product__barcode">· {{ p.barcode }}</span>
+                </div>
+              </td>
               <td>{{ p.supplierName ?? '—' }}</td>
               <td class="text-right">
                 <template v-if="p.cost != null && p.cost > 0">
@@ -776,14 +795,20 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
                 <span v-else class="stock-qty--none">—</span>
               </td>
               <td class="text-center">
-                <strong :class="{ 'stock-qty--low': p.qtyOnHand <= 3 }">{{ p.qtyOnHand }}</strong>
+                <strong :class="{ 'stock-qty--low': p.qtyOnHand <= 3 && p.qtyOnHand > 0, 'stock-qty--out': p.qtyOnHand < 1 }">{{ p.qtyOnHand }}</strong>
               </td>
               <td class="text-center">
                 <strong v-if="p.qtyConsignment > 0" class="stock-qty--consign">{{ p.qtyConsignment }}</strong>
                 <span v-else class="stock-qty--none">—</span>
               </td>
               <td>
-                <McBadge :variant="p.active ? 'success' : 'neutral'">{{ p.active ? 'Active' : 'Inactive' }}</McBadge>
+                <div class="stock-status-stack">
+                  <McBadge :variant="p.active ? 'success' : 'neutral'">{{ p.active ? 'Active' : 'Inactive' }}</McBadge>
+                  <McBadge v-if="p.qtyOnHand < 1" variant="danger">Out</McBadge>
+                  <McBadge v-else-if="p.qtyOnHand <= 3" variant="warning">Low</McBadge>
+                  <McBadge v-if="p.specialPrice != null && p.specialPrice !== p.sellPrice" variant="accent">Special</McBadge>
+                  <McBadge v-if="p.qtyConsignment > 0" variant="neutral">Consign</McBadge>
+                </div>
               </td>
               <td v-if="canManage" class="stock-actions">
                 <McButton variant="secondary" dense type="button" @click="openEdit(p)">Edit</McButton>
@@ -1183,122 +1208,76 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
   gap: 0.5rem;
 }
 
-.stock-specials-bar {
-  margin-bottom: 1rem;
-}
-
-.stock-specials-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.5rem 1rem;
-  border-radius: 999px;
-  border: 2px solid var(--mc-app-border-soft, #ddd9d3);
-  background: var(--mc-app-surface, #fff);
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--mc-app-text-muted, #5c5a56);
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.stock-specials-chip:hover {
-  border-color: var(--mc-accent, #f47a20);
-  color: var(--mc-accent, #f47a20);
-}
-
-.stock-specials-chip--active {
-  border-color: var(--mc-accent, #f47a20);
-  background: var(--mc-accent, #f47a20);
-  color: #fff;
-}
-
-.stock-specials-chip--active:hover {
-  background: #d96a15;
-  border-color: #d96a15;
-  color: #fff;
-}
-
-.stock-specials-chip__icon {
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.9rem;
-}
-
-.stock-specials-chip__count {
-  font-weight: 400;
-  opacity: 0.85;
-}
-
 .stock-page {
   min-height: 100%;
 }
 
-.stock-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 1rem;
-  padding: 1.15rem var(--mc-app-pad-card, 1.75rem);
+/* ── Filter toolbar inputs ────────────────────────────────────────────── */
+.stock-filter-search {
+  flex: 1 1 240px;
+  min-width: 200px;
 }
-
-.stock-toolbar__search {
-  flex: 1 1 220px;
+.stock-filter-supplier {
+  flex: 0 1 200px;
+  min-width: 140px;
 }
-
-.stock-toolbar__search :deep(.mc-field) {
-  margin-bottom: 0;
-}
-
-.stock-toolbar__check {
-  display: flex;
+.stock-filter-toggle {
+  display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  font-weight: 500;
-  padding-bottom: 0.35rem;
-  cursor: pointer;
-}
-
-.stock-toolbar__page {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.stock-toolbar__label {
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: var(--mc-app-text-secondary, #333336);
-}
-
-.stock-toolbar__select {
-  min-height: 44px;
+  gap: 0.3rem;
+  height: 36px;
   padding: 0 0.85rem;
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1.5px solid var(--mc-app-border-subtle, #c8c5bd);
   background: var(--mc-app-surface, #fff);
-  color: var(--mc-app-text, #1a1a1c);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.stock-toolbar__select:focus {
-  outline: none;
-  border-color: var(--mc-accent, #f47a20);
-  box-shadow: inset 0 0 0 1px var(--mc-accent, #f47a20);
-}
-
-.stock-toolbar__nav {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  margin-left: auto;
-}
-
-.stock-toolbar__meta {
+  color: var(--mc-app-text-secondary, #333336);
   font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+.stock-filter-toggle:hover {
+  border-color: var(--mc-accent, #f47a20);
+}
+.stock-filter-toggle--on {
+  border-color: var(--mc-accent, #f47a20);
+  background: var(--mc-accent, #f47a20);
+  color: #fff;
+}
+.stock-filter-toggle--on:hover { background: #d96a15; border-color: #d96a15; }
+
+.stock-filter-rows {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
   color: var(--mc-app-text-muted, #5c5a56);
-  font-weight: 500;
+}
+.stock-filter-rows__label {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.stock-filter-rows select {
+  height: 32px;
+  padding: 0 0.4rem;
+  border-radius: 6px;
+  border: 1px solid var(--mc-app-border-soft, #ddd9d3);
+  background: var(--mc-app-surface, #fff);
+  font-size: 0.85rem;
+}
+.stock-filter-pager {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.stock-filter-pager__meta {
+  font-size: 0.78rem;
+  color: var(--mc-app-text-muted, #5c5a56);
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .stock-table-wrap {
@@ -1309,21 +1288,35 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
 
 .stock-table {
   width: 100%;
-  min-width: 750px;
+  min-width: 820px;
   font-size: 0.88rem;
 }
 
 .text-right { text-align: right; }
 .text-center { text-align: center; }
 
-.stock-mono {
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+/* Combined name/SKU/barcode cell */
+.stock-product {
+  max-width: 22rem;
+  line-height: 1.3;
 }
+.stock-product__name {
+  font-weight: 700;
+  color: var(--mc-app-heading, #0a0a0c);
+}
+.stock-product__meta {
+  display: block;
+  font-size: 0.74rem;
+  color: var(--mc-app-text-muted, #5c5a56);
+  font-variant-numeric: tabular-nums;
+  margin-top: 0.1rem;
+}
+.stock-product__sku { font-weight: 600; }
 
-.stock-name {
-  max-width: 200px;
-  font-weight: 500;
+.stock-status-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
 }
 
 .stock-warn {
@@ -1360,6 +1353,10 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
 
 .stock-qty--low {
   color: #e65100;
+}
+
+.stock-qty--out {
+  color: #c62828;
 }
 
 .stock-qty--consign {

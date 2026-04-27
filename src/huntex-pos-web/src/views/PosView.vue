@@ -4,8 +4,6 @@ import { http } from '@/api/http'
 import { useToast } from '@/composables/useToast'
 import { formatZAR } from '@/utils/format'
 import BarcodeScanner from '@/components/BarcodeScanner.vue'
-import McPageHeader from '@/components/ui/McPageHeader.vue'
-import McCard from '@/components/ui/McCard.vue'
 import McButton from '@/components/ui/McButton.vue'
 import McField from '@/components/ui/McField.vue'
 import McAlert from '@/components/ui/McAlert.vue'
@@ -168,6 +166,11 @@ onMounted(async () => {
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 watch(q, () => {
   if (searchTimer) clearTimeout(searchTimer)
+  if (scannerBufferActive) {
+    results.value = []
+    searchLoading.value = false
+    return
+  }
   searchTimer = setTimeout(() => void runSearch(), 250)
 })
 
@@ -563,56 +566,59 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
       <BarcodeScanner :active="scanOpen" @decode="onScan" />
     </div>
 
-      <!-- Results panel: only when user is actively searching -->
-      <aside v-if="q.trim()" class="pos-main__results">
-        <div class="pos-panel">
-          <div class="pos-panel__head">
-            <span>Results</span>
-            <span class="pos-panel__meta" v-if="!searchLoading && results.length">{{ results.length }}</span>
-          </div>
-          <div class="pos-panel__body">
-            <McSkeleton v-if="searchLoading" :lines="4" />
-            <McEmptyState
-              v-else-if="searchNoHits"
-              title="No matches"
-              hint="Try other words — order doesn't matter."
-            />
-            <div v-else class="pos-results-grid">
-              <button
-                v-for="p in results"
-                :key="p.id"
-                type="button"
-                class="pos-card"
-                :class="{ 'pos-card--out': !isManager && p.qtyOnHand < 1 }"
-                :disabled="!isManager && p.qtyOnHand < 1"
-                @click="addToCart(p)"
-              >
-                <p class="pos-card__name">{{ p.name }}</p>
-                <p class="pos-card__meta">
-                  <span>{{ p.sku }}</span>
-                  <span v-if="p.barcode"> · {{ p.barcode }}</span>
-                </p>
-                <div class="pos-card__foot">
-                  <div class="pos-card__prices">
-                    <template v-if="getEffectivePrice(p).hasDiscount">
-                      <span class="pos-card__price pos-card__price--sale">{{ formatZAR(getEffectivePrice(p).price) }}</span>
-                      <span class="pos-card__price--was">{{ formatZAR(p.sellPrice) }}</span>
-                    </template>
-                    <span v-else class="pos-card__price">{{ formatZAR(p.sellPrice) }}</span>
+    <div class="pos-workspace">
+      <!-- LEFT COLUMN: results + cart + recent invoices -->
+      <div class="pos-workspace__left">
+        <!-- Results panel: only when user is actively searching -->
+        <aside v-if="q.trim()" class="pos-results-aside">
+          <div class="pos-panel">
+            <div class="pos-panel__head">
+              <span>Results</span>
+              <span class="pos-panel__meta" v-if="!searchLoading && results.length">{{ results.length }}</span>
+            </div>
+            <div class="pos-panel__body">
+              <McSkeleton v-if="searchLoading" :lines="4" />
+              <McEmptyState
+                v-else-if="searchNoHits"
+                title="No matches"
+                hint="Try other words — order doesn't matter."
+              />
+              <div v-else class="pos-results-grid">
+                <button
+                  v-for="p in results"
+                  :key="p.id"
+                  type="button"
+                  class="pos-card"
+                  :class="{ 'pos-card--out': !isManager && p.qtyOnHand < 1 }"
+                  :disabled="!isManager && p.qtyOnHand < 1"
+                  @click="addToCart(p)"
+                >
+                  <p class="pos-card__name">{{ p.name }}</p>
+                  <p class="pos-card__meta">
+                    <span>{{ p.sku }}</span>
+                    <span v-if="p.barcode"> · {{ p.barcode }}</span>
+                  </p>
+                  <div class="pos-card__foot">
+                    <div class="pos-card__prices">
+                      <template v-if="getEffectivePrice(p).hasDiscount">
+                        <span class="pos-card__price pos-card__price--sale">{{ formatZAR(getEffectivePrice(p).price) }}</span>
+                        <span class="pos-card__price--was">{{ formatZAR(p.sellPrice) }}</span>
+                      </template>
+                      <span v-else class="pos-card__price">{{ formatZAR(p.sellPrice) }}</span>
+                    </div>
+                    <span
+                      class="pos-card__stock"
+                      :class="{
+                        'pos-card__stock--low': p.qtyOnHand <= 3 && p.qtyOnHand > 0,
+                        'pos-card__stock--out': p.qtyOnHand < 1
+                      }"
+                    >{{ p.qtyOnHand < 1 ? 'Out of stock' : `${p.qtyOnHand} in stock` }}</span>
                   </div>
-                  <span
-                    class="pos-card__stock"
-                    :class="{
-                      'pos-card__stock--low': p.qtyOnHand <= 3 && p.qtyOnHand > 0,
-                      'pos-card__stock--out': p.qtyOnHand < 1
-                    }"
-                  >{{ p.qtyOnHand < 1 ? 'Out of stock' : `${p.qtyOnHand} in stock` }}</span>
-                </div>
-              </button>
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      </aside>
+        </aside>
 
         <!-- Cart lines -->
         <div class="pos-panel pos-panel--cart">
@@ -644,7 +650,10 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
                   :class="{ 'pos-cart-row--just-added': recentlyAdded.has(l.product.id) }"
                 >
                   <td class="pos-cart-name">
-                    {{ l.product.name }}
+                    <span class="pos-cart-name__title">{{ l.product.name }}</span>
+                    <span class="pos-cart-name__meta">
+                      {{ l.product.sku }}<template v-if="l.product.barcode"> · {{ l.product.barcode }}</template>
+                    </span>
                     <span v-if="l.originalPrice !== l.unitPrice" class="pos-cart-was">was {{ formatZAR(l.originalPrice) }}</span>
                     <McBadge v-if="l.qty > l.product.qtyOnHand" variant="warning">Special order — {{ l.qty - Math.max(0, l.product.qtyOnHand) }} to deliver</McBadge>
                   </td>
@@ -689,13 +698,37 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
           </div>
         </div>
 
-        <!-- Customer + payment: compact -->
-        <div class="pos-panel pos-panel--customer">
+        <!-- Recent invoices -->
+        <div v-if="recentInvoices.length" class="pos-panel pos-panel--recent">
           <div class="pos-panel__head">
-            <span>Customer &amp; payment</span>
+            <span>Recent invoices</span>
           </div>
-          <div class="pos-panel__body">
-            <div class="pos-customer-grid">
+          <div class="pos-panel__body pos-recent-list">
+            <a
+              v-for="inv in recentInvoices"
+              :key="inv.id"
+              class="pos-recent-item"
+              :href="'/#/invoice/' + inv.publicToken"
+              target="_blank"
+              rel="noreferrer"
+            >
+              <span class="pos-recent-item__num">{{ inv.invoiceNumber }}</span>
+              <span class="pos-recent-item__who">{{ inv.customerName || '—' }}</span>
+              <span class="pos-recent-item__total">{{ formatZAR(inv.grandTotal) }}</span>
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN: sticky checkout panel -->
+      <aside class="pos-workspace__right">
+        <div class="pos-checkout">
+          <div class="pos-checkout__head">
+            <span>Checkout</span>
+          </div>
+          <div class="pos-checkout__body">
+            <!-- Customer info -->
+            <div class="pos-checkout__group">
               <McField label="Customer name" for-id="cust-name">
                 <input id="cust-name" v-model="customerName" type="text" autocomplete="name" />
               </McField>
@@ -709,93 +742,84 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
               <McField label="Customer type" for-id="cust-type">
                 <input id="cust-type" v-model="customerType" placeholder="e.g. ENT" />
               </McField>
-              <McField label="Payment" for-id="pay-meth">
-                <select id="pay-meth" v-model="paymentMethod">
-                  <option>Card</option>
-                  <option>Cash</option>
-                  <option>EFT</option>
-                </select>
-              </McField>
-              <McField v-if="isManager" label="Order discount (R)" for-id="order-disc">
+              <div class="pos-checkout__inline">
+                <McCheckbox v-model="sendEmail" label="Email invoice link" />
+                <button type="button" class="btn-link-toggle" @click="showBusinessFields = !showBusinessFields">
+                  <component :is="showBusinessFields ? ChevronDown : ChevronRight" :size="14" />
+                  {{ showBusinessFields ? 'Hide' : 'Add' }} business details
+                </button>
+              </div>
+              <div v-if="showBusinessFields" class="pos-checkout__business">
+                <McField label="Company name" for-id="cust-company">
+                  <input id="cust-company" v-model="customerCompany" type="text" placeholder="Business name" />
+                </McField>
+                <McField label="VAT number" for-id="cust-vat">
+                  <input id="cust-vat" v-model="customerVatNumber" type="text" placeholder="e.g. 4123456789" />
+                </McField>
+                <McField label="Business address" for-id="cust-addr">
+                  <textarea id="cust-addr" v-model="customerAddress" rows="2" placeholder="Street, City, Postal code" />
+                </McField>
+              </div>
+            </div>
+
+            <!-- Payment method as button group -->
+            <div class="pos-checkout__group">
+              <div class="pos-checkout__label">Payment method</div>
+              <div class="pos-pay-group" role="group" aria-label="Payment method">
+                <button
+                  v-for="method in ['Card', 'Cash', 'EFT']"
+                  :key="method"
+                  type="button"
+                  class="pos-pay-btn"
+                  :class="{ 'pos-pay-btn--on': paymentMethod === method }"
+                  @click="paymentMethod = method"
+                >{{ method }}</button>
+              </div>
+            </div>
+
+            <!-- Manager: order discount -->
+            <div v-if="isManager" class="pos-checkout__group">
+              <McField label="Order discount (R)" for-id="order-disc">
                 <input id="order-disc" v-model.number="discountTotal" type="number" step="0.01" min="0" />
               </McField>
             </div>
-            <div class="pos-customer-extras">
-              <McCheckbox v-model="sendEmail" label="Email invoice link" />
-              <button type="button" class="btn-link-toggle" @click="showBusinessFields = !showBusinessFields">
-                <component :is="showBusinessFields ? ChevronDown : ChevronRight" :size="14" />
-                {{ showBusinessFields ? 'Hide' : 'Add' }} business / VAT details
-              </button>
-            </div>
-            <div v-if="showBusinessFields" class="pos-customer-grid pos-customer-grid--extra">
-              <McField label="Company name" for-id="cust-company">
-                <input id="cust-company" v-model="customerCompany" type="text" placeholder="Business name" />
-              </McField>
-              <McField label="Company VAT number" for-id="cust-vat">
-                <input id="cust-vat" v-model="customerVatNumber" type="text" placeholder="e.g. 4123456789" />
-              </McField>
-              <McField label="Business address" for-id="cust-addr" class="span-full">
-                <textarea id="cust-addr" v-model="customerAddress" rows="2" placeholder="Street, City, Postal code" />
-              </McField>
-            </div>
-          </div>
-        </div>
 
-    <!-- Fixed totals + checkout: always visible at bottom -->
-    <div class="pos-foot">
-      <div class="pos-totals" :class="{ 'pos-totals--pulse': totalPulse }">
-        <div class="pos-totals__rows">
-          <div class="pos-totals__row">
-            <span>Subtotal</span>
-            <strong>{{ formatZAR(subTotal) }}</strong>
-          </div>
-          <div v-if="isManager && discountTotal > 0" class="pos-totals__row pos-totals__row--muted">
-            <span>After order discount</span>
-            <strong>{{ formatZAR(grandPreview) }}</strong>
-          </div>
-          <div v-if="grandPreview > 0" class="pos-totals__row pos-totals__row--muted">
-            <span>Incl. VAT (15%)</span>
-            <span>{{ formatZAR(vatAmount) }}</span>
-          </div>
-        </div>
-        <div class="pos-totals__grand">
-          <span>Total due</span>
-          <strong>{{ formatZAR(grandPreview) }}</strong>
-        </div>
-      </div>
-      <McAlert v-if="belowCostWarning" variant="warning" class="pos-foot__warn">{{ belowCostWarning }}</McAlert>
-      <McButton
-        variant="primary"
-        type="button"
-        block
-        :disabled="busy || !cart.length"
-        class="pos-checkout-btn"
-        @click="requestCheckout"
-      >
-        <McSpinner v-if="busy" />
-        <span v-else>Complete sale</span>
-      </McButton>
+            <!-- Totals -->
+            <div class="pos-totals" :class="{ 'pos-totals--pulse': totalPulse }">
+              <div class="pos-totals__row">
+                <span>Subtotal</span>
+                <strong>{{ formatZAR(subTotal) }}</strong>
+              </div>
+              <div v-if="isManager && discountTotal > 0" class="pos-totals__row pos-totals__row--muted">
+                <span>Discount</span>
+                <strong>− {{ formatZAR(discountTotal) }}</strong>
+              </div>
+              <div v-if="grandPreview > 0" class="pos-totals__row pos-totals__row--muted">
+                <span>Incl. VAT (15%)</span>
+                <span>{{ formatZAR(vatAmount) }}</span>
+              </div>
+              <div class="pos-totals__grand">
+                <span>Total due</span>
+                <strong>{{ formatZAR(grandPreview) }}</strong>
+              </div>
+            </div>
 
-      <!-- Recent invoices -->
-      <div v-if="recentInvoices.length" class="pos-panel pos-panel--recent pos-foot__recent">
-        <div class="pos-panel__head">
-          <span>Recent invoices</span>
+            <McAlert v-if="belowCostWarning" variant="warning" class="pos-checkout__warn">{{ belowCostWarning }}</McAlert>
+
+            <McButton
+              variant="primary"
+              type="button"
+              block
+              :disabled="busy || !cart.length"
+              class="pos-checkout-btn"
+              @click="requestCheckout"
+            >
+              <McSpinner v-if="busy" />
+              <span v-else>Complete sale</span>
+            </McButton>
+          </div>
         </div>
-        <div class="pos-panel__body pos-recent-list">
-          <a
-            v-for="inv in recentInvoices"
-            :key="inv.id"
-            class="pos-recent-item"
-            :href="'/#/invoice/' + inv.publicToken"
-            target="_blank"
-            rel="noreferrer"
-          >
-            <span class="pos-recent-item__num">{{ inv.invoiceNumber }}</span>
-            <span class="pos-recent-item__who">{{ inv.customerName || '—' }}</span>
-            <span class="pos-recent-item__total">{{ formatZAR(inv.grandTotal) }}</span>
-          </a>
-        </div>
-      </div>
+      </aside>
     </div>
 
     <McModal v-model="showBelowCostModal" title="Below cost">
@@ -1045,9 +1069,41 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   border: 1px solid var(--mc-app-border-faint, #eceae5);
 }
 
-/* ── Main workspace grid ──────────────────────────────────────────────── */
-.pos-main__results {
+/* ── Two-column workspace ─────────────────────────────────────────────── */
+.pos-workspace {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  align-items: start;
+  margin-top: 0.65rem;
+}
+.pos-workspace__left {
+  min-width: 0;
+}
+.pos-workspace__right {
+  min-width: 0;
+}
+.pos-results-aside {
   margin-bottom: 0.75rem;
+}
+
+@media (min-width: 1100px) {
+  .pos-workspace {
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 1.25rem;
+  }
+  .pos-workspace__right {
+    position: sticky;
+    top: 4.25rem;
+    align-self: start;
+    max-height: calc(100vh - 5rem);
+    overflow-y: auto;
+  }
+}
+@media (min-width: 1400px) {
+  .pos-workspace {
+    grid-template-columns: minmax(0, 1fr) 400px;
+  }
 }
 
 /* ── Shared panel styling (replaces McCard at POS-level for density) ── */
@@ -1095,7 +1151,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 }
 
 /* ── Results card grid ────────────────────────────────────────────────── */
-.pos-main__results .pos-panel__body {
+.pos-results-aside .pos-panel__body {
   background: var(--mc-app-page-bg, #eae8e3);
 }
 .pos-results-grid {
@@ -1217,8 +1273,23 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 }
 .pos-cart-table tbody tr:last-child td { border-bottom: none; }
 .pos-cart-name {
-  max-width: 18rem;
+  max-width: 22rem;
   font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  line-height: 1.25;
+}
+.pos-cart-name__title {
+  font-weight: 700;
+  color: var(--mc-app-heading, #0a0a0c);
+  font-size: 0.92rem;
+}
+.pos-cart-name__meta {
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--mc-app-text-muted, #5c5a56);
+  letter-spacing: 0.01em;
 }
 .pos-cart-row--just-added td {
   animation: pos-row-flash 900ms ease-out;
@@ -1296,36 +1367,100 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Customer + payment panel ─────────────────────────────────────────── */
-.pos-customer-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0 1rem;
-  max-width: 100%;
-  width: 100%;
-  box-sizing: border-box;
+/* ── Checkout panel (right column, sticky on desktop) ─────────────────── */
+.pos-checkout {
+  background: var(--mc-app-surface, #fff);
+  border: 1px solid var(--mc-app-border-soft, #ddd9d3);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
 }
-.pos-customer-grid input,
-.pos-customer-grid select {
+.pos-checkout__head {
+  padding: 0.6rem 1rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--mc-app-text-muted, #5c5a56);
+  border-bottom: 1px solid var(--mc-app-border-faint, #eceae5);
+  background: var(--mc-app-surface-2, #faf9f6);
+}
+.pos-checkout__body {
+  padding: 0.85rem 1rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+.pos-checkout__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.pos-checkout__group + .pos-checkout__group {
+  border-top: 1px solid var(--mc-app-border-faint, #eceae5);
+  padding-top: 0.85rem;
+}
+.pos-checkout__label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--mc-app-text-muted, #5c5a56);
+}
+.pos-checkout__inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  align-items: center;
+  justify-content: space-between;
+}
+.pos-checkout__business {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 0.25rem;
+}
+.pos-checkout :deep(input[type='text']),
+.pos-checkout :deep(input[type='email']),
+.pos-checkout :deep(input[type='number']),
+.pos-checkout :deep(select),
+.pos-checkout :deep(textarea) {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
 }
-@media (min-width: 720px) {
-  .pos-customer-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-  .pos-customer-grid .span-full { grid-column: 1 / -1; }
+.pos-checkout__warn { margin: 0; }
+
+/* Payment method button group */
+.pos-pay-group {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.4rem;
 }
-.pos-customer-grid--extra { margin-top: 0.25rem; }
-.pos-customer-extras {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
-  margin-top: 0.35rem;
+.pos-pay-btn {
+  appearance: none;
+  border: 1.5px solid var(--mc-app-border-subtle, #c8c5bd);
+  background: var(--mc-app-surface, #fff);
+  color: var(--mc-app-text-secondary, #333336);
+  border-radius: 10px;
+  padding: 0.65rem 0.5rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
 }
+.pos-pay-btn:hover {
+  border-color: var(--mc-accent, #f47a20);
+  background: rgba(244, 122, 32, 0.05);
+}
+.pos-pay-btn--on {
+  background: var(--mc-accent, #f47a20);
+  border-color: var(--mc-accent, #f47a20);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(244, 122, 32, 0.35);
+}
+
 .pos-email-wrap { position: relative; width: 100%; }
 .pos-email-spinner {
   position: absolute;
@@ -1407,38 +1542,20 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   white-space: nowrap;
 }
 
-/* ── Fixed totals + checkout (always visible at bottom) ───────────────── */
-.pos-foot {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  position: sticky;
-  bottom: 0;
-  padding-top: 0.4rem;
-  padding-bottom: 0.4rem;
-  background: var(--mc-app-page-bg, #eae8e3);
-  z-index: 5;
-}
+/* ── Totals (inside checkout panel) ───────────────────────────────────── */
 .pos-totals {
   display: flex;
-  align-items: stretch;
-  gap: 1rem;
-  background: var(--mc-app-surface, #fff);
-  border: 1px solid var(--mc-app-border-soft, #ddd9d3);
-  border-radius: 14px;
-  padding: 0.8rem 1.15rem;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
-  transition: box-shadow 0.3s ease, transform 0.3s ease;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.7rem 0.85rem 0.85rem;
+  background: var(--mc-app-surface-2, #faf9f6);
+  border: 1px solid var(--mc-app-border-faint, #eceae5);
+  border-radius: 12px;
+  font-variant-numeric: tabular-nums;
+  transition: box-shadow 0.3s ease;
 }
 .pos-totals--pulse {
-  box-shadow: 0 0 0 2px rgba(244, 122, 32, 0.35), 0 10px 30px rgba(0, 0, 0, 0.08);
-}
-.pos-totals__rows {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.1rem;
+  box-shadow: 0 0 0 2px rgba(244, 122, 32, 0.35);
 }
 .pos-totals__row {
   display: flex;
@@ -1447,36 +1564,33 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   gap: 1rem;
   font-size: 0.88rem;
   color: var(--mc-app-text-secondary, #333336);
-  font-variant-numeric: tabular-nums;
 }
 .pos-totals__row--muted {
   color: var(--mc-app-text-muted, #5c5a56);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
 }
 .pos-totals__grand {
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: flex-end;
-  padding-left: 1rem;
-  border-left: 3px solid var(--mc-accent, #f47a20);
-  font-variant-numeric: tabular-nums;
-  min-width: 9rem;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 0.55rem;
+  margin-top: 0.4rem;
+  border-top: 2px solid var(--mc-accent, #f47a20);
 }
 .pos-totals__grand span {
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--mc-app-text-muted, #5c5a56);
+  color: var(--mc-app-text, #1a1a1c);
 }
 .pos-totals__grand strong {
-  font-size: 1.6rem;
+  font-size: 1.65rem;
   font-weight: 800;
   color: var(--mc-app-heading, #0a0a0c);
-  line-height: 1.1;
+  line-height: 1.05;
 }
-.pos-foot__warn { margin: 0; }
 
 .pos-checkout-btn {
   min-height: 52px;
@@ -1517,6 +1631,9 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 /* ── Tablet: stack results above cart ─────────────────────────────────── */
 @media (max-width: 1099px) {
   .pos-panel__body--scroll { max-height: 55vh; }
+}
+@media (max-width: 720px) {
+  .pos-pay-group { grid-template-columns: 1fr 1fr 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {
