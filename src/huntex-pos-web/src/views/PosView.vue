@@ -616,8 +616,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
         </div>
       </aside>
 
-      <section class="pos-main__cart">
-        <!-- Cart lines: dominant, scrolls internally -->
+        <!-- Cart lines -->
         <div class="pos-panel pos-panel--cart">
           <div class="pos-panel__head">
             <span>Cart</span>
@@ -744,7 +743,6 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
           </div>
         </div>
 
-      </section>
     </div>
 
     <!-- Fixed totals + checkout: always visible at bottom -->
@@ -1093,11 +1091,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   flex-direction: column;
 }
 .pos-main__cart {
-  min-height: 0;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
 }
 
 /* ── Shared panel styling (replaces McCard at POS-level for density) ── */
@@ -1105,10 +1099,8 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   background: var(--mc-app-surface, #fff);
   border: 1px solid var(--mc-app-border-soft, #ddd9d3);
   border-radius: 14px;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
   overflow: hidden;
+  margin-bottom: 0.75rem;
 }
 .pos-panel__head {
   display: flex;
@@ -1139,12 +1131,10 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   min-height: 0;
 }
 .pos-panel__body--scroll {
-  flex: 1;
   overflow-y: auto;
   padding: 0;
 }
 .pos-panel--cart {
-  flex: 1;
   min-height: 180px;
 }
 
@@ -1351,14 +1341,6 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 }
 
 /* ── Customer + payment panel ─────────────────────────────────────────── */
-.pos-panel--customer {
-  display: block;
-  overflow: visible;
-  flex-shrink: 0;
-}
-.pos-panel--customer .pos-panel__body {
-  overflow-y: visible;
-}
 .pos-customer-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -1578,10 +1560,8 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 @media (max-width: 1099px) {
   .pos-shell { height: 100vh; height: 100dvh; min-height: 0; }
   .pos-main { overflow-y: auto; }
-  .pos-main__results,
-  .pos-main__cart { min-height: auto; }
-  .pos-panel--cart { flex: none; }
-  .pos-panel__body--scroll { flex: 0 0 auto; max-height: 55vh; }
+  .pos-main__results { min-height: auto; }
+  .pos-panel__body--scroll { max-height: 55vh; }
 }
 
 @media (prefers-reduced-motion: reduce) {
