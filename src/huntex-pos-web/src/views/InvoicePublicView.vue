@@ -254,6 +254,8 @@ function pdfLink() {
   align-items: center;
   margin-top: 1rem;
   padding: 1rem 1.1rem;
+  font-weight: 600;
+  color: #1a1a1c;
   background: linear-gradient(90deg, rgba(244, 122, 32, 0.1) 0%, transparent 100%);
   border-radius: 10px;
   border: 1px solid rgba(244, 122, 32, 0.25);

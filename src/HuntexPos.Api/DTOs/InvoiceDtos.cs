@@ -110,6 +110,17 @@ public class PendingDeliveryDto
     public Guid PublicToken { get; set; }
 }
 
+public class RecentInvoiceDto
+{
+    public Guid Id { get; set; }
+    public string InvoiceNumber { get; set; } = string.Empty;
+    public string? CustomerName { get; set; }
+    public decimal GrandTotal { get; set; }
+    public string PaymentMethod { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; set; }
+    public Guid PublicToken { get; set; }
+}
+
 public class MarkDeliveredRequest
 {
     public string? Notes { get; set; }

@@ -41,6 +41,27 @@ public class InvoicesController : ControllerBase
         }
     }
 
+    [HttpGet("recent")]
+    public async Task<List<RecentInvoiceDto>> Recent([FromQuery] int take = 5, CancellationToken ct = default)
+    {
+        var clamped = Math.Clamp(take, 1, 20);
+        return await _db.Invoices.AsNoTracking()
+            .Where(i => i.Status != InvoiceStatus.Voided)
+            .OrderByDescending(i => i.CreatedAt)
+            .Take(clamped)
+            .Select(i => new RecentInvoiceDto
+            {
+                Id = i.Id,
+                InvoiceNumber = i.InvoiceNumber,
+                CustomerName = i.CustomerName,
+                GrandTotal = i.GrandTotal,
+                PaymentMethod = i.PaymentMethod,
+                CreatedAt = i.CreatedAt,
+                PublicToken = i.PublicToken
+            })
+            .ToListAsync(ct);
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<InvoiceDto>> Get(Guid id, CancellationToken ct)
     {

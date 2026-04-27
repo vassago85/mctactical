@@ -132,6 +132,24 @@ function getEffectivePrice(p: Product): { price: number; hasDiscount: boolean } 
   return { price: p.sellPrice, hasDiscount: false }
 }
 
+type RecentInvoice = {
+  id: string
+  invoiceNumber: string
+  customerName: string | null
+  grandTotal: number
+  paymentMethod: string
+  createdAt: string
+  publicToken: string
+}
+const recentInvoices = ref<RecentInvoice[]>([])
+
+async function loadRecentInvoices() {
+  try {
+    const { data } = await http.get<RecentInvoice[]>('/api/invoices/recent?take=5')
+    recentInvoices.value = data
+  } catch { /* best effort */ }
+}
+
 onMounted(async () => {
   try {
     const { data } = await http.get('/api/settings/pos-rules')
@@ -144,6 +162,7 @@ onMounted(async () => {
     const { data } = await http.get<ActivePromotion>('/api/promotions/active')
     if (data.promotionId || data.specials.length) activePromo.value = data
   } catch { /* no active promotion */ }
+  loadRecentInvoices()
 })
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
@@ -443,6 +462,7 @@ async function doCheckout() {
     showSaleSummary.value = true
     results.value = []
     q.value = ''
+    loadRecentInvoices()
   } catch (e: unknown) {
     const ax = e as { response?: { data?: { error?: string } } }
     err.value = ax.response?.data?.error ?? 'Checkout failed'
@@ -725,6 +745,27 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
         </div>
 
       </section>
+
+      <!-- Recent invoices -->
+      <div v-if="recentInvoices.length" class="pos-panel pos-panel--recent">
+        <div class="pos-panel__head">
+          <span>Recent invoices</span>
+        </div>
+        <div class="pos-panel__body pos-recent-list">
+          <a
+            v-for="inv in recentInvoices"
+            :key="inv.id"
+            class="pos-recent-item"
+            :href="'/#/invoice/' + inv.publicToken"
+            target="_blank"
+            rel="noreferrer"
+          >
+            <span class="pos-recent-item__num">{{ inv.invoiceNumber }}</span>
+            <span class="pos-recent-item__who">{{ inv.customerName || '—' }}</span>
+            <span class="pos-recent-item__total">{{ formatZAR(inv.grandTotal) }}</span>
+          </a>
+        </div>
+      </div>
     </div>
 
     <!-- Fixed totals + checkout: always visible at bottom -->
@@ -1366,6 +1407,61 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   font-size: 0.85rem;
   padding: 0;
   text-decoration: underline;
+}
+
+/* ── Recent invoices panel ──────────────────────────────────────────── */
+.pos-panel--recent {
+  margin-top: 0.5rem;
+  background: var(--mc-app-surface, #fff);
+  border: 1px solid var(--mc-app-border-soft, #ddd9d3);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.pos-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--mc-text-muted, #7a7874);
+  border-bottom: 1px solid var(--mc-app-border-soft, #ddd9d3);
+}
+.pos-recent-list {
+  display: flex;
+  flex-direction: column;
+}
+.pos-recent-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.84rem;
+  text-decoration: none;
+  color: inherit;
+  border-bottom: 1px solid var(--mc-app-border-soft, #eceae6);
+  transition: background 0.15s ease;
+}
+.pos-recent-item:last-child { border-bottom: none; }
+.pos-recent-item:hover { background: rgba(244, 122, 32, 0.06); }
+.pos-recent-item__num {
+  font-weight: 600;
+  color: var(--mc-accent, #f47a20);
+  white-space: nowrap;
+}
+.pos-recent-item__who {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--mc-text-muted, #7a7874);
+}
+.pos-recent-item__total {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* ── Fixed totals + checkout (always visible at bottom) ───────────────── */

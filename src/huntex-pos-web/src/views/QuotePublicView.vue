@@ -213,10 +213,12 @@ function formatDate(iso?: string | null) {
   align-items: center;
   margin-top: 1rem;
   padding: 1rem 1.1rem;
-  background: linear-gradient(90deg, rgba(244, 122, 32, 0.1) 0%, transparent 100%);
+  background: linear-gradient(90deg, rgba(244, 122, 32, 0.12) 0%, rgba(244, 122, 32, 0.03) 100%);
   border-radius: 10px;
-  border: 1px solid rgba(244, 122, 32, 0.25);
+  border: 1px solid rgba(244, 122, 32, 0.3);
   font-size: 1.05rem;
+  font-weight: 600;
+  color: #1a1a1c;
 }
 .qp__total strong { font-size: 1.35rem; color: #1a1a1c; }
 .qp__notes {
