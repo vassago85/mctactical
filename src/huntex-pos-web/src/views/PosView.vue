@@ -1351,8 +1351,13 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 }
 
 /* ── Customer + payment panel ─────────────────────────────────────────── */
+.pos-panel--customer {
+  display: block;
+  overflow: visible;
+  flex-shrink: 0;
+}
 .pos-panel--customer .pos-panel__body {
-  overflow-y: auto;
+  overflow-y: visible;
 }
 .pos-customer-grid {
   display: grid;
