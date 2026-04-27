@@ -14,7 +14,7 @@ services:
       ConnectionStrings__Default: Data Source=/app/data/huntex.db
       App__PdfStoragePath: /app/data/pdfs
       App__BrandingStoragePath: /app/data/branding
-      App__PublicBaseUrl: ${PUBLIC_BASE_URL:-http://localhost:8080}
+      App__PublicBaseUrl: ${PUBLIC_BASE_URL:-https://pos.mctactical.co.za}
       Jwt__Key: ${JWT_KEY:-CHANGE_ME_TO_A_LONG_RANDOM_SECRET_AT_LEAST_32_CHARS}
       Jwt__Issuer: ${JWT_ISSUER:-MCTacticalPos}
       Jwt__Audience: ${JWT_AUDIENCE:-MCTacticalPos}

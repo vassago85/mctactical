@@ -186,22 +186,27 @@ function formatDate(iso?: string | null) {
 .qp__meta dt { margin: 0; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #7a7874; }
 .qp__meta dd { margin: 0.2rem 0 0; font-size: 0.95rem; color: #1a1a1c; }
 .qp__table-wrap { overflow-x: auto; margin-bottom: 1rem; }
-.qp__table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.qp__table { width: 100%; border-collapse: collapse; font-size: 0.9rem; color: #1a1a1c; }
 .qp__table th, .qp__table td {
-  padding: 0.65rem 0.5rem;
-  border-bottom: 1px solid #eceae6;
+  padding: 0.7rem 0.6rem;
+  border-bottom: 1px solid #d9d6d0;
   text-align: left;
+}
+.qp__table td {
+  font-weight: 500;
 }
 .qp__table th {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
+  font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #7a7874;
-  background: #fafaf8;
+  color: #4a4843;
+  background: #f3f2ef;
+  border-bottom-color: #c5c2bb;
 }
 .qp-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.qp-sub { font-size: 0.8rem; color: #7a7874; margin-top: 0.15rem; }
+.qp-sub { font-size: 0.8rem; color: #4a4843; margin-top: 0.15rem; }
 .qp__total {
   display: flex;
   justify-content: space-between;
@@ -249,9 +254,9 @@ function formatDate(iso?: string | null) {
 .qp__contact {
   margin-top: 2rem;
   padding-top: 1.25rem;
-  border-top: 1px solid #eceae6;
+  border-top: 1px solid #d9d6d0;
   font-size: 0.9rem;
-  color: #5c5a56;
+  color: #3a3835;
   line-height: 1.55;
 }
 .qp__contact-name { margin: 0 0 0.5rem; font-size: 1rem; font-weight: 700; color: #1a1a1c; }

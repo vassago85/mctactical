@@ -21,10 +21,10 @@ public class QuotePdfService
 
     private const string DefaultAccentHex = "#F47A20";
     private static readonly string TextDark = "#1A1A1C";
-    private static readonly string TextMuted = "#5C5A56";
-    private static readonly string TextLight = "#7A7874";
-    private static readonly string BorderLight = "#ECEAE6";
-    private static readonly string TableHeadBg = "#FAFAF8";
+    private static readonly string TextMuted = "#3A3835";
+    private static readonly string TextLight = "#4A4843";
+    private static readonly string BorderLight = "#D9D6D0";
+    private static readonly string TableHeadBg = "#F3F2EF";
 
     public QuotePdfService(
         IOptions<AppOptions> app,

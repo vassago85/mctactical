@@ -217,22 +217,29 @@ function pdfLink() {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9rem;
+  color: #1a1a1c;
 }
 
 .inv-public__table th,
 .inv-public__table td {
-  padding: 0.65rem 0.5rem;
-  border-bottom: 1px solid #eceae6;
+  padding: 0.7rem 0.6rem;
+  border-bottom: 1px solid #d9d6d0;
   text-align: left;
+}
+
+.inv-public__table td {
+  font-weight: 500;
 }
 
 .inv-public__table th {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
+  font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #7a7874;
-  background: #fafaf8;
+  color: #4a4843;
+  background: #f3f2ef;
+  border-bottom-color: #c5c2bb;
 }
 
 .inv-num {
@@ -283,9 +290,9 @@ function pdfLink() {
 .inv-public__contact {
   margin-top: 2rem;
   padding-top: 1.25rem;
-  border-top: 1px solid #eceae6;
+  border-top: 1px solid #d9d6d0;
   font-size: 0.9rem;
-  color: #5c5a56;
+  color: #3a3835;
   line-height: 1.55;
 }
 
