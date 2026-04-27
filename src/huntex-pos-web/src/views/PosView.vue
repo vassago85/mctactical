@@ -1313,10 +1313,18 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   grid-template-columns: 1fr;
   gap: 0 1rem;
   max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+}
+.pos-customer-grid input,
+.pos-customer-grid select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 @media (min-width: 720px) {
   .pos-customer-grid {
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    grid-template-columns: 1fr 1fr;
   }
   .pos-customer-grid .span-full { grid-column: 1 / -1; }
 }
@@ -1329,7 +1337,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   flex-wrap: wrap;
   margin-top: 0.35rem;
 }
-.pos-email-wrap { position: relative; }
+.pos-email-wrap { position: relative; width: 100%; }
 .pos-email-spinner {
   position: absolute;
   right: 8px;
