@@ -24,6 +24,7 @@ type Delivery = {
   deliveredAt: string | null
   deliveryNotes: string | null
   itemsSummary: string
+  publicToken: string
 }
 
 const toast = useToast()
@@ -86,15 +87,9 @@ async function openOrderConfirmation(d: Delivery) {
   }
 }
 
-async function openInvoicePdf(d: Delivery) {
-  try {
-    const { data } = await http.get(`/api/invoices/${d.id}/pdf`, { responseType: 'blob' })
-    const url = URL.createObjectURL(data)
-    window.open(url, '_blank')
-    setTimeout(() => URL.revokeObjectURL(url), 60_000)
-  } catch {
-    toast.error('Could not load invoice PDF')
-  }
+function openInvoice(d: Delivery) {
+  const token = d.publicToken.replace(/-/g, '')
+  window.open(`/#/invoice/${token}`, '_blank')
 }
 
 function formatDate(iso: string) {
@@ -166,7 +161,7 @@ onMounted(() => void load())
               <td>
                 <div class="del-actions">
                   <McButton variant="ghost" dense type="button" @click="openOrderConfirmation(d)"><FileText :size="14" class="del-btn-icon" />Confirmation</McButton>
-                  <McButton variant="ghost" dense type="button" @click="openInvoicePdf(d)"><FileText :size="14" class="del-btn-icon" />Invoice</McButton>
+                  <McButton variant="ghost" dense type="button" @click="openInvoice(d)"><FileText :size="14" class="del-btn-icon" />Invoice</McButton>
                   <McButton v-if="!d.isDelivered" variant="primary" dense type="button" @click="openDeliverModal(d)"><CheckCircle :size="14" class="del-btn-icon" />Mark delivered</McButton>
                 </div>
               </td>

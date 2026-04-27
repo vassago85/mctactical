@@ -107,6 +107,7 @@ public class PendingDeliveryDto
     public DateTimeOffset? DeliveredAt { get; set; }
     public string? DeliveryNotes { get; set; }
     public string ItemsSummary { get; set; } = string.Empty;
+    public Guid PublicToken { get; set; }
 }
 
 public class MarkDeliveredRequest

@@ -100,7 +100,8 @@ public class InvoicesController : ControllerBase
             IsDelivered = i.IsDelivered,
             DeliveredAt = i.DeliveredAt,
             DeliveryNotes = i.DeliveryNotes,
-            ItemsSummary = string.Join(", ", i.Lines.Select(l => $"{l.Description} x{l.Quantity}"))
+            ItemsSummary = string.Join(", ", i.Lines.Select(l => $"{l.Description} x{l.Quantity}")),
+            PublicToken = i.PublicToken
         }).ToList();
     }
 
