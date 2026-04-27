@@ -475,9 +475,14 @@ function confirmSpecialOrder() {
   void doCheckout()
 }
 
-function openOrderConfirmationPdf() {
+async function openOrderConfirmationPdf() {
   if (!saleSummary.value) return
-  window.open(`/api/invoices/${saleSummary.value.invoiceId}/order-confirmation-pdf`, '_blank')
+  try {
+    const { data } = await http.get(`/api/invoices/${saleSummary.value.invoiceId}/order-confirmation-pdf`, { responseType: 'blob' })
+    const url = URL.createObjectURL(data)
+    window.open(url, '_blank')
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch { /* silently fail */ }
 }
 
 const searchEmpty = computed(() => !q.value.trim())

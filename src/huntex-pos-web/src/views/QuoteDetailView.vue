@@ -123,9 +123,14 @@ async function remove() {
   }
 }
 
-function openPdf() {
+async function openPdf() {
   if (!quote.value) return
-  window.open(`/api/quotes/${quote.value.id}/pdf`, '_blank')
+  try {
+    const { data } = await http.get(`/api/quotes/${quote.value.id}/pdf`, { responseType: 'blob' })
+    const url = URL.createObjectURL(data)
+    window.open(url, '_blank')
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch { /* silently fail */ }
 }
 
 async function copyPublicLink() {

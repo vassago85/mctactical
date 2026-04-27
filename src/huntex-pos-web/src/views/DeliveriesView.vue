@@ -75,12 +75,26 @@ async function markDelivered() {
   }
 }
 
-function openOrderConfirmation(d: Delivery) {
-  window.open(`/api/invoices/${d.id}/order-confirmation-pdf`, '_blank')
+async function openOrderConfirmation(d: Delivery) {
+  try {
+    const { data } = await http.get(`/api/invoices/${d.id}/order-confirmation-pdf`, { responseType: 'blob' })
+    const url = URL.createObjectURL(data)
+    window.open(url, '_blank')
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch {
+    toast.error('Could not load order confirmation PDF')
+  }
 }
 
-function openInvoicePdf(d: Delivery) {
-  window.open(`/api/invoices/${d.id}/pdf`, '_blank')
+async function openInvoicePdf(d: Delivery) {
+  try {
+    const { data } = await http.get(`/api/invoices/${d.id}/pdf`, { responseType: 'blob' })
+    const url = URL.createObjectURL(data)
+    window.open(url, '_blank')
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch {
+    toast.error('Could not load invoice PDF')
+  }
 }
 
 function formatDate(iso: string) {
