@@ -45,8 +45,9 @@ public class InvoicesController : ControllerBase
     public async Task<List<RecentInvoiceDto>> Recent([FromQuery] int take = 5, CancellationToken ct = default)
     {
         var clamped = Math.Clamp(take, 1, 20);
-        return await _db.Invoices.AsNoTracking()
+        return (await _db.Invoices.AsNoTracking()
             .Where(i => i.Status != InvoiceStatus.Voided)
+            .ToListAsync(ct))
             .OrderByDescending(i => i.CreatedAt)
             .Take(clamped)
             .Select(i => new RecentInvoiceDto
@@ -59,7 +60,7 @@ public class InvoicesController : ControllerBase
                 CreatedAt = i.CreatedAt,
                 PublicToken = i.PublicToken
             })
-            .ToListAsync(ct);
+            .ToList();
     }
 
     [HttpGet("{id:guid}")]
