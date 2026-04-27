@@ -563,8 +563,6 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
       <BarcodeScanner :active="scanOpen" @decode="onScan" />
     </div>
 
-    <!-- Main workspace: conditional results | dominant cart -->
-    <div class="pos-main" :class="{ 'pos-main--no-results': !q.trim() }">
       <!-- Results panel: only when user is actively searching -->
       <aside v-if="q.trim()" class="pos-main__results">
         <div class="pos-panel">
@@ -743,8 +741,6 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
           </div>
         </div>
 
-    </div>
-
     <!-- Fixed totals + checkout: always visible at bottom -->
     <div class="pos-foot">
       <div class="pos-totals" :class="{ 'pos-totals--pulse': totalPulse }">
@@ -884,16 +880,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
    ────────────────────────────────────────────────────────────────────── */
 
 .pos-shell {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  /* Fit within the viewport: subtract AppShell chrome (topbar + brand strip +
-     page padding). Values are a close approximation; if the shell chrome
-     changes, the layout still works because children handle their own
-     overflow. Falls back gracefully on older browsers without dvh. */
-  height: calc(100vh - 9rem);
-  height: calc(100dvh - 9rem);
-  min-height: 520px;
+  display: block;
   max-width: 100%;
 }
 
@@ -1059,39 +1046,8 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 }
 
 /* ── Main workspace grid ──────────────────────────────────────────────── */
-.pos-main {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.85rem;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-@media (min-width: 1100px) {
-  .pos-main {
-    grid-template-columns: minmax(300px, 40fr) minmax(0, 60fr);
-    grid-template-rows: 1fr;
-  }
-  .pos-main--no-results {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .pos-main__results .pos-panel {
-    flex: 1;
-  }
-  .pos-main__results .pos-panel__body {
-    flex: 1;
-    overflow-y: auto;
-  }
-}
 .pos-main__results {
-  min-height: 0;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-.pos-main__cart {
-  min-width: 0;
+  margin-bottom: 0.75rem;
 }
 
 /* ── Shared panel styling (replaces McCard at POS-level for density) ── */
@@ -1456,8 +1412,10 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
   padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
   background: var(--mc-app-page-bg, #eae8e3);
   z-index: 5;
 }
@@ -1558,9 +1516,6 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 
 /* ── Tablet: stack results above cart ─────────────────────────────────── */
 @media (max-width: 1099px) {
-  .pos-shell { height: 100vh; height: 100dvh; min-height: 0; }
-  .pos-main { overflow-y: auto; }
-  .pos-main__results { min-height: auto; }
   .pos-panel__body--scroll { max-height: 55vh; }
 }
 
