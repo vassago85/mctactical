@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import McButton from '@/components/ui/McButton.vue'
 import { useBranding } from '@/composables/useBranding'
+import { migrateLocalStorageKey } from '@/utils/storageMigrate'
 
 // `BeforeInstallPromptEvent` is a Chromium-only event, not in the standard lib.dom.
 interface BeforeInstallPromptEvent extends Event {
@@ -12,14 +13,11 @@ interface BeforeInstallPromptEvent extends Event {
 
 const { businessName } = useBranding()
 
-const STORAGE_KEY = 'mc-pos-pwa-install-dismissed'
+const STORAGE_KEY = 'pos:pwa-install-dismissed'
+const LEGACY_STORAGE_KEY = 'mc-pos-pwa-install-dismissed'
 
 function readDismissed(): boolean {
-  try {
-    return localStorage.getItem(STORAGE_KEY) === '1'
-  } catch {
-    return false
-  }
+  return migrateLocalStorageKey(STORAGE_KEY, LEGACY_STORAGE_KEY) === '1'
 }
 
 function setDismissed() {

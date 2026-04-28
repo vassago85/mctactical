@@ -1,5 +1,6 @@
 import { ref, computed, readonly } from 'vue'
 import axios from 'axios'
+import { migrateLocalStorageKey } from '@/utils/storageMigrate'
 
 export interface BrandingTerminology {
   quote: string
@@ -35,8 +36,12 @@ const DEFAULTS: Branding = {
   features: { quotes: true, discounts: true, brandPricingRules: true },
 }
 
-const STORAGE_KEY = 'mc-branding-cache-v1'
+const STORAGE_KEY = 'pos:branding-cache-v1'
+const LEGACY_STORAGE_KEY = 'mc-branding-cache-v1'
 const STALE_MS = 60 * 60 * 1000
+
+// One-shot copy on module load so existing browsers don't re-fetch on cold cache.
+migrateLocalStorageKey(STORAGE_KEY, LEGACY_STORAGE_KEY)
 
 interface CachedPayload { at: number; data: Branding }
 

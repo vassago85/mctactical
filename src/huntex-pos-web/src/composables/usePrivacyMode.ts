@@ -1,11 +1,13 @@
 import { ref, watch } from 'vue'
+import { migrateLocalStorageKey } from '@/utils/storageMigrate'
 
-const STORAGE_KEY = 'mctactical:privacy-mode'
+const STORAGE_KEY = 'pos:privacy-mode'
+const LEGACY_STORAGE_KEY = 'mctactical:privacy-mode'
 const CLASS_NAME = 'privacy-mode'
 
 const initial = (() => {
   try {
-    return localStorage.getItem(STORAGE_KEY) === '1'
+    return migrateLocalStorageKey(STORAGE_KEY, LEGACY_STORAGE_KEY) === '1'
   } catch {
     return false
   }

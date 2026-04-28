@@ -1,11 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { http } from '@/api/http'
+import { migrateLocalStorageKey } from '@/utils/storageMigrate'
 
-const TOKEN_KEY = 'huntex_token'
+const TOKEN_KEY = 'pos_token'
+const LEGACY_TOKEN_KEY = 'huntex_token'
 
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref<string | null>(localStorage.getItem(TOKEN_KEY))
+  const token = ref<string | null>(migrateLocalStorageKey(TOKEN_KEY, LEGACY_TOKEN_KEY))
   const roles = ref<string[]>([])
   const email = ref<string | null>(null)
   const supplierId = ref<string | null>(null)
