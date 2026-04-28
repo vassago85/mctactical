@@ -16,8 +16,11 @@ services:
       App__PdfStoragePath: /app/data/pdfs
       App__BrandingStoragePath: /app/data/branding
       App__PublicBaseUrl: http://localhost:5173
-      Jwt__Key: ${JWT_KEY:-nf9TrSMIYib6J21xAUhkGmWXpOwjPdlE507cq8uC3ZFQgaRD}
-      Jwt__Issuer: MCTacticalPos
-      Jwt__Audience: MCTacticalPos
-      Seed__OwnerEmail: ${OWNER_EMAIL:-paul@charsley.co.za}
-      Seed__OwnerPassword: ${OWNER_PASSWORD:-PaulCharsley2026!}
+      # All secrets must come from a local .env file (gitignored). This compose
+      # file no longer ships defaults — `cp .env.local.example .env` and fill it
+      # in before running. Keeps secrets out of version control.
+      Jwt__Key: ${JWT_KEY:?set JWT_KEY in .env (>=32 random chars)}
+      Jwt__Issuer: ${JWT_ISSUER:-LocalPosDev}
+      Jwt__Audience: ${JWT_AUDIENCE:-LocalPosDev}
+      Seed__OwnerEmail: ${OWNER_EMAIL:?set OWNER_EMAIL in .env}
+      Seed__OwnerPassword: ${OWNER_PASSWORD:?set OWNER_PASSWORD in .env}
