@@ -704,26 +704,6 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
           </div>
         </div>
 
-        <!-- Recent invoices -->
-        <div v-if="recentInvoices.length" class="pos-panel pos-panel--recent">
-          <div class="pos-panel__head">
-            <span>Recent invoices</span>
-          </div>
-          <div class="pos-panel__body pos-recent-list">
-            <a
-              v-for="inv in recentInvoices"
-              :key="inv.id"
-              class="pos-recent-item"
-              :href="'/#/invoice/' + inv.publicToken"
-              target="_blank"
-              rel="noreferrer"
-            >
-              <span class="pos-recent-item__num">{{ inv.invoiceNumber }}</span>
-              <span class="pos-recent-item__who">{{ inv.customerName || '—' }}</span>
-              <span class="pos-recent-item__total">{{ formatZAR(inv.grandTotal) }}</span>
-            </a>
-          </div>
-        </div>
       </div>
 
       <!-- RIGHT COLUMN: sticky checkout panel -->
@@ -831,6 +811,29 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
           </div>
         </div>
       </aside>
+
+      <!-- Recent invoices.
+           Sits in the left column under the cart on desktop (placed via grid),
+           and falls naturally to the bottom on mobile (after the checkout). -->
+      <div v-if="recentInvoices.length" class="pos-panel pos-panel--recent pos-workspace__recent">
+        <div class="pos-panel__head">
+          <span>Recent invoices</span>
+        </div>
+        <div class="pos-panel__body pos-recent-list">
+          <a
+            v-for="inv in recentInvoices"
+            :key="inv.id"
+            class="pos-recent-item"
+            :href="'/#/invoice/' + inv.publicToken"
+            target="_blank"
+            rel="noreferrer"
+          >
+            <span class="pos-recent-item__num">{{ inv.invoiceNumber }}</span>
+            <span class="pos-recent-item__who">{{ inv.customerName || '—' }}</span>
+            <span class="pos-recent-item__total">{{ formatZAR(inv.grandTotal) }}</span>
+          </a>
+        </div>
+      </div>
     </div>
 
     <McModal v-model="showBelowCostModal" title="Below cost">
@@ -1101,14 +1104,25 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 @media (min-width: 1100px) {
   .pos-workspace {
     grid-template-columns: minmax(0, 1fr) 360px;
-    gap: 1.25rem;
+    grid-template-rows: auto auto;
+    gap: 1.25rem 1.25rem;
+  }
+  .pos-workspace__left {
+    grid-column: 1;
+    grid-row: 1;
   }
   .pos-workspace__right {
+    grid-column: 2;
+    grid-row: 1 / span 2;
     position: sticky;
     top: 4.25rem;
     align-self: start;
     max-height: calc(100vh - 5rem);
     overflow-y: auto;
+  }
+  .pos-workspace__recent {
+    grid-column: 1;
+    grid-row: 2;
   }
 }
 @media (min-width: 1400px) {
