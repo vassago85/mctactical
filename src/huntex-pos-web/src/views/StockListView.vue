@@ -240,7 +240,7 @@ function openAdd() {
   sellPriceManual.value = false
   form.value = {
     sku: '', barcode: '', name: '', category: '', manufacturer: '', itemType: '',
-    supplierId: '', cost: 0, sellPrice: 0, qtyOnHand: 0,
+    supplierId: '', cost: 0, supplierDiscountPercent: 0, sellPrice: 0, qtyOnHand: 0,
     pricingMethod: 'default', customMarkupPercent: null, fixedSellPrice: null,
     minSellPrice: null, priceLocked: false
   }

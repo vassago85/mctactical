@@ -65,6 +65,11 @@ const { toasts, dismiss } = useToast()
   --toast-border: #d4a574;
   --toast-fg: #2a1a0f;
 }
+.mc-toast--warning {
+  --toast-bg: #fff5e0;
+  --toast-border: #d99c2b;
+  --toast-fg: #5a3a05;
+}
 .mc-toast__msg {
   flex: 1;
   white-space: pre-wrap;

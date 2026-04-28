@@ -1,11 +1,23 @@
 <script setup lang="ts">
-defineProps<{
-  variant?: 'neutral' | 'accent' | 'success' | 'warning' | 'danger'
+const props = defineProps<{
+  variant?: 'neutral' | 'accent' | 'success' | 'warning' | 'danger' | 'error' | 'info'
 }>()
+
+const resolvedVariant = (): string => {
+  // 'error' is accepted as an alias for 'danger' so toast-style callers
+  // (success/error/info/warning) can pass their type straight through.
+  // 'info' falls back to neutral styling.
+  switch (props.variant) {
+    case 'error': return 'danger'
+    case 'info':
+    case undefined: return 'neutral'
+    default: return props.variant
+  }
+}
 </script>
 
 <template>
-  <span class="mc-badge" :class="`mc-badge--${variant ?? 'neutral'}`">
+  <span class="mc-badge" :class="`mc-badge--${resolvedVariant()}`">
     <slot />
   </span>
 </template>

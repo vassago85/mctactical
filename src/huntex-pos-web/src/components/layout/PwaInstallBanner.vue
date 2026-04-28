@@ -3,6 +3,13 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import McButton from '@/components/ui/McButton.vue'
 import { useBranding } from '@/composables/useBranding'
 
+// `BeforeInstallPromptEvent` is a Chromium-only event, not in the standard lib.dom.
+interface BeforeInstallPromptEvent extends Event {
+  readonly platforms: ReadonlyArray<string>
+  readonly userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
+  prompt(): Promise<void>
+}
+
 const { businessName } = useBranding()
 
 const STORAGE_KEY = 'mc-pos-pwa-install-dismissed'
