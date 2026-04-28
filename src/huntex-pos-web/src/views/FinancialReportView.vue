@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { http } from '@/api/http'
 import { useBranding } from '@/composables/useBranding'
 import { formatZAR, formatNumber } from '@/utils/format'
@@ -77,7 +77,6 @@ onMounted(loadReport)
 const sold = computed(() => stock.value?.soldInPeriod ?? [])
 const totalRevenue = computed(() => sold.value.reduce((s, p) => s + p.revenue, 0))
 const totalDiscount = computed(() => sold.value.reduce((s, p) => s + p.discount, 0))
-const totalCostEx = computed(() => sold.value.reduce((s, p) => s + p.costExVat, 0))
 const totalCostInclVat = computed(() => sold.value.reduce((s, p) => s + p.costInclVat, 0))
 const totalGP = computed(() => (totalRevenue.value - totalDiscount.value) - totalCostInclVat.value)
 const gpMargin = computed(() => {
@@ -191,7 +190,7 @@ function renderRevenueChart() {
         legend: { position: 'top', labels: { usePointStyle: true, padding: 16, font: { size: 11 } } },
         tooltip: {
           callbacks: {
-            label: (ctx) => `${ctx.dataset.label}: R${ctx.parsed.y.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`
+            label: (ctx) => `${ctx.dataset.label}: R${(ctx.parsed.y ?? 0).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`
           }
         }
       },
@@ -288,7 +287,7 @@ function renderTopProductsChart() {
         legend: { position: 'top', labels: { usePointStyle: true, padding: 16, font: { size: 11 } } },
         tooltip: {
           callbacks: {
-            label: (ctx) => `${ctx.dataset.label}: R${ctx.parsed.x.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`
+            label: (ctx) => `${ctx.dataset.label}: R${(ctx.parsed.x ?? 0).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`
           }
         }
       },

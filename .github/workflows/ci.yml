@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Web — typecheck & build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/huntex-pos-web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: src/huntex-pos-web/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Type check (vue-tsc)
+        run: npm run typecheck
+
+      - name: Build (vite)
+        run: npm run build
+
+  api:
+    name: API — restore & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore src/HuntexPos.Api/HuntexPos.Api.csproj
+
+      - name: Build (Release)
+        run: dotnet build src/HuntexPos.Api/HuntexPos.Api.csproj --configuration Release --no-restore

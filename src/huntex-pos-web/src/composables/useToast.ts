@@ -1,6 +1,6 @@
 import { ref, type Ref } from 'vue'
 
-export type ToastItem = { id: number; message: string; type: 'success' | 'error' | 'info' }
+export type ToastItem = { id: number; message: string; type: 'success' | 'error' | 'info' | 'warning' }
 
 const toasts: Ref<ToastItem[]> = ref([])
 let nextId = 1
@@ -25,6 +25,7 @@ export function useToast() {
     dismiss,
     success: (m: string) => push(m, 'success'),
     error: (m: string) => push(m, 'error'),
-    info: (m: string) => push(m, 'info')
+    info: (m: string) => push(m, 'info'),
+    warning: (m: string) => push(m, 'warning')
   }
 }

@@ -508,7 +508,6 @@ async function openOrderConfirmationPdf() {
   } catch { /* silently fail */ }
 }
 
-const searchEmpty = computed(() => !q.value.trim())
 const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !results.value.length)
 </script>
 
