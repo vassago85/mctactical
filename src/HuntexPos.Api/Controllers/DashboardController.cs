@@ -36,11 +36,13 @@ public class DashboardController : ControllerBase
     }
 
     [HttpGet("overview")]
-    public async Task<DashboardOverviewDto> Overview(
+    public async Task<ActionResult<DashboardOverviewDto>> Overview(
         [FromQuery] DateTimeOffset? from,
         [FromQuery] DateTimeOffset? to,
         CancellationToken ct)
     {
+      try
+      {
         var nowUtc = DateTimeOffset.UtcNow;
         var (windowFrom, windowTo) = ResolveWindow(from, to, nowUtc);
         var span = windowTo - windowFrom;
@@ -195,6 +197,11 @@ public class DashboardController : ControllerBase
             LowStockAlerts = lowStock,
             RecentActivity = recentActivity
         };
+      }
+      catch (Exception ex)
+      {
+          return StatusCode(500, new { error = ex.Message, detail = ex.InnerException?.Message });
+      }
     }
 
     /// <summary>Default range = last 30 days, ending today end-of-day local time.</summary>
@@ -294,23 +301,27 @@ public class DashboardController : ControllerBase
         IReadOnlyCollection<Invoice> allInvoices,
         CancellationToken ct)
     {
-        // Pull the most recent few of each type then merge — much cheaper than
-        // sorting full tables in memory.
+        // Materialise everything before any DateTimeOffset / null-coalesce
+        // ordering — SQLite's EF provider can't translate `??` on nullable
+        // DateTimeOffset, and we want to be defensive about plain ORDER BY too
+        // (DateTimeOffset is stored as TEXT and ordering is left to the .NET
+        // side everywhere else in this codebase — match that pattern).
         var invoices = allInvoices
             .OrderByDescending(i => i.VoidedAt ?? i.CreatedAt)
             .Take(RecentActivityLimit * 2)
             .ToList();
 
-        var quotes = await _db.Quotes.AsNoTracking()
+        var quotes = (await _db.Quotes.AsNoTracking().ToListAsync(ct))
             .OrderByDescending(q => q.ConvertedAt ?? q.CreatedAt)
             .Take(RecentActivityLimit)
-            .ToListAsync(ct);
+            .ToList();
 
-        var receipts = await _db.StockReceipts.AsNoTracking()
-            .Include(r => r.Product)
+        var receipts = (await _db.StockReceipts.AsNoTracking()
+                .Include(r => r.Product)
+                .ToListAsync(ct))
             .OrderByDescending(r => r.CreatedAt)
             .Take(RecentActivityLimit)
-            .ToListAsync(ct);
+            .ToList();
 
         // Resolve display names for any user IDs we'll cite.
         var userIds = invoices
