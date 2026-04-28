@@ -20,7 +20,7 @@ const route = useRoute()
 const router = useRouter()
 const sidebarOpen = ref(false)
 const { businessName, logoUrl, features, terminology } = useBranding()
-const brandLogo = computed(() => logoUrl.value ?? logoLight)
+const brandLogo = computed<string | null>(() => logoUrl.value ?? logoLight)
 
 const isStandalone = ref(
   window.matchMedia('(display-mode: standalone)').matches ||
@@ -60,7 +60,8 @@ function logout() {
     />
     <aside class="mc-sidebar" :class="{ 'mc-sidebar--open': sidebarOpen }">
       <div class="mc-sidebar__brand">
-        <img class="mc-sidebar__logo" :src="brandLogo" :alt="businessName" width="140" height="36" />
+        <img v-if="brandLogo" class="mc-sidebar__logo" :src="brandLogo" :alt="businessName" width="140" height="36" />
+        <span v-else class="mc-sidebar__wordmark">{{ businessName }}</span>
         <p class="mc-sidebar__tag">Point of sale</p>
       </div>
       <nav class="mc-sidebar__nav" aria-label="Main">

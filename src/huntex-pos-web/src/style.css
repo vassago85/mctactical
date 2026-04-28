@@ -428,6 +428,15 @@ body.mc-body-app .app-main tbody tr:hover {
   display: block;
 }
 
+.mc-sidebar__wordmark {
+  display: block;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--mc-app-on-dark, #f5f3ee);
+  line-height: 1.2;
+}
+
 .mc-sidebar__tag {
   margin: var(--mc-space-2) 0 0;
   font-size: 0.65rem;

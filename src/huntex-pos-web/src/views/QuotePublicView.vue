@@ -65,7 +65,8 @@ function formatDate(iso?: string | null) {
   <div class="qp">
     <div class="qp__sheet">
       <header class="qp__head">
-        <img class="qp__logo" :src="logoUrl ?? logoDark" :alt="businessName" width="160" height="48" />
+        <img v-if="logoUrl ?? logoDark" class="qp__logo" :src="(logoUrl ?? logoDark) as string" :alt="businessName" width="160" height="48" />
+        <span v-else class="qp__wordmark">{{ businessName }}</span>
         <div class="qp__head-text">
           <h1 class="qp__h1">Quote</h1>
           <p v-if="q" class="qp__num">{{ q.quoteNumber }}</p>
@@ -159,6 +160,15 @@ function formatDate(iso?: string | null) {
   margin-bottom: 1.25rem;
 }
 .qp__logo { width: auto; height: 48px; object-fit: contain; }
+.qp__wordmark {
+  display: inline-block;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  color: #1f1f23;
+}
 .qp__h1 {
   margin: 0;
   font-family: 'Barlow Condensed', sans-serif;

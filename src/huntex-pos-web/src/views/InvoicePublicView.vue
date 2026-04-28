@@ -53,7 +53,8 @@ function pdfLink() {
   <div class="inv-public">
     <div class="inv-public__sheet">
       <header class="inv-public__head">
-        <img class="inv-public__logo" :src="logoUrl ?? logoDark" :alt="businessName" width="160" height="48" />
+        <img v-if="logoUrl ?? logoDark" class="inv-public__logo" :src="(logoUrl ?? logoDark) as string" :alt="businessName" width="160" height="48" />
+        <span v-else class="inv-public__wordmark">{{ businessName }}</span>
         <div class="inv-public__head-text">
           <h1 class="inv-public__h1">Invoice</h1>
           <p v-if="inv" class="inv-public__num">{{ inv.invoiceNumber }}</p>
@@ -158,6 +159,14 @@ function pdfLink() {
   width: auto;
   height: 48px;
   object-fit: contain;
+}
+.inv-public__wordmark {
+  display: inline-block;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  color: #1f1f23;
 }
 
 .inv-public__h1 {
