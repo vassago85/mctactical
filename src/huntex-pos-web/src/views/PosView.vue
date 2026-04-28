@@ -13,7 +13,7 @@ import McModal from '@/components/ui/McModal.vue'
 import McSpinner from '@/components/ui/McSpinner.vue'
 import McCheckbox from '@/components/ui/McCheckbox.vue'
 import McBadge from '@/components/ui/McBadge.vue'
-import { Minus, Plus, ChevronDown, ChevronRight, Search, Camera, Check } from 'lucide-vue-next'
+import { Minus, Plus, ChevronDown, ChevronRight, Search, Camera, Check, CreditCard, Banknote, Smartphone } from 'lucide-vue-next'
 import { beepSuccess, beepError } from '@/utils/beep'
 
 type Product = {
@@ -489,6 +489,15 @@ function requestCheckout() {
   void doCheckout()
 }
 
+// Single-click checkout that also records the tender method. Used by the
+// Card / Cash / EFT action buttons so a cashier doesn't need a separate
+// "pick method then click Complete sale" step.
+function completeSaleAs(method: 'Card' | 'Cash' | 'EFT') {
+  if (busy.value || !cart.value.length) return
+  paymentMethod.value = method
+  requestCheckout()
+}
+
 function confirmSpecialOrder() {
   showSpecialOrderModal.value = false
   if (belowCostWarning.value) {
@@ -761,21 +770,6 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
               </div>
             </div>
 
-            <!-- Payment method as button group -->
-            <div class="pos-checkout__group">
-              <div class="pos-checkout__label">Payment method</div>
-              <div class="pos-pay-group" role="group" aria-label="Payment method">
-                <button
-                  v-for="method in ['Card', 'Cash', 'EFT']"
-                  :key="method"
-                  type="button"
-                  class="pos-pay-btn"
-                  :class="{ 'pos-pay-btn--on': paymentMethod === method }"
-                  @click="paymentMethod = method"
-                >{{ method }}</button>
-              </div>
-            </div>
-
             <!-- Manager: order discount -->
             <div v-if="isManager" class="pos-checkout__group">
               <McField label="Order discount (R)" for-id="order-disc">
@@ -805,17 +799,46 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 
             <McAlert v-if="belowCostWarning" variant="warning" class="pos-checkout__warn">{{ belowCostWarning }}</McAlert>
 
-            <McButton
-              variant="primary"
-              type="button"
-              block
-              :disabled="busy || !cart.length"
-              class="pos-checkout-btn"
-              @click="requestCheckout"
-            >
-              <McSpinner v-if="busy" />
-              <span v-else>Complete sale</span>
-            </McButton>
+            <div class="pos-checkout__pay-actions" role="group" aria-label="Complete sale by payment method">
+              <button
+                type="button"
+                class="pos-pay-action pos-pay-action--card"
+                :class="{ 'pos-pay-action--busy': busy && paymentMethod === 'Card' }"
+                :disabled="busy || !cart.length"
+                title="Complete sale and record as card payment"
+                @click="completeSaleAs('Card')"
+              >
+                <McSpinner v-if="busy && paymentMethod === 'Card'" />
+                <CreditCard v-else :size="22" aria-hidden="true" />
+                <span class="pos-pay-action__label">Card</span>
+              </button>
+
+              <button
+                type="button"
+                class="pos-pay-action pos-pay-action--cash"
+                :class="{ 'pos-pay-action--busy': busy && paymentMethod === 'Cash' }"
+                :disabled="busy || !cart.length"
+                title="Complete sale and record as cash payment"
+                @click="completeSaleAs('Cash')"
+              >
+                <McSpinner v-if="busy && paymentMethod === 'Cash'" />
+                <Banknote v-else :size="22" aria-hidden="true" />
+                <span class="pos-pay-action__label">Cash</span>
+              </button>
+
+              <button
+                type="button"
+                class="pos-pay-action pos-pay-action--eft"
+                :class="{ 'pos-pay-action--busy': busy && paymentMethod === 'EFT' }"
+                :disabled="busy || !cart.length"
+                title="Complete sale and record as EFT payment"
+                @click="completeSaleAs('EFT')"
+              >
+                <McSpinner v-if="busy && paymentMethod === 'EFT'" />
+                <Smartphone v-else :size="22" aria-hidden="true" />
+                <span class="pos-pay-action__label">EFT</span>
+              </button>
+            </div>
           </div>
         </div>
       </aside>
@@ -1430,34 +1453,50 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 }
 .pos-checkout__warn { margin: 0; }
 
-/* Payment method button group */
-.pos-pay-group {
+/* ── Tender action buttons (Card / Cash / EFT) ────────────────────────── */
+/* Single click both selects the tender and completes the sale. */
+.pos-checkout__pay-actions {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 0.4rem;
+  gap: 0.5rem;
 }
-.pos-pay-btn {
+.pos-pay-action {
   appearance: none;
-  border: 1.5px solid var(--mc-app-border-subtle, #c8c5bd);
-  background: var(--mc-app-surface, #fff);
-  color: var(--mc-app-text-secondary, #333336);
-  border-radius: 10px;
-  padding: 0.65rem 0.5rem;
-  font-size: 0.92rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
-}
-.pos-pay-btn:hover {
-  border-color: var(--mc-accent, #f47a20);
-  background: rgba(244, 122, 32, 0.05);
-}
-.pos-pay-btn--on {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 72px;
+  padding: 0.75rem 0.5rem;
+  border: 1.5px solid var(--mc-accent, #f47a20);
+  border-radius: 12px;
   background: var(--mc-accent, #f47a20);
-  border-color: var(--mc-accent, #f47a20);
   color: #fff;
-  box-shadow: 0 2px 6px rgba(244, 122, 32, 0.35);
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(244, 122, 32, 0.25);
+  transition: transform 0.08s ease, box-shadow 0.12s ease, background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+}
+.pos-pay-action:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(244, 122, 32, 0.35);
+}
+.pos-pay-action:active:not(:disabled) {
+  transform: translateY(0);
+}
+.pos-pay-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  box-shadow: none;
+}
+.pos-pay-action--busy {
+  opacity: 1;
+}
+.pos-pay-action__label {
+  font-size: 0.85rem;
 }
 
 .pos-email-wrap { position: relative; width: 100%; }
@@ -1591,12 +1630,6 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   line-height: 1.05;
 }
 
-.pos-checkout-btn {
-  min-height: 52px;
-  font-size: 1rem;
-  letter-spacing: 0.06em;
-}
-
 .pos-cart-was {
   display: block;
   font-size: 0.72rem;
@@ -1632,7 +1665,12 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   .pos-panel__body--scroll { max-height: 55vh; }
 }
 @media (max-width: 720px) {
-  .pos-pay-group { grid-template-columns: 1fr 1fr 1fr; }
+  .pos-pay-action { min-height: 64px; padding: 0.6rem 0.4rem; }
+  .pos-pay-action__label { font-size: 0.78rem; letter-spacing: 0.04em; }
+}
+@media (max-width: 360px) {
+  /* Last-resort: stack vertically on tiny screens to keep tap targets large. */
+  .pos-checkout__pay-actions { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {
