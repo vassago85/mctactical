@@ -15,7 +15,8 @@ import McEmptyState from '@/components/ui/McEmptyState.vue'
 import McModal from '@/components/ui/McModal.vue'
 import McCheckbox from '@/components/ui/McCheckbox.vue'
 import McFilterToolbar from '@/components/ui/McFilterToolbar.vue'
-import { AlertTriangle, MoreHorizontal, X, Star } from 'lucide-vue-next'
+import BarcodeScanner from '@/components/BarcodeScanner.vue'
+import { AlertTriangle, MoreHorizontal, X, Star, ScanLine } from 'lucide-vue-next'
 
 type Supplier = { id: string; name: string }
 
@@ -233,7 +234,63 @@ let computeTimer: ReturnType<typeof setTimeout> | null = null
 
 function closeDrawer() {
   showForm.value = false
+  showBarcodeScanner.value = false
+  barcodeConflict.value = null
 }
+
+// ── Barcode scanner state (Edit-product drawer) ──────────────────────────
+// Camera-based scan to fill the Barcode field. The form still requires an
+// explicit Save click, so the operator can review before persisting.
+const showBarcodeScanner = ref(false)
+const barcodeConflict = ref<{ sku: string; name: string } | null>(null)
+let barcodeLookupTimer: ReturnType<typeof setTimeout> | null = null
+
+function openBarcodeScanner() {
+  showBarcodeScanner.value = true
+}
+function closeBarcodeScanner() {
+  showBarcodeScanner.value = false
+}
+function onBarcodeScanned(value: string) {
+  const trimmed = (value ?? '').trim()
+  if (!trimmed) return
+  form.value.barcode = trimmed
+  closeBarcodeScanner()
+  toast.success(`Scanned ${trimmed}`)
+  void checkBarcodeConflict(trimmed)
+}
+
+// Hits the existing GET /api/products?barcode=X. Filters out the
+// currently-edited product so re-saving an existing barcode doesn't warn.
+async function checkBarcodeConflict(barcode: string) {
+  barcodeConflict.value = null
+  if (!barcode) return
+  try {
+    const { data } = await http.get<Product[]>('/api/products', {
+      params: { barcode, take: 5 }
+    })
+    const other = (data ?? []).find((p) => p.id !== editId.value && p.barcode === barcode)
+    if (other) {
+      barcodeConflict.value = { sku: other.sku, name: other.name }
+    }
+  } catch {
+    /* network blip — let the backend's uniqueness rule catch it on save */
+  }
+}
+
+// Re-check whenever the barcode input itself changes (typing or paste). Debounced.
+watch(
+  () => form.value.barcode,
+  (val) => {
+    if (barcodeLookupTimer) clearTimeout(barcodeLookupTimer)
+    const v = (val ?? '').trim()
+    if (!v) {
+      barcodeConflict.value = null
+      return
+    }
+    barcodeLookupTimer = setTimeout(() => void checkBarcodeConflict(v), 350)
+  }
+)
 
 function openAdd() {
   editId.value = null
@@ -861,7 +918,28 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
                 <input id="f-sku" v-model="form.sku" required />
               </McField>
               <McField label="EAN-13 SKU" for-id="f-bc" hint="Auto-generated on first label print if left blank">
-                <input id="f-bc" v-model="form.barcode" />
+                <div class="stock-barcode-row">
+                  <input id="f-bc" v-model="form.barcode" placeholder="Type or scan…" />
+                  <button
+                    type="button"
+                    class="stock-barcode-scan"
+                    title="Scan a barcode with the camera"
+                    @click="openBarcodeScanner"
+                  >
+                    <ScanLine :size="16" aria-hidden="true" />
+                    <span>Scan</span>
+                  </button>
+                </div>
+                <McAlert
+                  v-if="barcodeConflict"
+                  variant="warning"
+                  class="stock-barcode-conflict"
+                >
+                  This barcode is already on
+                  <strong>{{ barcodeConflict.name }}</strong> (SKU
+                  <code>{{ barcodeConflict.sku }}</code>). Saving will move the
+                  barcode to this product.
+                </McAlert>
               </McField>
             </div>
             <McField label="Name" for-id="f-name">
@@ -1107,6 +1185,20 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
         </aside>
       </Transition>
     </Teleport>
+
+    <!-- Barcode scanner modal (drawer scan button) -->
+    <McModal v-model="showBarcodeScanner" title="Scan barcode">
+      <p class="stock-barcode-help">
+        Point the camera at the product barcode. The value will fill the field
+        and you'll need to click <strong>Save</strong> to apply.
+      </p>
+      <div class="stock-barcode-scanner">
+        <BarcodeScanner :active="showBarcodeScanner" @decode="onBarcodeScanned" />
+      </div>
+      <template #footer>
+        <McButton variant="secondary" type="button" @click="closeBarcodeScanner">Cancel</McButton>
+      </template>
+    </McModal>
 
     <!-- Label print modal -->
     <McModal v-model="showLabelModal" title="Print product label">
@@ -1655,5 +1747,59 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
   font-size: 0.82rem;
   color: var(--mc-app-text-muted, #5c5a56);
   margin: -0.5rem 0 0.75rem;
+}
+
+/* ── Barcode scan-to-fill (drawer) ───────────────────────────────────── */
+.stock-barcode-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+.stock-barcode-row > input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.stock-barcode-scan {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 0.85rem;
+  border: 1.5px solid var(--mc-accent, #f47a20);
+  background: var(--mc-app-surface, #fff);
+  color: var(--mc-accent, #f47a20);
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.stock-barcode-scan:hover {
+  background: var(--mc-accent, #f47a20);
+  color: #fff;
+}
+.stock-barcode-conflict {
+  margin-top: 0.5rem;
+}
+.stock-barcode-help {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  color: var(--mc-app-text-muted, #5c5a56);
+}
+.stock-barcode-scanner {
+  border: 1px solid var(--mc-app-border-soft, #e5e2dc);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000;
+  aspect-ratio: 4 / 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.stock-barcode-scanner :deep(video) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 </style>
