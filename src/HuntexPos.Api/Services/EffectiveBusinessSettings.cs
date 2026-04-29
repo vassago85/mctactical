@@ -34,4 +34,7 @@ public sealed class EffectiveBusinessSettings
     public bool EnableQuotes { get; init; } = true;
     public bool EnableDiscounts { get; init; } = true;
     public bool EnableBrandPricingRules { get; init; } = true;
+
+    /// <summary>Master toggle for Accounts Receivable. Default off so existing deployments keep cash-only behaviour.</summary>
+    public bool AccountsEnabled { get; init; } = false;
 }

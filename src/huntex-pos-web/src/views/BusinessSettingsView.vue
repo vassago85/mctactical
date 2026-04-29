@@ -37,6 +37,7 @@ interface BusinessSettings {
   enableQuotes: boolean
   enableDiscounts: boolean
   enableBrandPricingRules: boolean
+  accountsEnabled: boolean
 }
 
 const toast = useToast()
@@ -73,7 +74,8 @@ function emptySettings(): BusinessSettings {
     customerLabel: 'Customer',
     enableQuotes: true,
     enableDiscounts: true,
-    enableBrandPricingRules: true
+    enableBrandPricingRules: true,
+    accountsEnabled: false
   }
 }
 
@@ -325,6 +327,7 @@ onMounted(load)
           <McCheckbox v-model="form.enableQuotes" label="Enable quotes" hint="Show the quotes section in navigation and allow creating quotes." />
           <McCheckbox v-model="form.enableDiscounts" label="Enable discounts" hint="Allow staff to apply promotions and specials at the POS." />
           <McCheckbox v-model="form.enableBrandPricingRules" label="Enable supplier / brand pricing rules" hint="Show pricing rule configuration in the pricing settings page." />
+          <McCheckbox v-model="form.accountsEnabled" label="Enable customer accounts (AR)" hint="Allow charging sales to customer accounts. Existing cash, card and EFT sales are unaffected." />
         </div>
       </McCard>
 

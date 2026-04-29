@@ -76,6 +76,7 @@ public class BusinessSettingsController : ControllerBase
         row.EnableQuotes = body.EnableQuotes;
         row.EnableDiscounts = body.EnableDiscounts;
         row.EnableBrandPricingRules = body.EnableBrandPricingRules;
+        row.AccountsEnabled = body.AccountsEnabled;
         row.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _db.SaveChangesAsync(ct);
@@ -168,6 +169,7 @@ public class BusinessSettingsController : ControllerBase
                 Quotes = eff.EnableQuotes,
                 Discounts = eff.EnableDiscounts,
                 BrandPricingRules = eff.EnableBrandPricingRules,
+                Accounts = eff.AccountsEnabled,
             }
         };
     }
@@ -298,5 +300,6 @@ public class BusinessSettingsController : ControllerBase
         EnableQuotes = row.EnableQuotes,
         EnableDiscounts = row.EnableDiscounts,
         EnableBrandPricingRules = row.EnableBrandPricingRules,
+        AccountsEnabled = row.AccountsEnabled,
     };
 }

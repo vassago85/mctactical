@@ -15,6 +15,12 @@ public class CreateInvoiceLineRequest
 
 public class CreateInvoiceRequest
 {
+    /// <summary>
+    /// Optional link to a Customer record. Required when <see cref="PaymentMethod"/> is "Account".
+    /// When set, the customer's name/company/address are still copied from the request body so the
+    /// invoice keeps a stable point-in-time snapshot.
+    /// </summary>
+    public Guid? CustomerId { get; set; }
     public string? CustomerName { get; set; }
     public string? CustomerEmail { get; set; }
     public string? CustomerType { get; set; }
@@ -47,6 +53,7 @@ public class InvoiceDto
     public Guid Id { get; set; }
     public string InvoiceNumber { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
+    public Guid? CustomerId { get; set; }
     public string? CustomerName { get; set; }
     public string? CustomerEmail { get; set; }
     public string? CustomerType { get; set; }
@@ -73,9 +80,18 @@ public class InvoiceDto
     public DateTimeOffset? DeliveredAt { get; set; }
     public string? DeliveryNotes { get; set; }
 
+    // Phase 3B AR fields
+    public bool IsAccountSale { get; set; }
+    public decimal AmountPaid { get; set; }
+    public string PaymentStatus { get; set; } = "Paid";
+    public DateTimeOffset? DueDate { get; set; }
+
     /// <summary>Non-null if the sale total is below total cost (managers only).</summary>
     public string? BelowCostWarning { get; set; }
     public string? EmailWarning { get; set; }
+
+    /// <summary>Non-blocking warning when an Account sale pushes the customer's balance over their soft credit limit.</summary>
+    public string? AccountWarning { get; set; }
 }
 
 public class InvoiceLineDto

@@ -41,6 +41,25 @@ public class InvoiceService
 
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
+        // Phase 3B.2: validate Account-method preconditions before any stock or pricing work.
+        var isAccountSale = string.Equals(req.PaymentMethod, "Account", StringComparison.OrdinalIgnoreCase);
+        Customer? accountCustomer = null;
+        if (isAccountSale)
+        {
+            var eff = await _business.GetAsync(ct);
+            if (!eff.AccountsEnabled)
+                throw new InvalidOperationException("Account sales are not enabled. Switch on Accounts in Business Settings first.");
+
+            if (!req.CustomerId.HasValue)
+                throw new InvalidOperationException("Select a customer before charging to account.");
+
+            accountCustomer = await _db.Customers.FirstOrDefaultAsync(c => c.Id == req.CustomerId.Value, ct);
+            if (accountCustomer == null)
+                throw new InvalidOperationException("Customer not found.");
+            if (!accountCustomer.AccountEnabled)
+                throw new InvalidOperationException($"{accountCustomer.Name ?? accountCustomer.Email} is not set up for account sales.");
+        }
+
         var productIds = req.Lines.Select(l => l.ProductId).Distinct().ToList();
         var products = await _db.Products.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct);
 
@@ -169,6 +188,7 @@ public class InvoiceService
             Id = Guid.NewGuid(),
             InvoiceNumber = await NextInvoiceNumberAsync(ct),
             Status = InvoiceStatus.Final,
+            CustomerId = req.CustomerId,
             CustomerName = req.CustomerName,
             CustomerEmail = req.CustomerEmail,
             CustomerType = req.CustomerType,
@@ -186,6 +206,23 @@ public class InvoiceService
             IsSpecialOrder = isSpecialOrder,
             Lines = lines
         };
+
+        // Phase 3B.2: AR posture. Account sales are unpaid until 3B.3 receipts arrive.
+        // Cash/Card/EFT invoices remain fully paid and continue to behave exactly as before.
+        if (isAccountSale && accountCustomer != null)
+        {
+            invoice.IsAccountSale = true;
+            invoice.AmountPaid = 0m;
+            invoice.PaymentStatus = InvoicePaymentStatus.Unpaid;
+            invoice.DueDate = DateTimeOffset.UtcNow.AddDays(Math.Max(0, accountCustomer.PaymentTermsDays));
+        }
+        else
+        {
+            invoice.IsAccountSale = false;
+            invoice.AmountPaid = grandTotal;
+            invoice.PaymentStatus = InvoicePaymentStatus.Paid;
+            invoice.DueDate = null;
+        }
 
         _db.Invoices.Add(invoice);
         await _db.SaveChangesAsync(ct);
@@ -261,6 +298,25 @@ public class InvoiceService
         else if (grandTotal < totalCostInclVat && totalCostInclVat > 0)
             dto.BelowCostWarning = $"Sale total R{grandTotal:0.00} is below total cost incl VAT R{totalCostInclVat:0.00}";
 
+        // Phase 3B.2: soft credit-limit warning (non-blocking).
+        if (isAccountSale && accountCustomer != null && accountCustomer.CreditLimit > 0m)
+        {
+            // Outstanding = sum of (GrandTotal - AmountPaid) across this customer's unpaid/partial/overdue invoices.
+            // The invoice we just inserted is included in this sum because we already SaveChanges'd it above.
+            var outstanding = await _db.Invoices.AsNoTracking()
+                .Where(i => i.CustomerId == accountCustomer.Id
+                            && i.PaymentStatus != InvoicePaymentStatus.Paid
+                            && i.PaymentStatus != InvoicePaymentStatus.WrittenOff
+                            && i.Status != InvoiceStatus.Voided)
+                .Select(i => i.GrandTotal - i.AmountPaid)
+                .SumAsync(ct);
+
+            if (outstanding > accountCustomer.CreditLimit)
+            {
+                dto.AccountWarning = $"Customer is now over their credit limit (balance R{outstanding:0.00} of R{accountCustomer.CreditLimit:0.00}).";
+            }
+        }
+
         return dto;
     }
 
@@ -285,6 +341,7 @@ public class InvoiceService
             Id = inv.Id,
             InvoiceNumber = inv.InvoiceNumber,
             Status = inv.Status.ToString(),
+            CustomerId = inv.CustomerId,
             CustomerName = inv.CustomerName,
             CustomerEmail = inv.CustomerEmail,
             CustomerType = inv.CustomerType,
@@ -305,6 +362,10 @@ public class InvoiceService
             IsDelivered = inv.IsDelivered,
             DeliveredAt = inv.DeliveredAt,
             DeliveryNotes = inv.DeliveryNotes,
+            IsAccountSale = inv.IsAccountSale,
+            AmountPaid = inv.AmountPaid,
+            PaymentStatus = inv.PaymentStatus.ToString(),
+            DueDate = inv.DueDate,
             Lines = inv.Lines.Select(l => new InvoiceLineDto
             {
                 ProductId = l.ProductId,

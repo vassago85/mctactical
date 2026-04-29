@@ -75,6 +75,7 @@ public sealed class EffectiveBusinessSettingsProvider : IEffectiveBusinessSettin
             EnableQuotes = row?.EnableQuotes ?? true,
             EnableDiscounts = row?.EnableDiscounts ?? true,
             EnableBrandPricingRules = row?.EnableBrandPricingRules ?? true,
+            AccountsEnabled = row?.AccountsEnabled ?? false,
         };
     }
 }

@@ -36,6 +36,9 @@ public class BusinessSettingsDto
     public bool EnableQuotes { get; set; } = true;
     public bool EnableDiscounts { get; set; } = true;
     public bool EnableBrandPricingRules { get; set; } = true;
+
+    /// <summary>Master toggle for Accounts Receivable (Phase 3B). Default off.</summary>
+    public bool AccountsEnabled { get; set; } = false;
 }
 
 /// <summary>Public branding payload for the login page, public invoice/quote views, and app boot (no secrets).</summary>
@@ -63,4 +66,7 @@ public class BrandingFeaturesDto
     public bool Quotes { get; set; } = true;
     public bool Discounts { get; set; } = true;
     public bool BrandPricingRules { get; set; } = true;
+
+    /// <summary>True when Accounts Receivable is enabled for this deployment.</summary>
+    public bool Accounts { get; set; } = false;
 }

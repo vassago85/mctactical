@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { http } from '@/api/http'
 import { useToast } from '@/composables/useToast'
+import { useBranding } from '@/composables/useBranding'
 import { formatZAR } from '@/utils/format'
 import BarcodeScanner from '@/components/BarcodeScanner.vue'
 import McButton from '@/components/ui/McButton.vue'
@@ -13,7 +14,7 @@ import McModal from '@/components/ui/McModal.vue'
 import McSpinner from '@/components/ui/McSpinner.vue'
 import McCheckbox from '@/components/ui/McCheckbox.vue'
 import McBadge from '@/components/ui/McBadge.vue'
-import { Minus, Plus, ChevronDown, ChevronRight, Search, Camera, Check, CreditCard, Banknote, Smartphone } from 'lucide-vue-next'
+import { Minus, Plus, ChevronDown, ChevronRight, Search, Camera, Check, CreditCard, Banknote, Smartphone, Wallet, X } from 'lucide-vue-next'
 import { beepSuccess, beepError } from '@/utils/beep'
 
 type Product = {
@@ -50,6 +51,65 @@ const showBusinessFields = ref(false)
 const customerLoading = ref(false)
 const customerMatch = ref(false)
 const paymentMethod = ref('Card')
+
+// Phase 3B.2 — AR customer picker
+type CustomerSummary = {
+  id: string
+  email: string
+  name?: string | null
+  phone?: string | null
+  company?: string | null
+  address?: string | null
+  vatNumber?: string | null
+  customerType?: string | null
+  tradeAccount: boolean
+  accountEnabled: boolean
+  creditLimit: number
+  paymentTermsDays: number
+}
+
+type CustomerAccount = {
+  customerId: string
+  name?: string | null
+  email?: string | null
+  company?: string | null
+  tradeAccount: boolean
+  accountEnabled: boolean
+  creditLimit: number
+  paymentTermsDays: number
+  balance: number
+  creditAvailable: number
+  openInvoiceCount: number
+  overdueInvoiceCount: number
+}
+
+const { features } = useBranding()
+
+const selectedCustomer = ref<CustomerSummary | null>(null)
+const selectedAccount = ref<CustomerAccount | null>(null)
+const customerSearchInput = ref('')
+const customerSearchResults = ref<CustomerSummary[]>([])
+const customerSearchOpen = ref(false)
+const customerSearchBusy = ref(false)
+let customerSearchTimer: ReturnType<typeof setTimeout> | null = null
+
+const accountsFeatureOn = computed(() => features.value.accounts)
+const canChargeAccount = computed(() => !!(
+  accountsFeatureOn.value
+  && selectedCustomer.value
+  && selectedCustomer.value.accountEnabled
+))
+
+const projectedBalance = computed(() => {
+  if (!selectedAccount.value || paymentMethod.value !== 'Account') return 0
+  return selectedAccount.value.balance + grandPreview.value
+})
+
+const willExceedCreditLimit = computed(() => {
+  if (paymentMethod.value !== 'Account') return false
+  if (!selectedAccount.value || selectedAccount.value.creditLimit <= 0) return false
+  return projectedBalance.value > selectedAccount.value.creditLimit
+})
 const discountTotal = ref(0)
 const sendEmail = ref(true)
 const busy = ref(false)
@@ -405,9 +465,89 @@ async function lookupCustomer() {
       customerVatNumber.value = data.vatNumber || ''
       if (data.company || data.vatNumber) showBusinessFields.value = true
       customerMatch.value = true
+      // If they have an AR account, link them so the Account button becomes available.
+      if (data.id && data.accountEnabled) {
+        await selectCustomer(data, { silent: true })
+      }
     }
   } catch { /* 404 = new customer, that's fine */ }
   finally { customerLoading.value = false }
+}
+
+// ── Phase 3B.2 — AR customer picker ────────────────────────────────────────────
+watch(customerSearchInput, () => {
+  if (customerSearchTimer) clearTimeout(customerSearchTimer)
+  const term = customerSearchInput.value.trim()
+  if (!term) {
+    customerSearchResults.value = []
+    customerSearchOpen.value = false
+    return
+  }
+  customerSearchTimer = setTimeout(() => void runCustomerSearch(term), 200)
+})
+
+async function runCustomerSearch(term: string) {
+  customerSearchBusy.value = true
+  try {
+    const { data } = await http.get<CustomerSummary[]>(`/api/customers?q=${encodeURIComponent(term)}&take=15`)
+    customerSearchResults.value = data
+    customerSearchOpen.value = true
+  } catch {
+    customerSearchResults.value = []
+  } finally {
+    customerSearchBusy.value = false
+  }
+}
+
+async function selectCustomer(c: CustomerSummary, opts: { silent?: boolean } = {}) {
+  selectedCustomer.value = c
+  customerSearchInput.value = ''
+  customerSearchResults.value = []
+  customerSearchOpen.value = false
+  // Mirror the picker's customer into the existing checkout fields so receipts /
+  // emails / PDFs still get a stable point-in-time snapshot of the customer block.
+  if (c.name) customerName.value = c.name
+  if (c.email) customerEmail.value = c.email
+  if (c.customerType) customerType.value = c.customerType
+  if (c.company) {
+    customerCompany.value = c.company
+    showBusinessFields.value = true
+  }
+  if (c.address) customerAddress.value = c.address
+  if (c.vatNumber) {
+    customerVatNumber.value = c.vatNumber
+    showBusinessFields.value = true
+  }
+  customerMatch.value = true
+
+  if (c.accountEnabled) {
+    await refreshAccountSnapshot(c.id)
+  } else {
+    selectedAccount.value = null
+  }
+  if (!opts.silent) toast.info(`Customer ${c.name || c.email} loaded.`)
+}
+
+async function refreshAccountSnapshot(customerId: string) {
+  try {
+    const { data } = await http.get<CustomerAccount>(`/api/customers/${customerId}/account`)
+    selectedAccount.value = data
+  } catch {
+    selectedAccount.value = null
+  }
+}
+
+function clearSelectedCustomer() {
+  selectedCustomer.value = null
+  selectedAccount.value = null
+  customerName.value = ''
+  customerEmail.value = ''
+  customerType.value = ''
+  customerCompany.value = ''
+  customerAddress.value = ''
+  customerVatNumber.value = ''
+  customerMatch.value = false
+  if (paymentMethod.value === 'Account') paymentMethod.value = 'Card'
 }
 
 async function doCheckout() {
@@ -420,7 +560,9 @@ async function doCheckout() {
       unitPrice: l.unitPrice,
       lineTotal: Math.max(0, l.unitPrice * l.qty - computedLineDiscount(l))
     }))
+    const isAccountSale = paymentMethod.value === 'Account'
     const { data } = await http.post('/api/invoices', {
+      customerId: selectedCustomer.value?.id ?? null,
       customerName: customerName.value || null,
       customerEmail: customerEmail.value || null,
       customerType: customerType.value || null,
@@ -451,6 +593,12 @@ async function doCheckout() {
       isSpecialOrder: data.isSpecialOrder ?? false,
       lines: summaryLines
     }
+    if (isAccountSale && data.accountWarning) {
+      toast.warning(data.accountWarning)
+    }
+    if (isAccountSale) {
+      toast.success(`Charged ${formatZAR(data.grandTotal)} to ${customerName.value || 'customer'}'s account.`)
+    }
     cart.value = []
     discountTotal.value = 0
     customerName.value = ''
@@ -460,6 +608,11 @@ async function doCheckout() {
     customerAddress.value = ''
     customerVatNumber.value = ''
     showBusinessFields.value = false
+    selectedCustomer.value = null
+    selectedAccount.value = null
+    customerSearchInput.value = ''
+    customerSearchResults.value = []
+    customerSearchOpen.value = false
     customerMatch.value = false
     paymentMethod.value = 'Card'
     showSaleSummary.value = true
@@ -478,6 +631,20 @@ async function doCheckout() {
 
 function requestCheckout() {
   if (!cart.value.length) return
+  if (paymentMethod.value === 'Account') {
+    if (!selectedCustomer.value) {
+      toast.error('Pick a customer to charge to account.')
+      return
+    }
+    if (!selectedCustomer.value.accountEnabled) {
+      toast.error(`${selectedCustomer.value.name || selectedCustomer.value.email} is not set up for account sales.`)
+      return
+    }
+    if (willExceedCreditLimit.value && selectedAccount.value) {
+      const msg = `Charging ${formatZAR(grandPreview.value)} will push ${selectedCustomer.value.name || 'this customer'} to ${formatZAR(projectedBalance.value)}, over their R${selectedAccount.value.creditLimit.toFixed(0)} credit limit. Continue?`
+      if (!confirm(msg)) return
+    }
+  }
   if (hasSpecialOrderLines.value) {
     showSpecialOrderModal.value = true
     return
@@ -490,11 +657,22 @@ function requestCheckout() {
 }
 
 // Static config for the payment-method picker. Order shown left-to-right.
+// "Account" is only rendered when the deployment has Accounts switched on AND
+// a customer with AccountEnabled is currently selected (see template).
 const paymentMethods = [
-  { id: 'Card', label: 'Card', icon: CreditCard },
-  { id: 'Cash', label: 'Cash', icon: Banknote },
-  { id: 'EFT',  label: 'EFT',  icon: Smartphone },
+  { id: 'Card',    label: 'Card',    icon: CreditCard },
+  { id: 'Cash',    label: 'Cash',    icon: Banknote },
+  { id: 'EFT',     label: 'EFT',     icon: Smartphone },
+  { id: 'Account', label: 'Account', icon: Wallet },
 ] as const
+
+// If the customer goes away (cleared, swapped to a non-AR one, etc.) silently
+// downgrade the tender from Account back to Card so the Complete-sale button stays valid.
+watch([selectedCustomer, accountsFeatureOn], () => {
+  if (paymentMethod.value === 'Account' && !canChargeAccount.value) {
+    paymentMethod.value = 'Card'
+  }
+})
 
 function confirmSpecialOrder() {
   showSpecialOrderModal.value = false
@@ -713,6 +891,72 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
             <span>Checkout</span>
           </div>
           <div class="pos-checkout__body">
+            <!-- Phase 3B.2 — Customer picker (search existing accounts). The legacy
+                 customer-name/email fields below still work for ad-hoc walk-in capture. -->
+            <div v-if="accountsFeatureOn" class="pos-checkout__group pos-customer-picker">
+              <div class="pos-checkout__label">Customer</div>
+              <div v-if="selectedCustomer" class="pos-customer-pill">
+                <div class="pos-customer-pill__main">
+                  <div class="pos-customer-pill__name">
+                    {{ selectedCustomer.name || selectedCustomer.email }}
+                    <McBadge v-if="selectedCustomer.accountEnabled" variant="info">Account</McBadge>
+                    <McBadge v-if="selectedCustomer.tradeAccount" variant="success">Trade</McBadge>
+                  </div>
+                  <div v-if="selectedCustomer.company" class="pos-customer-pill__company">
+                    {{ selectedCustomer.company }}
+                  </div>
+                  <div v-if="selectedAccount && selectedCustomer.accountEnabled" class="pos-customer-pill__balance">
+                    <span>Balance:</span>
+                    <strong :class="{ 'pos-customer-pill__balance--bad': selectedAccount.balance > selectedAccount.creditLimit && selectedAccount.creditLimit > 0 }">
+                      {{ formatZAR(selectedAccount.balance) }}
+                    </strong>
+                    <span v-if="selectedAccount.creditLimit > 0" class="pos-customer-pill__limit">
+                      / {{ formatZAR(selectedAccount.creditLimit) }} limit
+                    </span>
+                    <span v-if="selectedAccount.openInvoiceCount > 0" class="pos-customer-pill__open">
+                      · {{ selectedAccount.openInvoiceCount }} open
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  class="pos-customer-pill__clear"
+                  aria-label="Clear customer"
+                  @click="clearSelectedCustomer"
+                ><X :size="14" /></button>
+              </div>
+              <div v-else class="pos-customer-search">
+                <div class="pos-customer-search__field">
+                  <Search :size="16" class="pos-customer-search__icon" />
+                  <input
+                    v-model="customerSearchInput"
+                    type="search"
+                    class="pos-customer-search__input"
+                    placeholder="Search customer name, company, email…"
+                    autocomplete="off"
+                  />
+                  <McSpinner v-if="customerSearchBusy" class="pos-customer-search__spinner" />
+                </div>
+                <ul v-if="customerSearchOpen && customerSearchResults.length" class="pos-customer-search__results">
+                  <li v-for="c in customerSearchResults" :key="c.id">
+                    <button type="button" class="pos-customer-search__item" @click="selectCustomer(c)">
+                      <span class="pos-customer-search__name">{{ c.name || c.email }}</span>
+                      <span v-if="c.company" class="pos-customer-search__sub">{{ c.company }}</span>
+                      <span class="pos-customer-search__badges">
+                        <McBadge v-if="c.accountEnabled" variant="info">Account</McBadge>
+                        <McBadge v-if="c.tradeAccount" variant="success">Trade</McBadge>
+                      </span>
+                    </button>
+                  </li>
+                </ul>
+                <p v-else-if="customerSearchOpen && !customerSearchBusy && customerSearchInput.trim()" class="pos-customer-search__empty">
+                  No matches. Use the field below for a walk-in, or open the
+                  <RouterLink to="/customers" class="pos-customer-search__link">Customers page</RouterLink>
+                  to add one.
+                </p>
+              </div>
+            </div>
+
             <!-- Customer info -->
             <div class="pos-checkout__group">
               <McField label="Customer name" for-id="cust-name">
@@ -775,24 +1019,30 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
               </div>
             </div>
 
-            <!-- Payment method picker (icon buttons, single-select). -->
+            <!-- Payment method picker (icon buttons, single-select).
+                 The "Account" tender is hidden unless the deployment has Accounts on
+                 *and* a customer with AccountEnabled is currently selected. -->
             <div class="pos-checkout__group">
               <div class="pos-checkout__label">Payment method</div>
               <div class="pos-pay-group" role="radiogroup" aria-label="Payment method">
-                <button
-                  v-for="m in paymentMethods"
-                  :key="m.id"
-                  type="button"
-                  class="pos-pay-btn"
-                  :class="{ 'pos-pay-btn--on': paymentMethod === m.id }"
-                  :aria-pressed="paymentMethod === m.id"
-                  :title="`Record this sale as ${m.label}`"
-                  @click="paymentMethod = m.id"
-                >
-                  <component :is="m.icon" :size="20" aria-hidden="true" />
-                  <span class="pos-pay-btn__label">{{ m.label }}</span>
-                </button>
+                <template v-for="m in paymentMethods" :key="m.id">
+                  <button
+                    v-if="m.id !== 'Account' || canChargeAccount"
+                    type="button"
+                    class="pos-pay-btn"
+                    :class="{ 'pos-pay-btn--on': paymentMethod === m.id }"
+                    :aria-pressed="paymentMethod === m.id"
+                    :title="`Record this sale as ${m.label}`"
+                    @click="paymentMethod = m.id"
+                  >
+                    <component :is="m.icon" :size="20" aria-hidden="true" />
+                    <span class="pos-pay-btn__label">{{ m.label }}</span>
+                  </button>
+                </template>
               </div>
+              <p v-if="paymentMethod === 'Account' && willExceedCreditLimit && selectedAccount" class="pos-checkout__credit-warn">
+                Charging this sale puts the customer at {{ formatZAR(projectedBalance) }}, over their {{ formatZAR(selectedAccount.creditLimit) }} credit limit. You'll be asked to confirm.
+              </p>
             </div>
 
             <McAlert v-if="belowCostWarning" variant="warning" class="pos-checkout__warn">{{ belowCostWarning }}</McAlert>
@@ -806,6 +1056,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
               @click="requestCheckout"
             >
               <McSpinner v-if="busy" />
+              <span v-else-if="paymentMethod === 'Account'">Charge to account ({{ formatZAR(grandPreview) }})</span>
               <span v-else>Complete sale ({{ paymentMethod }})</span>
             </McButton>
           </div>
@@ -1455,6 +1706,124 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   box-sizing: border-box;
 }
 .pos-checkout__warn { margin: 0; }
+.pos-checkout__credit-warn {
+  margin: 0.5rem 0 0;
+  padding: 0.55rem 0.75rem;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #78350f;
+  border-radius: 8px;
+  font-size: 0.825rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.pos-customer-picker { display: flex; flex-direction: column; gap: 0.5rem; }
+.pos-customer-search { position: relative; }
+.pos-customer-search__field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.85rem;
+  border: 1.5px solid var(--mc-app-border-subtle, #c8c5bd);
+  border-radius: var(--mc-app-radius-control, 10px);
+  background: var(--mc-app-surface, #fff);
+}
+.pos-customer-search__field:focus-within { border-color: var(--mc-accent, #f47a20); box-shadow: inset 0 0 0 1px var(--mc-accent, #f47a20); }
+.pos-customer-search__icon { color: var(--mc-app-text-muted, #5c5a56); flex-shrink: 0; }
+.pos-customer-search__input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 0.95rem;
+  min-width: 0;
+}
+.pos-customer-search__spinner { flex-shrink: 0; }
+.pos-customer-search__results {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0.25rem 0;
+  border: 1px solid var(--mc-app-border-soft, #ddd9d3);
+  border-radius: 12px;
+  background: var(--mc-app-surface, #fff);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+  max-height: 18rem;
+  overflow-y: auto;
+}
+.pos-customer-search__item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  width: 100%;
+  padding: 0.55rem 0.85rem;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.pos-customer-search__item:hover { background: var(--mc-app-surface-2, #f9f8f6); }
+.pos-customer-search__name { font-weight: 600; font-size: 0.9rem; }
+.pos-customer-search__sub { font-size: 0.8rem; color: var(--mc-app-text-muted, #5c5a56); }
+.pos-customer-search__badges { display: flex; gap: 0.35rem; margin-top: 0.2rem; flex-wrap: wrap; }
+.pos-customer-search__empty {
+  margin: 0.4rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--mc-app-text-muted, #5c5a56);
+  line-height: 1.4;
+}
+.pos-customer-search__link { color: var(--mc-accent, #f47a20); font-weight: 600; text-decoration: underline; }
+
+.pos-customer-pill {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 0.85rem;
+  background: var(--mc-app-surface-2, #f9f8f6);
+  border: 1.5px solid var(--mc-app-border-soft, #ddd9d3);
+  border-radius: 12px;
+}
+.pos-customer-pill__main { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; flex: 1; }
+.pos-customer-pill__name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--mc-app-text, #1a1a1c);
+}
+.pos-customer-pill__company { font-size: 0.825rem; color: var(--mc-app-text-muted, #5c5a56); }
+.pos-customer-pill__balance {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-top: 0.25rem;
+  font-size: 0.8125rem;
+  color: var(--mc-app-text-muted, #5c5a56);
+}
+.pos-customer-pill__balance strong { color: var(--mc-app-text, #1a1a1c); font-variant-numeric: tabular-nums; }
+.pos-customer-pill__balance--bad { color: #b91c1c !important; }
+.pos-customer-pill__limit { font-size: 0.75rem; }
+.pos-customer-pill__open { font-size: 0.75rem; color: var(--mc-app-text-muted, #5c5a56); }
+.pos-customer-pill__clear {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border: 1px solid var(--mc-app-border-faint, #eceae5);
+  border-radius: 8px;
+  background: var(--mc-app-surface, #fff);
+  color: var(--mc-app-text-muted, #5c5a56);
+  cursor: pointer;
+}
+.pos-customer-pill__clear:hover { background: var(--mc-app-surface-muted, #f0eeea); border-color: var(--mc-app-border, #9e9c94); }
 
 /* ── Payment method picker (Card / Cash / EFT toggle) ─────────────────── */
 .pos-pay-group {
