@@ -22,6 +22,14 @@ public class Invoice
     public decimal DiscountTotal { get; set; }
     public decimal GrandTotal { get; set; }
 
+    // Accounts Receivable (Phase 3B). Existing invoices are backfilled with
+    // AmountPaid = GrandTotal and PaymentStatus = Paid so behaviour is unchanged.
+    public Guid? CustomerId { get; set; }
+    public decimal AmountPaid { get; set; }
+    public InvoicePaymentStatus PaymentStatus { get; set; } = InvoicePaymentStatus.Paid;
+    public bool IsAccountSale { get; set; }
+    public DateTimeOffset? DueDate { get; set; }
+
     /// <summary>Name of the active promotion at time of sale (e.g. "Huntex Show 2026").</summary>
     public string? PromotionName { get; set; }
 

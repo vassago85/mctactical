@@ -41,5 +41,11 @@ public class BusinessSettings
     public bool EnableDiscounts { get; set; } = true;
     public bool EnableBrandPricingRules { get; set; } = true;
 
+    /// <summary>
+    /// Master toggle for Accounts Receivable (Phase 3B). Default <c>false</c> so existing
+    /// deployments (e.g. MC Tactical) keep behaving exactly as before until explicitly enabled.
+    /// </summary>
+    public bool AccountsEnabled { get; set; } = false;
+
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

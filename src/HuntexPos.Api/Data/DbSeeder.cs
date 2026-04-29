@@ -42,6 +42,10 @@ public static class DbSeeder
         await EnsureQuotesTablesAsync(db, ct);
         await EnsureAspNetUsersSupplierColumnAsync(db, ct);
         await EnsureProductSupplierDiscountColumnAsync(db, ct);
+        await EnsureCustomerAccountColumnsAsync(db, ct);
+        await EnsureInvoiceAccountColumnsAsync(db, ct);
+        await EnsureBusinessSettingsAccountsToggleAsync(db, ct);
+        await EnsureCustomerPaymentsTableAsync(db, ct);
         await MergeDuplicateSkusAsync(db, log, ct);
         await VenaticsGearSeeder.SeedAsync(db, log, ct);
 
@@ -303,6 +307,83 @@ public static class DbSeeder
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "CustomerCompany" TEXT;""", ct); } catch { }
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "CustomerAddress" TEXT;""", ct); } catch { }
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "CustomerVatNumber" TEXT;""", ct); } catch { }
+    }
+
+    /// <summary>
+    /// Phase 3B.1 — adds Trade/Account flags, credit limit, and payment terms to existing customers.
+    /// Defaults are conservative (no account, 30-day terms) so existing data behaves identically.
+    /// </summary>
+    private static async Task EnsureCustomerAccountColumnsAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Customers" ADD COLUMN "TradeAccount" INTEGER NOT NULL DEFAULT 0;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Customers" ADD COLUMN "AccountEnabled" INTEGER NOT NULL DEFAULT 0;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Customers" ADD COLUMN "CreditLimit" TEXT NOT NULL DEFAULT '0';""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Customers" ADD COLUMN "PaymentTermsDays" INTEGER NOT NULL DEFAULT 30;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_Customers_AccountEnabled" ON "Customers" ("AccountEnabled");""", ct); } catch { }
+    }
+
+    /// <summary>
+    /// Phase 3B.1 — adds CustomerId, AmountPaid, PaymentStatus, IsAccountSale and DueDate to invoices.
+    /// All existing invoices are backfilled so AmountPaid = GrandTotal and PaymentStatus = 'Paid', i.e. fully settled.
+    /// This makes the migration a no-op for cash/card/EFT-only deployments such as MC Tactical.
+    /// </summary>
+    private static async Task EnsureInvoiceAccountColumnsAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+
+        // 1) Add columns (idempotent — try/catch is the existing project convention).
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "CustomerId" TEXT NULL;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "AmountPaid" TEXT NOT NULL DEFAULT '0';""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "PaymentStatus" TEXT NOT NULL DEFAULT 'Paid';""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "IsAccountSale" INTEGER NOT NULL DEFAULT 0;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "DueDate" TEXT NULL;""", ct); } catch { }
+
+        // 2) One-shot backfill: any invoice whose AmountPaid is still the column default
+        //    is treated as fully paid (legacy behaviour). Idempotent — only updates rows that
+        //    have not already been touched by the AR engine.
+        try { await db.Database.ExecuteSqlRawAsync(
+            """UPDATE "Invoices" SET "AmountPaid" = "GrandTotal" WHERE "AmountPaid" = '0' OR "AmountPaid" IS NULL OR "AmountPaid" = '';""", ct); } catch { }
+
+        try { await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_Invoices_CustomerId" ON "Invoices" ("CustomerId");""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_Invoices_PaymentStatus" ON "Invoices" ("PaymentStatus");""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_Invoices_IsAccountSale" ON "Invoices" ("IsAccountSale");""", ct); } catch { }
+    }
+
+    /// <summary>
+    /// Phase 3B.1 — adds the AccountsEnabled feature flag to BusinessSettings.
+    /// Default is <c>0</c> so existing deployments keep their current cash-only behaviour.
+    /// </summary>
+    private static async Task EnsureBusinessSettingsAccountsToggleAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "BusinessSettings" ADD COLUMN "AccountsEnabled" INTEGER NOT NULL DEFAULT 0;""", ct); } catch { }
+    }
+
+    /// <summary>Phase 3B.1 — creates the CustomerPayments table for AR receipts. No data is written here.</summary>
+    private static async Task EnsureCustomerPaymentsTableAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS "CustomerPayments" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_CustomerPayments" PRIMARY KEY,
+                "CustomerId" TEXT NOT NULL,
+                "InvoiceId" TEXT NULL,
+                "Amount" TEXT NOT NULL DEFAULT '0',
+                "Method" TEXT NOT NULL DEFAULT 'Cash',
+                "Reference" TEXT NULL,
+                "Notes" TEXT NULL,
+                "PaidAt" TEXT NOT NULL,
+                "CreatedByUserId" TEXT NULL,
+                "IsVoided" INTEGER NOT NULL DEFAULT 0,
+                "VoidedAt" TEXT NULL,
+                "VoidedByUserId" TEXT NULL,
+                "VoidReason" TEXT NULL
+            );
+            """, ct);
+        try { await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_CustomerPayments_CustomerId" ON "CustomerPayments" ("CustomerId");""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_CustomerPayments_InvoiceId" ON "CustomerPayments" ("InvoiceId");""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""CREATE INDEX IF NOT EXISTS "IX_CustomerPayments_PaidAt" ON "CustomerPayments" ("PaidAt");""", ct); } catch { }
     }
 
     private static async Task EnsureConsignmentBatchesTablesAsync(HuntexDbContext db, CancellationToken ct)

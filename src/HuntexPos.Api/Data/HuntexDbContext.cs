@@ -27,6 +27,7 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<ConsignmentBatchLine> ConsignmentBatchLines => Set<ConsignmentBatchLine>();
     public DbSet<Quote> Quotes => Set<Quote>();
     public DbSet<QuoteLine> QuoteLines => Set<QuoteLine>();
+    public DbSet<CustomerPayment> CustomerPayments => Set<CustomerPayment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -63,11 +64,16 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
         {
             e.HasIndex(i => i.InvoiceNumber).IsUnique();
             e.HasIndex(i => i.PublicToken).IsUnique();
+            e.HasIndex(i => i.CustomerId);
+            e.HasIndex(i => i.PaymentStatus);
+            e.HasIndex(i => i.IsAccountSale);
             e.Property(i => i.SubTotal).HasPrecision(18, 2);
             e.Property(i => i.TaxRate).HasPrecision(18, 2);
             e.Property(i => i.TaxAmount).HasPrecision(18, 2);
             e.Property(i => i.DiscountTotal).HasPrecision(18, 2);
             e.Property(i => i.GrandTotal).HasPrecision(18, 2);
+            e.Property(i => i.AmountPaid).HasPrecision(18, 2);
+            e.Property(i => i.PaymentStatus).HasConversion<string>().HasMaxLength(20);
         });
 
         modelBuilder.Entity<InvoiceLine>(e =>
@@ -152,6 +158,18 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
         modelBuilder.Entity<Customer>(e =>
         {
             e.HasIndex(c => c.Email).IsUnique();
+            e.HasIndex(c => c.AccountEnabled);
+            e.Property(c => c.CreditLimit).HasPrecision(18, 2);
+        });
+
+        modelBuilder.Entity<CustomerPayment>(e =>
+        {
+            e.HasIndex(p => p.CustomerId);
+            e.HasIndex(p => p.InvoiceId);
+            e.HasIndex(p => p.PaidAt);
+            e.Property(p => p.Amount).HasPrecision(18, 2);
+            e.Property(p => p.Method).HasMaxLength(32);
+            e.Property(p => p.Reference).HasMaxLength(128);
         });
 
         modelBuilder.Entity<ConsignmentBatch>(e =>
