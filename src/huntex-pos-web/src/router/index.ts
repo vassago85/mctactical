@@ -21,6 +21,7 @@ const router = createRouter({
     { path: '/receiving', redirect: (to) => ({ path: '/consignment', query: { type: (to.query.type as string) || 'OwnedReceive' } }) },
     { path: '/deliveries', component: () => import('@/views/DeliveriesView.vue'), meta: { layout: 'app' } },
     { path: '/wholesalers', component: () => import('@/views/WholesalersView.vue'), meta: { layout: 'app' } },
+    { path: '/customers', component: () => import('@/views/CustomersListView.vue'), meta: { layout: 'app' } },
     { path: '/import', component: () => import('@/views/ImportView.vue'), meta: { layout: 'app' } },
     { path: '/reports', component: () => import('@/views/ReportsView.vue'), meta: { layout: 'app' } },
     { path: '/financial-report', component: () => import('@/views/FinancialReportView.vue'), meta: { layout: 'app' } },
