@@ -7,6 +7,7 @@ import McButton from '@/components/ui/McButton.vue'
 import McField from '@/components/ui/McField.vue'
 import McSpinner from '@/components/ui/McSpinner.vue'
 import McMetricCard from '@/components/ui/McMetricCard.vue'
+import DashboardTabs from '@/components/dashboard/DashboardTabs.vue'
 import { Eye, EyeOff } from 'lucide-vue-next'
 import { usePrivacyMode } from '@/composables/usePrivacyMode'
 import { Chart, registerables } from 'chart.js'
@@ -306,6 +307,8 @@ function renderTopProductsChart() {
 
 <template>
   <div class="fr">
+    <DashboardTabs class="no-print" />
+
     <!-- Controls — hidden when printing -->
     <div class="fr-controls no-print">
       <McField label="From" for-id="fr-from">
@@ -345,7 +348,7 @@ function renderTopProductsChart() {
           <h1 v-else class="fr-header__name">{{ businessName }}</h1>
         </div>
         <div class="fr-header__meta">
-          <h2 class="fr-header__title">Financial Overview</h2>
+          <h2 class="fr-header__title">Dashboard — Financial Overview</h2>
           <p class="fr-header__period">{{ formatPeriod() }}</p>
           <p class="fr-header__gen">Generated {{ new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }}</p>
         </div>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
@@ -11,6 +12,7 @@ import McField from '@/components/ui/McField.vue'
 import McAlert from '@/components/ui/McAlert.vue'
 import McBadge from '@/components/ui/McBadge.vue'
 import McSpinner from '@/components/ui/McSpinner.vue'
+import DashboardTabs from '@/components/dashboard/DashboardTabs.vue'
 
 type Row = {
   id: string
@@ -138,7 +140,31 @@ async function confirmReverse() {
 const stockReport = ref<StockReport | null>(null)
 const stockErr = ref<string | null>(null)
 const stockBusy = ref(false)
-const activeTab = ref<'sales' | 'stock' | 'consignment'>('stock')
+
+const route = useRoute()
+const router = useRouter()
+
+function tabFromQuery(): 'sales' | 'stock' | 'consignment' {
+  const q = String(route.query.tab ?? '')
+  return q === 'sales' || q === 'stock' || q === 'consignment' ? q : 'stock'
+}
+
+const activeTab = ref<'sales' | 'stock' | 'consignment'>(tabFromQuery())
+
+// Keep ?tab= in sync with the active tab so the shared DashboardTabs strip
+// (and any deep-link bookmarks) stay accurate.
+watch(activeTab, (t) => {
+  if (route.query.tab !== t) {
+    void router.replace({ path: '/reports', query: { ...route.query, tab: t } })
+  }
+})
+
+// And when the user clicks a different tab on the shared strip we react to
+// the URL change and update local state.
+watch(() => route.query.tab, () => {
+  const t = tabFromQuery()
+  if (t !== activeTab.value) activeTab.value = t
+})
 
 /* Consignment report state */
 const consignReport = ref<ConsignmentReport | null>(null)
@@ -502,6 +528,8 @@ async function purgeData() {
 
 <template>
   <div class="rep-page">
+    <DashboardTabs />
+
     <McPageHeader title="Reports">
       <template #actions>
         <McButton variant="secondary" type="button" @click="activeTab === 'sales' ? loadSales() : activeTab === 'consignment' ? loadConsignmentReport() : loadStockReport()">Refresh</McButton>
@@ -527,11 +555,11 @@ async function purgeData() {
       </McCard>
     </div>
 
-    <div class="rep-tabs">
-      <button type="button" class="rep-tab" :class="{ 'rep-tab--active': activeTab === 'stock' }" @click="activeTab = 'stock'">Stock report</button>
-      <button type="button" class="rep-tab" :class="{ 'rep-tab--active': activeTab === 'consignment' }" @click="activeTab = 'consignment'">Consignment</button>
-      <button type="button" class="rep-tab" :class="{ 'rep-tab--active': activeTab === 'sales' }" @click="activeTab = 'sales'">Sales report</button>
-    </div>
+    <!-- The previous local tab strip (Stock/Consignment/Sales) was replaced
+         by the shared <DashboardTabs /> rendered at the top of the page. The
+         active tab is driven by ?tab= so deep-links and the strip stay in
+         sync. -->
+
 
     <!-- ── STOCK REPORT TAB ── -->
     <template v-if="activeTab === 'stock'">

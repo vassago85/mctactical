@@ -86,8 +86,7 @@ function logout() {
           <RouterLink class="mc-nav-link" to="/deliveries" @click="sidebarOpen = false"><PackageCheck :size="16" />Deliveries</RouterLink>
           <RouterLink class="mc-nav-link" to="/wholesalers" @click="sidebarOpen = false"><Building2 :size="16" />Wholesalers</RouterLink>
           <RouterLink class="mc-nav-link" to="/import" @click="sidebarOpen = false"><Upload :size="16" />Import</RouterLink>
-          <RouterLink class="mc-nav-link" to="/reports" @click="sidebarOpen = false"><BarChart3 :size="16" />Reports</RouterLink>
-          <RouterLink class="mc-nav-link" to="/financial-report" @click="sidebarOpen = false"><FileText :size="16" />Financial overview</RouterLink>
+          <RouterLink class="mc-nav-link" to="/dashboard" @click="sidebarOpen = false"><BarChart3 :size="16" />Dashboard</RouterLink>
         </div>
         <div v-if="auth.hasRole('Admin', 'Owner', 'Dev')" class="mc-nav-group">
           <p class="mc-nav-group__label">Settings</p>
