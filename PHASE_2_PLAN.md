@@ -1,5 +1,9 @@
 # Phase 2 — Thermal receipt printing
 
+> **STATUS: PARKED (2026-04-30).** Deferred while Phase 3B (Customer Accounts / AR)
+> is in flight. No Phase 2 code has been written. Resume from Task 1 once Phase 3B
+> is merged and the 5 open questions at the bottom of this doc are signed off.
+
 **Status:** Plan only. Nothing implemented. Reviewer sign-off required before coding starts.
 
 **Scope:** Add silent thermal-receipt printing + cash-drawer pulse to POS, with a per-station master toggle. Keep current invoice/PDF flow untouched as the fallback. Use a **free** browser-native architecture (Chrome `--kiosk-printing` + HTML receipt template) — no QZ Tray, no per-seat licences.
