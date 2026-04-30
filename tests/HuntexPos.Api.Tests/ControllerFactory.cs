@@ -51,6 +51,22 @@ internal static class ControllerFactory
         return controller;
     }
 
+    /// <summary>Build a <see cref="CustomerAccountsController"/> bound to <paramref name="tdb"/>'s in-memory DB.</summary>
+    public static CustomerAccountsController MakeCustomerAccountsController(TestDb tdb, string userId = "test-user-id")
+    {
+        var ctrl = new CustomerAccountsController(tdb.NewContext());
+        var identity = new ClaimsIdentity(new[]
+        {
+            new Claim(ClaimTypes.Name, "test-user"),
+            new Claim(ClaimTypes.NameIdentifier, userId)
+        }, "TestAuth");
+        ctrl.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(identity) }
+        };
+        return ctrl;
+    }
+
     public static T Unwrap<T>(ActionResult<T> result)
     {
         if (result.Result is ObjectResult ok && ok.Value is T v)

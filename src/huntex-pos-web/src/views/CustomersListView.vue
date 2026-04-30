@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
@@ -14,7 +15,7 @@ import McSpinner from '@/components/ui/McSpinner.vue'
 import McEmptyState from '@/components/ui/McEmptyState.vue'
 import McModal from '@/components/ui/McModal.vue'
 import McCheckbox from '@/components/ui/McCheckbox.vue'
-import { Plus, UserPlus, Trash2, Search } from 'lucide-vue-next'
+import { Plus, UserPlus, Trash2, Search, Pencil } from 'lucide-vue-next'
 
 type Customer = {
   id: string
@@ -47,6 +48,7 @@ type EditableCustomer = {
   paymentTermsDays: number
 }
 
+const router = useRouter()
 const auth = useAuthStore()
 const toast = useToast()
 
@@ -251,7 +253,7 @@ async function remove(c: Customer) {
               v-for="c in items"
               :key="c.id"
               class="customers-page__row"
-              @click="openEdit(c)"
+              @click="router.push(`/customers/${c.id}`)"
             >
               <td>{{ c.name || '—' }}</td>
               <td>{{ c.company || '—' }}</td>
@@ -271,15 +273,25 @@ async function remove(c: Customer) {
                 {{ c.accountEnabled ? `Net ${c.paymentTermsDays}` : '—' }}
               </td>
               <td class="customers-page__col-actions" @click.stop>
-                <McButton
-                  v-if="canManageAr"
-                  variant="ghost"
-                  dense
-                  aria-label="Delete customer"
-                  @click="remove(c)"
-                >
-                  <Trash2 :size="14" />
-                </McButton>
+                <div class="customers-page__row-actions">
+                  <McButton
+                    variant="ghost"
+                    dense
+                    aria-label="Edit customer"
+                    @click="openEdit(c)"
+                  >
+                    <Pencil :size="14" />
+                  </McButton>
+                  <McButton
+                    v-if="canManageAr"
+                    variant="ghost"
+                    dense
+                    aria-label="Delete customer"
+                    @click="remove(c)"
+                  >
+                    <Trash2 :size="14" />
+                  </McButton>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -451,6 +463,12 @@ async function remove(c: Customer) {
 .customers-page__col-actions {
   width: 1%;
   text-align: right;
+}
+
+.customers-page__row-actions {
+  display: inline-flex;
+  gap: 4px;
+  justify-content: flex-end;
 }
 
 .customers-page__email {

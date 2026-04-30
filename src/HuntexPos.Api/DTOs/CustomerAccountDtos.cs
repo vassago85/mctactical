@@ -39,3 +39,27 @@ public sealed record CustomerAccountPaymentDto(
     string Method,
     string? Reference,
     DateTimeOffset PaidAt);
+
+/// <summary>
+/// Inputs for recording a payment against a customer's account. Amount must be &gt; 0.
+/// Method is one of <c>Cash</c>, <c>Card</c>, <c>EFT</c>, <c>Other</c>.
+/// When <see cref="ApplyToInvoiceIds"/> is empty/null the payment is auto-allocated
+/// oldest-invoice-first; any surplus becomes an unallocated credit row.
+/// </summary>
+public sealed record CreateCustomerPaymentRequest(
+    decimal Amount,
+    string Method,
+    string? Reference,
+    string? Notes,
+    DateTimeOffset? PaidAt,
+    IReadOnlyList<Guid>? ApplyToInvoiceIds);
+
+/// <summary>
+/// Result of recording one or more payment rows. <see cref="UnallocatedCredit"/> is the
+/// portion that did not land on an invoice (overpayment surplus).
+/// </summary>
+public sealed record CustomerPaymentResultDto(
+    IReadOnlyList<Guid> CreatedPaymentIds,
+    decimal NewBalance,
+    decimal CreditAvailable,
+    decimal UnallocatedCredit);
