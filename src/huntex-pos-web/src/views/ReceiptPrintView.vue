@@ -111,6 +111,28 @@ function subtotal(lines: Line[]): number {
   return lines.reduce((s, l) => s + l.lineTotal, 0)
 }
 
+/**
+ * Line prices are VAT-inclusive in this system. For the receipt we want
+ * the classical layout: subtotal excl VAT, VAT line, TOTAL incl VAT.
+ * Ex-VAT is the inclusive grand total minus the VAT portion already
+ * baked into it.
+ */
+function exVat(i: Inv): number {
+  return Math.max(0, (i.grandTotal ?? 0) - (i.taxAmount ?? 0))
+}
+
+/**
+ * TaxRate is stored as a percent (e.g. 15 for 15% VAT), not a fraction.
+ * Display directly; the previous *100 caused the "1500%" bug.
+ */
+function vatLabel(i: Inv): string {
+  if (!i.taxRate || i.taxRate <= 0) return 'VAT'
+  // Drop trailing ".0" but keep one decimal for unusual rates (e.g. 12.5).
+  const r = Number(i.taxRate)
+  const pretty = Number.isInteger(r) ? r.toString() : r.toFixed(1)
+  return `VAT (${pretty}%)`
+}
+
 function fmtDate(iso: string): string {
   const d = new Date(iso)
   return isNaN(d.getTime())
@@ -168,18 +190,35 @@ function fmtDate(iso: string): string {
       <hr class="rcpt__rule" />
 
       <div class="rcpt__totals">
-        <div class="rcpt__sub">
-          <span>Subtotal</span>
-          <span class="rcpt__num">{{ formatZAR(inv.subTotal || subtotal(inv.lines)) }}</span>
-        </div>
-        <div v-if="inv.taxAmount > 0" class="rcpt__sub">
-          <span>VAT{{ inv.taxRate > 0 ? ` (${(inv.taxRate * 100).toFixed(0)}%)` : '' }}</span>
-          <span class="rcpt__num">{{ formatZAR(inv.taxAmount) }}</span>
-        </div>
-        <div class="rcpt__total">
-          <span>TOTAL</span>
-          <span class="rcpt__num">{{ formatZAR(inv.grandTotal) }}</span>
-        </div>
+        <!-- VAT-registered: show the ex-VAT subtotal, the extracted VAT
+             portion, then the inclusive TOTAL. Line prices above are
+             VAT-inclusive (system convention). -->
+        <template v-if="inv.taxAmount > 0">
+          <div class="rcpt__sub">
+            <span>Subtotal (excl VAT)</span>
+            <span class="rcpt__num">{{ formatZAR(exVat(inv)) }}</span>
+          </div>
+          <div class="rcpt__sub">
+            <span>{{ vatLabel(inv) }}</span>
+            <span class="rcpt__num">{{ formatZAR(inv.taxAmount) }}</span>
+          </div>
+          <div class="rcpt__total">
+            <span>TOTAL (incl VAT)</span>
+            <span class="rcpt__num">{{ formatZAR(inv.grandTotal) }}</span>
+          </div>
+        </template>
+        <!-- Non-VAT (default for MC Tactical today): single subtotal +
+             total, no confusing duplicate lines. -->
+        <template v-else>
+          <div class="rcpt__sub">
+            <span>Subtotal</span>
+            <span class="rcpt__num">{{ formatZAR(inv.subTotal || subtotal(inv.lines)) }}</span>
+          </div>
+          <div class="rcpt__total">
+            <span>TOTAL</span>
+            <span class="rcpt__num">{{ formatZAR(inv.grandTotal) }}</span>
+          </div>
+        </template>
         <div class="rcpt__pay">
           <span>Paid by</span>
           <strong>{{ inv.paymentMethod }}</strong>
