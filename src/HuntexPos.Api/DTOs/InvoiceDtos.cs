@@ -87,6 +87,8 @@ public class InvoiceLineDto
 {
     public Guid ProductId { get; set; }
     public string Description { get; set; } = string.Empty;
+    /// <summary>Product SKU (from catalog at render time). Empty if the product was deleted.</summary>
+    public string? Sku { get; set; }
     public int Quantity { get; set; }
     public decimal UnitPrice { get; set; }
     public decimal OriginalUnitPrice { get; set; }

@@ -30,7 +30,13 @@ type CompanyContact = {
   vatNumber?: string | null
 }
 
-type Line = { description: string; quantity: number; unitPrice: number; lineTotal: number }
+type Line = {
+  description: string
+  sku?: string | null
+  quantity: number
+  unitPrice: number
+  lineTotal: number
+}
 
 type Inv = {
   invoiceNumber: string
@@ -107,6 +113,7 @@ function fmtDate(iso: string): string {
       <section class="rcpt__items">
         <div v-for="(l, idx) in inv.lines" :key="idx" class="rcpt__item">
           <div class="rcpt__item-name">{{ l.description }}</div>
+          <div v-if="l.sku" class="rcpt__item-sku">SKU: {{ l.sku }}</div>
           <div class="rcpt__item-line">
             <span>{{ l.quantity }} &times; {{ formatZAR(l.unitPrice) }}</span>
             <span class="rcpt__num">{{ formatZAR(l.lineTotal) }}</span>
@@ -152,13 +159,18 @@ function fmtDate(iso: string): string {
 <style scoped>
 /* ── Page sizing for 80 mm thermal ────────────────────────────────────── */
 /*
- * Most "80mm" thermal printers (incl. XP-Q200) have ~72mm of actual
- * printable area — the print head doesn't reach the paper edge. Setting
- * the page to 72mm here means nothing on the right gets clipped, while
- * the printer driver still feeds 80mm paper. Padding is intentionally
- * small to keep monospace lines from breaking unnecessarily.
+ * Tuned for XP-Q200 in real-world use: at "Letter / A4" defaults the
+ * browser fits content into the printer's actual printable area, which
+ * on this device turned out to be ~58mm (printing at 100% with content
+ * any wider clips on the right; 80% scale of 72mm content also worked
+ * which is roughly 58mm — same target). 58mm gives a safe margin and
+ * still produces a tidy receipt.
+ *
+ * If the operator later sets a "Receipt 80(72)x297" page size in the
+ * Windows driver, we can widen this without code changes — but for now
+ * 58mm prints cleanly at 100% scale without any operator intervention.
  */
-@page { size: 72mm auto; margin: 0; }
+@page { size: 58mm auto; margin: 0; }
 
 .rcpt {
   background: #e8e6e1;
@@ -178,12 +190,12 @@ function fmtDate(iso: string): string {
 
 /* ── The "paper" ─────────────────────────────────────────────────────── */
 .rcpt__paper {
-  width: 72mm;
+  width: 58mm;
   background: #fff;
-  padding: 3mm 3mm 5mm;
+  padding: 2mm 2mm 4mm;
   box-sizing: border-box;
   font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
-  font-size: 10px;
+  font-size: 9.5px;
   line-height: 1.35;
   color: #000;
   /* Soft shadow on-screen only */
@@ -205,8 +217,8 @@ function fmtDate(iso: string): string {
 }
 .rcpt__name {
   font-weight: 700;
-  font-size: 12px;
-  letter-spacing: 0.03em;
+  font-size: 11px;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
   margin-bottom: 1mm;
 }
@@ -242,6 +254,13 @@ function fmtDate(iso: string): string {
   font-weight: 700;
   word-break: break-word;
 }
+.rcpt__item-sku {
+  font-size: 8.5px;
+  color: #333;
+  letter-spacing: 0.02em;
+  margin: 0.2mm 0 0.4mm;
+  word-break: break-all;
+}
 .rcpt__item-line {
   display: flex;
   justify-content: space-between;
@@ -266,7 +285,7 @@ function fmtDate(iso: string): string {
   justify-content: space-between;
   gap: 2mm;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 12px;
   margin-top: 1mm;
 }
 
@@ -277,13 +296,13 @@ function fmtDate(iso: string): string {
 }
 .rcpt__footer-text {
   white-space: pre-line;
-  font-size: 10px;
+  font-size: 9px;
   margin: 0 0 2mm;
 }
 .rcpt__thanks {
   margin: 1mm 0 0;
   font-weight: 700;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 /* Whitespace so the paper cutter doesn't slice the bottom line. */
@@ -322,9 +341,11 @@ function fmtDate(iso: string): string {
     display: block;
   }
   .rcpt__paper {
-    width: 80mm;
+    /* IMPORTANT: do NOT override width here — the screen width (58mm)
+       is also the print width, matching @page above. The previous
+       override to 80mm was the reason 80% scale was needed at the
+       print dialog. */
     box-shadow: none;
-    padding: 2mm 3mm 4mm;
   }
   .no-print { display: none !important; }
   /* Make sure logos and dashed rules print solid */

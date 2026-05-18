@@ -310,6 +310,7 @@ public class InvoiceService
             {
                 ProductId = l.ProductId,
                 Description = l.Description,
+                Sku = l.Product?.Sku,
                 Quantity = l.Quantity,
                 UnitPrice = l.UnitPrice,
                 OriginalUnitPrice = l.OriginalUnitPrice,
@@ -322,7 +323,9 @@ public class InvoiceService
 
     public async Task<InvoiceDto?> GetAsync(Guid id, CancellationToken ct)
     {
-        var inv = await _db.Invoices.Include(i => i.Lines).FirstOrDefaultAsync(i => i.Id == id, ct);
+        var inv = await _db.Invoices
+            .Include(i => i.Lines).ThenInclude(l => l.Product)
+            .FirstOrDefaultAsync(i => i.Id == id, ct);
         return inv == null ? null : MapToDto(inv, null);
     }
 
@@ -342,7 +345,9 @@ public class InvoiceService
 
     public async Task<InvoiceDto?> GetByPublicTokenAsync(Guid token, CancellationToken ct)
     {
-        var inv = await _db.Invoices.Include(i => i.Lines).FirstOrDefaultAsync(i => i.PublicToken == token, ct);
+        var inv = await _db.Invoices
+            .Include(i => i.Lines).ThenInclude(l => l.Product)
+            .FirstOrDefaultAsync(i => i.PublicToken == token, ct);
         return inv == null ? null : await MapToDtoAsync(inv, null, includeCompanyContact: true, ct);
     }
 
