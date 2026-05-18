@@ -10,13 +10,13 @@
  * will reuse this same data shape, so this view is also the print-fallback
  * when no printer IP is configured for the station.
  */
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
 import { useBranding } from '@/composables/useBranding'
 import { formatZAR } from '@/utils/format'
 
-const { businessName, logoUrl } = useBranding()
+const { businessName, logoUrl: brandingLogoUrl } = useBranding()
 const route = useRoute()
 const token = route.params.token as string
 const base = import.meta.env.VITE_API_BASE?.replace(/\/$/, '') || ''
@@ -28,6 +28,7 @@ type CompanyContact = {
   email?: string | null
   address?: string | null
   vatNumber?: string | null
+  logoUrl?: string | null
 }
 
 type Line = {
@@ -41,6 +42,9 @@ type Line = {
 type Inv = {
   invoiceNumber: string
   grandTotal: number
+  subTotal: number
+  taxRate: number
+  taxAmount: number
   createdAt: string
   customerName?: string | null
   paymentMethod: string
@@ -54,18 +58,50 @@ const err = ref<string | null>(null)
 // "auto" query param lets you open the page without auto-printing
 // (useful for preview / debugging the layout).
 const autoPrint = route.query.auto !== '0'
+const logoLoaded = ref(false)
+const printDispatched = ref(false)
+
+// Prefer the logo embedded in the public payload (works without
+// branding fetch race). Fall back to the authenticated branding cache
+// if the operator opened the receipt while logged in but the public
+// payload happens not to have it.
+const effectiveLogoUrl = computed<string | null>(() => {
+  const fromPayload = inv.value?.companyContact?.logoUrl ?? null
+  if (fromPayload) return fromPayload
+  return brandingLogoUrl.value ?? null
+})
+
+function maybePrint() {
+  if (!autoPrint || printDispatched.value) return
+  if (!inv.value) return
+  // If there's a logo we expect to print, wait for it to actually load
+  // so the print snapshot includes the image rather than an empty box.
+  if (effectiveLogoUrl.value && !logoLoaded.value) return
+  printDispatched.value = true
+  // One frame to let DOM settle, then print.
+  requestAnimationFrame(() => {
+    setTimeout(() => window.print(), 150)
+  })
+}
+
+function onLogoLoaded() {
+  logoLoaded.value = true
+  maybePrint()
+}
+
+function onLogoFailed() {
+  // Pretend it loaded so we don't hang the print dialog on a broken image.
+  logoLoaded.value = true
+  maybePrint()
+}
 
 onMounted(async () => {
   try {
     const { data } = await client.get<Inv>(`/api/public/invoices/${token}`)
     inv.value = data
-    if (autoPrint) {
-      // Wait one frame so the DOM (logo + content) is laid out before the
-      // browser snapshots the page for the print dialog.
-      requestAnimationFrame(() => {
-        setTimeout(() => window.print(), 150)
-      })
-    }
+    // If there's no logo to wait for, fire the print as soon as the
+    // payload is in. Otherwise we'll print from the image onload handler.
+    if (!effectiveLogoUrl.value) maybePrint()
   } catch {
     err.value = 'Receipt not found.'
   }
@@ -92,7 +128,15 @@ function fmtDate(iso: string): string {
 
     <article v-else-if="inv" class="rcpt__paper">
       <header class="rcpt__head">
-        <img v-if="logoUrl" class="rcpt__logo" :src="logoUrl" :alt="businessName" />
+        <img
+          v-if="effectiveLogoUrl"
+          class="rcpt__logo"
+          :src="effectiveLogoUrl"
+          :alt="inv.companyContact?.displayName || businessName"
+          crossorigin="anonymous"
+          @load="onLogoLoaded"
+          @error="onLogoFailed"
+        />
         <div class="rcpt__name">{{ inv.companyContact?.displayName || businessName }}</div>
         <div v-if="inv.companyContact?.address" class="rcpt__addr">{{ inv.companyContact.address }}</div>
         <div v-if="inv.companyContact?.phone" class="rcpt__line">Tel: {{ inv.companyContact.phone }}</div>
@@ -126,7 +170,11 @@ function fmtDate(iso: string): string {
       <div class="rcpt__totals">
         <div class="rcpt__sub">
           <span>Subtotal</span>
-          <span class="rcpt__num">{{ formatZAR(subtotal(inv.lines)) }}</span>
+          <span class="rcpt__num">{{ formatZAR(inv.subTotal || subtotal(inv.lines)) }}</span>
+        </div>
+        <div v-if="inv.taxAmount > 0" class="rcpt__sub">
+          <span>VAT{{ inv.taxRate > 0 ? ` (${(inv.taxRate * 100).toFixed(0)}%)` : '' }}</span>
+          <span class="rcpt__num">{{ formatZAR(inv.taxAmount) }}</span>
         </div>
         <div class="rcpt__total">
           <span>TOTAL</span>
@@ -205,8 +253,8 @@ function fmtDate(iso: string): string {
 /* ── Header block ────────────────────────────────────────────────────── */
 .rcpt__head { text-align: center; }
 .rcpt__logo {
-  max-width: 60mm;
-  max-height: 18mm;
+  max-width: 48mm;
+  max-height: 16mm;
   width: auto;
   height: auto;
   object-fit: contain;

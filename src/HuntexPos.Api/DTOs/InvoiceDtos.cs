@@ -42,6 +42,9 @@ public class CompanyContactDto
     public string? WebsiteLabel { get; set; }
     /// <summary>VAT registration number (shown on thermal receipts when present).</summary>
     public string? VatNumber { get; set; }
+    /// <summary>Public URL for the configured shop logo. Null if no logo uploaded.
+    /// Served on receipts so the thermal print view doesn't depend on a separate branding fetch.</summary>
+    public string? LogoUrl { get; set; }
 }
 
 public class InvoiceDto

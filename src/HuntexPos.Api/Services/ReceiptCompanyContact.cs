@@ -20,7 +20,10 @@ public static class ReceiptCompanyContact
             WebsiteLabel = string.IsNullOrWhiteSpace(eff.WebsiteLabel)
                 ? DeriveWebsiteLabel(site)
                 : eff.WebsiteLabel.Trim(),
-            VatNumber = TrimOrNull(eff.VatNumber)
+            VatNumber = TrimOrNull(eff.VatNumber),
+            LogoUrl = string.IsNullOrWhiteSpace(eff.LogoStorageKey)
+                ? null
+                : "/api/settings/branding/logo"
         };
     }
 
