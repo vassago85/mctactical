@@ -97,9 +97,9 @@ function fmtDate(iso: string): string {
       <hr class="rcpt__rule" />
 
       <div class="rcpt__meta">
-        <div><span>Receipt:</span><strong>{{ inv.invoiceNumber }}</strong></div>
-        <div><span>Date:</span><strong>{{ fmtDate(inv.createdAt) }}</strong></div>
-        <div v-if="inv.customerName"><span>Customer:</span><strong>{{ inv.customerName }}</strong></div>
+        <div><span>Receipt:</span> <strong>{{ inv.invoiceNumber }}</strong></div>
+        <div><span>Date:</span> <strong>{{ fmtDate(inv.createdAt) }}</strong></div>
+        <div v-if="inv.customerName"><span>Customer:</span> <strong>{{ inv.customerName }}</strong></div>
       </div>
 
       <hr class="rcpt__rule" />
@@ -151,7 +151,14 @@ function fmtDate(iso: string): string {
 
 <style scoped>
 /* ── Page sizing for 80 mm thermal ────────────────────────────────────── */
-@page { size: 80mm auto; margin: 0; }
+/*
+ * Most "80mm" thermal printers (incl. XP-Q200) have ~72mm of actual
+ * printable area — the print head doesn't reach the paper edge. Setting
+ * the page to 72mm here means nothing on the right gets clipped, while
+ * the printer driver still feeds 80mm paper. Padding is intentionally
+ * small to keep monospace lines from breaking unnecessarily.
+ */
+@page { size: 72mm auto; margin: 0; }
 
 .rcpt {
   background: #e8e6e1;
@@ -171,12 +178,12 @@ function fmtDate(iso: string): string {
 
 /* ── The "paper" ─────────────────────────────────────────────────────── */
 .rcpt__paper {
-  width: 80mm;
+  width: 72mm;
   background: #fff;
-  padding: 3mm 4mm 5mm;
+  padding: 3mm 3mm 5mm;
   box-sizing: border-box;
   font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1.35;
   color: #000;
   /* Soft shadow on-screen only */
@@ -198,13 +205,20 @@ function fmtDate(iso: string): string {
 }
 .rcpt__name {
   font-weight: 700;
-  font-size: 13px;
-  letter-spacing: 0.04em;
+  font-size: 12px;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
   margin-bottom: 1mm;
 }
-.rcpt__addr { white-space: pre-line; margin-bottom: 1mm; }
-.rcpt__line { margin-bottom: 0.5mm; }
+.rcpt__addr {
+  white-space: pre-line;
+  word-break: break-word;
+  margin-bottom: 1mm;
+}
+.rcpt__line {
+  word-break: break-word;
+  margin-bottom: 0.5mm;
+}
 
 /* ── Rule (dashed line, prints sharp) ────────────────────────────────── */
 .rcpt__rule {
@@ -215,9 +229,8 @@ function fmtDate(iso: string): string {
 
 /* ── Meta (receipt #, date, customer) ────────────────────────────────── */
 .rcpt__meta div {
-  display: flex;
-  justify-content: space-between;
-  gap: 4mm;
+  word-break: break-word;
+  margin-bottom: 0.5mm;
 }
 .rcpt__meta span { color: #444; }
 .rcpt__meta strong { font-weight: 700; }
@@ -232,7 +245,7 @@ function fmtDate(iso: string): string {
 .rcpt__item-line {
   display: flex;
   justify-content: space-between;
-  gap: 4mm;
+  gap: 2mm;
 }
 
 .rcpt__num {
@@ -246,14 +259,14 @@ function fmtDate(iso: string): string {
 .rcpt__pay {
   display: flex;
   justify-content: space-between;
-  gap: 4mm;
+  gap: 2mm;
 }
 .rcpt__total {
   display: flex;
   justify-content: space-between;
-  gap: 4mm;
+  gap: 2mm;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 13px;
   margin-top: 1mm;
 }
 
