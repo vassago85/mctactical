@@ -282,7 +282,7 @@ function fmtDate(iso: string): string {
   padding: 2mm 2mm 4mm;
   box-sizing: border-box;
   font-family: 'Menlo', 'Consolas', 'Courier New', monospace;
-  font-size: 9.5px;
+  font-size: 10.5px;
   line-height: 1.35;
   color: #000;
   /* Soft shadow on-screen only */
@@ -304,7 +304,7 @@ function fmtDate(iso: string): string {
 }
 .rcpt__name {
   font-weight: 700;
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.02em;
   text-transform: uppercase;
   margin-bottom: 1mm;
@@ -342,7 +342,7 @@ function fmtDate(iso: string): string {
   word-break: break-word;
 }
 .rcpt__item-sku {
-  font-size: 8.5px;
+  font-size: 9.5px;
   color: #333;
   letter-spacing: 0.02em;
   margin: 0.2mm 0 0.4mm;
@@ -372,7 +372,7 @@ function fmtDate(iso: string): string {
   justify-content: space-between;
   gap: 2mm;
   font-weight: 700;
-  font-size: 12px;
+  font-size: 13px;
   margin-top: 1mm;
 }
 
@@ -383,13 +383,13 @@ function fmtDate(iso: string): string {
 }
 .rcpt__footer-text {
   white-space: pre-line;
-  font-size: 9px;
+  font-size: 10px;
   margin: 0 0 2mm;
 }
 .rcpt__thanks {
   margin: 1mm 0 0;
   font-weight: 700;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 /* Whitespace so the paper cutter doesn't slice the bottom line. */
