@@ -65,7 +65,8 @@ public class ReportsController : ControllerBase
             CreatedByUserId = i.CreatedByUserId,
             VoidReason = i.VoidReason,
             VoidedAt = i.VoidedAt,
-            VoidedByName = i.VoidedByUserId != null && voidUsers.TryGetValue(i.VoidedByUserId, out var n) ? n : null
+            VoidedByName = i.VoidedByUserId != null && voidUsers.TryGetValue(i.VoidedByUserId, out var n) ? n : null,
+            PublicToken = i.PublicToken
         }).ToList();
     }
 

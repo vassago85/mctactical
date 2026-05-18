@@ -40,6 +40,8 @@ public class CompanyContactDto
     public string? Website { get; set; }
     /// <summary>Human-friendly label for <see cref="Website"/>.</summary>
     public string? WebsiteLabel { get; set; }
+    /// <summary>VAT registration number (shown on thermal receipts when present).</summary>
+    public string? VatNumber { get; set; }
 }
 
 public class InvoiceDto
@@ -67,6 +69,9 @@ public class InvoiceDto
 
     /// <summary>Set on anonymous public invoice responses so the web receipt can show shop details.</summary>
     public CompanyContactDto? CompanyContact { get; set; }
+
+    /// <summary>Free-text footer (e.g. returns policy) shown at the bottom of the thermal receipt. Set on public responses.</summary>
+    public string? ReceiptFooter { get; set; }
 
     public bool IsSpecialOrder { get; set; }
     public bool IsDelivered { get; set; }

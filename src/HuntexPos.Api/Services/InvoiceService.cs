@@ -271,6 +271,7 @@ public class InvoiceService
         {
             var eff = await _business.GetAsync(ct);
             dto.CompanyContact = ReceiptCompanyContact.ToDto(eff);
+            dto.ReceiptFooter = string.IsNullOrWhiteSpace(eff.ReceiptFooter) ? null : eff.ReceiptFooter.Trim();
         }
         return dto;
     }

@@ -104,7 +104,10 @@ function pdfLink() {
           <strong>{{ formatZAR(inv.grandTotal) }}</strong>
         </div>
 
-        <a class="inv-public__pdf" :href="pdfLink()" target="_blank" rel="noreferrer">Download PDF</a>
+        <div class="inv-public__actions">
+          <a class="inv-public__pdf" :href="pdfLink()" target="_blank" rel="noreferrer">Download PDF</a>
+          <a class="inv-public__pdf inv-public__pdf--alt" :href="'/#/receipt/' + token" target="_blank" rel="noreferrer">Print thermal receipt</a>
+        </div>
 
         <footer v-if="inv.companyContact" class="inv-public__contact">
           <h2 class="sr-only">Contact</h2>
@@ -286,6 +289,24 @@ function pdfLink() {
 
 .inv-public__pdf:hover {
   background: #f47a20;
+  color: #0a0a0b !important;
+}
+
+.inv-public__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1.25rem;
+}
+.inv-public__actions .inv-public__pdf { margin-top: 0; }
+.inv-public__pdf--alt {
+  background: #fff;
+  color: #1a1a1c !important;
+  border: 1.5px solid #1a1a1c;
+}
+.inv-public__pdf--alt:hover {
+  background: #f47a20;
+  border-color: #f47a20;
   color: #0a0a0b !important;
 }
 

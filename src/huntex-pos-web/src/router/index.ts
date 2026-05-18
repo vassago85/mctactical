@@ -45,6 +45,11 @@ const router = createRouter({
       meta: { public: true, layout: 'public' }
     },
     {
+      path: '/receipt/:token',
+      component: () => import('@/views/ReceiptPrintView.vue'),
+      meta: { public: true, layout: 'public' }
+    },
+    {
       path: '/quote/:token',
       component: () => import('@/views/QuotePublicView.vue'),
       meta: { public: true, layout: 'public' }

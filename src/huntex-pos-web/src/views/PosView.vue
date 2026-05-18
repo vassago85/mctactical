@@ -704,18 +704,30 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
             <span>Recent invoices</span>
           </div>
           <div class="pos-panel__body pos-recent-list">
-            <a
+            <div
               v-for="inv in recentInvoices"
               :key="inv.id"
               class="pos-recent-item"
-              :href="'/#/invoice/' + inv.publicToken"
-              target="_blank"
-              rel="noreferrer"
             >
-              <span class="pos-recent-item__num">{{ inv.invoiceNumber }}</span>
-              <span class="pos-recent-item__who">{{ inv.customerName || '—' }}</span>
-              <span class="pos-recent-item__total">{{ formatZAR(inv.grandTotal) }}</span>
-            </a>
+              <a
+                class="pos-recent-item__link"
+                :href="'/#/invoice/' + inv.publicToken"
+                target="_blank"
+                rel="noreferrer"
+              >
+                <span class="pos-recent-item__num">{{ inv.invoiceNumber }}</span>
+                <span class="pos-recent-item__who">{{ inv.customerName || '—' }}</span>
+                <span class="pos-recent-item__total">{{ formatZAR(inv.grandTotal) }}</span>
+              </a>
+              <a
+                class="pos-recent-item__print"
+                :href="'/#/receipt/' + inv.publicToken"
+                target="_blank"
+                rel="noreferrer"
+                title="Print thermal receipt"
+                @click.stop
+              >Print</a>
+            </div>
           </div>
         </div>
       </div>
@@ -1512,19 +1524,46 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   flex-direction: column;
 }
 .pos-recent-item {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 0.5rem;
-  align-items: center;
-  padding: 0.55rem 0.9rem;
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+  padding: 0;
   font-size: 0.84rem;
-  text-decoration: none;
+  border-bottom: 1px solid var(--mc-app-border-faint, #eceae5);
   color: inherit;
   border-bottom: 1px solid var(--mc-app-border-soft, #eceae6);
   transition: background 0.15s ease;
 }
 .pos-recent-item:last-child { border-bottom: none; }
 .pos-recent-item:hover { background: rgba(244, 122, 32, 0.06); }
+.pos-recent-item__link {
+  flex: 1;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.55rem 0.6rem 0.55rem 0.9rem;
+  text-decoration: none;
+  color: inherit;
+  min-width: 0;
+}
+.pos-recent-item__print {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--mc-text-muted, #7a7874);
+  text-decoration: none;
+  border-left: 1px solid var(--mc-app-border-faint, #eceae5);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.pos-recent-item__print:hover {
+  color: var(--mc-accent, #f47a20);
+  background: rgba(244, 122, 32, 0.1);
+}
 .pos-recent-item__num {
   font-weight: 600;
   color: var(--mc-accent, #f47a20);

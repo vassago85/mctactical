@@ -19,7 +19,8 @@ public static class ReceiptCompanyContact
             Website = site,
             WebsiteLabel = string.IsNullOrWhiteSpace(eff.WebsiteLabel)
                 ? DeriveWebsiteLabel(site)
-                : eff.WebsiteLabel.Trim()
+                : eff.WebsiteLabel.Trim(),
+            VatNumber = TrimOrNull(eff.VatNumber)
         };
     }
 

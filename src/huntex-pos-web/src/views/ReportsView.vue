@@ -22,6 +22,7 @@ type Row = {
   voidReason?: string | null
   voidedAt?: string | null
   voidedByName?: string | null
+  publicToken: string
 }
 type Daily = { date: string; invoiceCount: number; grandTotal: number }
 type PaymentMethodBreakdown = { method: string; count: number; grandTotal: number }
@@ -1029,6 +1030,14 @@ async function purgeData() {
                 <td>
                   <div class="rep-row-actions">
                     <McButton variant="secondary" type="button" @click="openPdf(r.id)">PDF</McButton>
+                    <a
+                      v-if="r.publicToken"
+                      class="rep-print-link"
+                      :href="'/#/receipt/' + r.publicToken"
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Reprint thermal receipt"
+                    >Print</a>
                     <McButton
                       v-if="canReverse && r.status !== 'Voided'"
                       variant="danger"
@@ -1263,6 +1272,27 @@ async function purgeData() {
   display: flex;
   gap: 0.375rem;
   justify-content: flex-end;
+  align-items: center;
+}
+
+.rep-print-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--mc-app-border-soft, #ddd9d3);
+  background: #fff;
+  color: var(--mc-app-text-secondary, #5c5a56);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.rep-print-link:hover {
+  color: var(--mc-accent, #f47a20);
+  border-color: var(--mc-accent, #f47a20);
 }
 
 .rep-row--voided td {

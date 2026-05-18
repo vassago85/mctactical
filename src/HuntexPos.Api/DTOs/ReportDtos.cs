@@ -34,6 +34,9 @@ public class InvoiceListItemDto
     public string? VoidReason { get; set; }
     public DateTimeOffset? VoidedAt { get; set; }
     public string? VoidedByName { get; set; }
+
+    /// <summary>Used by the Reports list to deep-link to the thermal-receipt print view.</summary>
+    public Guid PublicToken { get; set; }
 }
 
 /* ── Stock report DTOs ── */
