@@ -229,10 +229,48 @@ function fmtDate(iso: string): string {
 
       <footer class="rcpt__foot">
         <p v-if="inv.receiptFooter" class="rcpt__footer-text">{{ inv.receiptFooter }}</p>
-        <p class="rcpt__refund">
-          Refund policy:<br />
-          <span class="rcpt__refund-url">mctactical.co.za/policies/refund-policy</span>
-        </p>
+
+        <!-- Compact returns policy summary. Wording mirrors the full policy
+             at mctactical.co.za/policies/refund-policy; this block keeps
+             the customer informed at point of sale and the URL points to
+             the authoritative version. -->
+        <section class="rcpt__policy">
+          <div class="rcpt__policy-title">MC TACTICAL — RETURNS POLICY</div>
+          <p class="rcpt__policy-p">
+            Full refund/exchange within 90 days if the item is unused,
+            undamaged, in original saleable packaging, and accompanied
+            by this invoice.
+          </p>
+          <p class="rcpt__policy-p">
+            <strong>Non-refundable:</strong> modified items, clothing
+            &amp; footwear, consumables, discounted/clearance/voetstoots
+            goods, gift cards, services (incl. missed appointments),
+            and shipping costs.
+          </p>
+          <p class="rcpt__policy-p">
+            Deposits (waiting-list) are non-refundable but convertible
+            to store credit.
+          </p>
+          <p class="rcpt__policy-p">
+            Defective items will be repaired, replaced or exchanged
+            within warranty. If not possible, a refund or store credit
+            may be offered.
+          </p>
+          <p class="rcpt__policy-p">
+            Shipping is for the customer's account on all
+            customer-initiated purchases, returns &amp; replacements.
+            If we supplied the wrong item, we cover the return and
+            correct shipping.
+          </p>
+          <p class="rcpt__policy-p">
+            Order cancellations attract a 10%+ admin fee.
+          </p>
+          <p class="rcpt__policy-url-line">
+            Full policy:<br />
+            <span class="rcpt__refund-url">mctactical.co.za/policies/refund-policy</span>
+          </p>
+        </section>
+
         <p class="rcpt__thanks">Thank you!</p>
       </footer>
 
@@ -394,11 +432,38 @@ function fmtDate(iso: string): string {
   font-size: 10px;
   margin: 0 0 2mm;
 }
-.rcpt__refund {
+/* ── Returns policy block (compact summary + URL) ────────────────────── */
+.rcpt__policy {
+  /* Visually separated from the totals but tight on vertical space —
+     this prints on every receipt so each mm counts. */
+  margin: 2mm 0 2mm;
+  padding: 1.5mm 0 0;
+  border-top: 1px dashed #000;
+  text-align: left;
+}
+.rcpt__policy-title {
+  font-weight: 700;
   font-size: 9.5px;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 1.5mm;
+}
+.rcpt__policy-p {
+  font-size: 8.5px;
   line-height: 1.3;
-  margin: 0 0 2mm;
-  color: #000;
+  margin: 0 0 1.2mm;
+  /* Justified prints a touch denser on the narrow paper without
+     looking like a single-line wall of text. */
+  text-align: justify;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+.rcpt__policy-url-line {
+  font-size: 9px;
+  line-height: 1.3;
+  margin: 1.5mm 0 0;
+  text-align: center;
 }
 .rcpt__refund-url {
   /* Long URL — let it break wherever to fit the narrow paper. */
