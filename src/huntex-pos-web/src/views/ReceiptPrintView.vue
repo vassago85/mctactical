@@ -229,6 +229,10 @@ function fmtDate(iso: string): string {
 
       <footer class="rcpt__foot">
         <p v-if="inv.receiptFooter" class="rcpt__footer-text">{{ inv.receiptFooter }}</p>
+        <p class="rcpt__refund">
+          Refund policy:<br />
+          <span class="rcpt__refund-url">mctactical.co.za/policies/refund-policy</span>
+        </p>
         <p class="rcpt__thanks">Thank you!</p>
       </footer>
 
@@ -303,11 +307,15 @@ function fmtDate(iso: string): string {
   filter: contrast(1.2);
 }
 .rcpt__name {
-  font-weight: 700;
-  font-size: 12px;
-  letter-spacing: 0.02em;
+  font-weight: 900;
+  /* Sized to span the full ~54mm of usable paper width — "MC TACTICAL"
+     fills the slip header. If the configured business name is much
+     longer this will wrap to two lines which is still fine. */
+  font-size: 22px;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  margin-bottom: 1mm;
+  margin-bottom: 1.5mm;
+  line-height: 1.1;
 }
 .rcpt__addr {
   white-space: pre-line;
@@ -385,6 +393,17 @@ function fmtDate(iso: string): string {
   white-space: pre-line;
   font-size: 10px;
   margin: 0 0 2mm;
+}
+.rcpt__refund {
+  font-size: 9.5px;
+  line-height: 1.3;
+  margin: 0 0 2mm;
+  color: #000;
+}
+.rcpt__refund-url {
+  /* Long URL — let it break wherever to fit the narrow paper. */
+  font-weight: 700;
+  word-break: break-all;
 }
 .rcpt__thanks {
   margin: 1mm 0 0;
