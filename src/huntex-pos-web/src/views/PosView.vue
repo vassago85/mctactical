@@ -34,7 +34,14 @@ type ActivePromotion = {
   specials: ActiveSpecial[]
 }
 
-type Line = { product: Product; qty: number; unitPrice: number; lineDiscount: number; originalPrice: number; discMode: 'R' | '%'; discInput: number }
+/**
+ * `originalPrice` is catalog retail, `basePrice` is the going price for this sale
+ * (the promotion price when one is running, otherwise retail). `unitPrice` is what
+ * the operator is charging. Anything below `basePrice` is recorded as a discount
+ * off the going price rather than as a price change — the server enforces the same
+ * rule, this is just so the cart shows the operator what is being given away.
+ */
+type Line = { product: Product; qty: number; unitPrice: number; lineDiscount: number; originalPrice: number; basePrice: number; discMode: 'R' | '%'; discInput: number }
 
 const q = ref('')
 const results = ref<Product[]>([])
@@ -325,7 +332,7 @@ function addToCart(p: Product) {
   } else {
     if (!isManager.value && p.qtyOnHand < 1) return
     const { price } = getEffectivePrice(p)
-    cart.value.push({ product: p, qty: 1, unitPrice: price, originalPrice: p.sellPrice, lineDiscount: 0, discMode: 'R', discInput: 0 })
+    cart.value.push({ product: p, qty: 1, unitPrice: price, originalPrice: p.sellPrice, basePrice: price, lineDiscount: 0, discMode: 'R', discInput: 0 })
   }
   markAdded(p)
 }
@@ -354,12 +361,52 @@ function computedLineDiscount(l: Line): number {
   return l.discInput
 }
 
+/**
+ * Rand value of dropping the charged price below the going price. Mirrors the
+ * server, which rebuilds the line as "going price, less this concession" so the
+ * sale record and the receipt show the discount instead of a rewritten price.
+ */
+function priceConcession(l: Line): number {
+  if (l.unitPrice >= l.basePrice) return 0
+  return Math.round((l.basePrice - l.unitPrice) * l.qty * 100) / 100
+}
+
+/** Everything coming off this line: the price concession plus any explicit discount. */
+function totalLineDiscount(l: Line): number {
+  return Math.round((priceConcession(l) + computedLineDiscount(l)) * 100) / 100
+}
+
+function lineDiscountPercent(l: Line): number {
+  const gross = l.basePrice * l.qty
+  if (gross <= 0) return 0
+  return Math.round(totalLineDiscount(l) / gross * 1000) / 10
+}
+
+/**
+ * Sales staff are capped at MaxPriceDecreasePercentFromList off the going price, and the
+ * server applies it to the price box and the discount box together. Flag it in the cart
+ * so the operator finds out before checkout fails.
+ */
+function lineOverDiscountLimit(l: Line): boolean {
+  if (isManager.value || !posRules.value) return false
+  const limit = posRules.value.maxPriceDecreasePercentFromList
+  return totalLineDiscount(l) > 0 && lineDiscountPercent(l) > limit
+}
+
 const subTotal = computed(() =>
   cart.value.reduce((s, l) => {
     const ld = computedLineDiscount(l)
     return s + Math.max(0, l.unitPrice * l.qty - ld)
   }, 0)
 )
+
+/** Everything given away at line level: price concessions plus explicit line discounts. */
+const cartLineDiscounts = computed(() =>
+  Math.round(cart.value.reduce((s, l) => s + totalLineDiscount(l), 0) * 100) / 100
+)
+
+/** What the cart would come to at going prices, before any concession. */
+const cartGross = computed(() => Math.round((subTotal.value + cartLineDiscounts.value) * 100) / 100)
 
 const grandPreview = computed(() => Math.max(0, subTotal.value - discountTotal.value))
 const vatAmount = computed(() => {
@@ -654,7 +701,20 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
                     <span class="pos-cart-name__meta">
                       {{ l.product.sku }}<template v-if="l.product.barcode"> · {{ l.product.barcode }}</template>
                     </span>
-                    <span v-if="l.originalPrice !== l.unitPrice" class="pos-cart-was">was {{ formatZAR(l.originalPrice) }}</span>
+                    <span v-if="l.originalPrice > l.basePrice" class="pos-cart-note">
+                      {{ activePromo?.promotionName || 'Promotion' }} —
+                      <span class="pos-cart-was">{{ formatZAR(l.originalPrice) }}</span>
+                    </span>
+                    <span v-if="totalLineDiscount(l) > 0" class="pos-cart-disc">
+                      Discount off {{ formatZAR(l.basePrice) }}:
+                      −{{ formatZAR(totalLineDiscount(l)) }} ({{ lineDiscountPercent(l) }}%)
+                    </span>
+                    <span v-if="l.unitPrice > l.basePrice" class="pos-cart-note">
+                      Price raised from {{ formatZAR(l.basePrice) }}
+                    </span>
+                    <McBadge v-if="lineOverDiscountLimit(l)" variant="warning">
+                      Over the {{ posRules?.maxPriceDecreasePercentFromList }}% limit — a manager must approve
+                    </McBadge>
                     <McBadge v-if="l.qty > l.product.qtyOnHand" variant="warning">Special order — {{ l.qty - Math.max(0, l.product.qtyOnHand) }} to deliver</McBadge>
                   </td>
                   <td>
@@ -798,12 +858,20 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 
             <!-- Totals -->
             <div class="pos-totals" :class="{ 'pos-totals--pulse': totalPulse }">
+              <div v-if="cartLineDiscounts > 0" class="pos-totals__row pos-totals__row--muted">
+                <span>Retail value</span>
+                <span>{{ formatZAR(cartGross) }}</span>
+              </div>
+              <div v-if="cartLineDiscounts > 0" class="pos-totals__row pos-totals__row--muted">
+                <span>Discount given</span>
+                <strong>− {{ formatZAR(cartLineDiscounts) }}</strong>
+              </div>
               <div class="pos-totals__row">
                 <span>Subtotal</span>
                 <strong>{{ formatZAR(subTotal) }}</strong>
               </div>
               <div v-if="isManager && discountTotal > 0" class="pos-totals__row pos-totals__row--muted">
-                <span>Discount</span>
+                <span>Order discount</span>
                 <strong>− {{ formatZAR(discountTotal) }}</strong>
               </div>
               <div v-if="grandPreview > 0" class="pos-totals__row pos-totals__row--muted">
@@ -1637,12 +1705,22 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   letter-spacing: 0.06em;
 }
 
-.pos-cart-was {
+.pos-cart-note {
   display: block;
   font-size: 0.72rem;
   color: var(--mc-app-text-muted, #5c5a56);
-  text-decoration: line-through;
   font-weight: 400;
+}
+
+.pos-cart-was {
+  text-decoration: line-through;
+}
+
+.pos-cart-disc {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #cc0000;
 }
 
 /* ── Sale summary modal (unchanged look) ──────────────────────────────── */

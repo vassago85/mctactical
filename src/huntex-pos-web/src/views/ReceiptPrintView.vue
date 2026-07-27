@@ -36,6 +36,10 @@ type Line = {
   sku?: string | null
   quantity: number
   unitPrice: number
+  /** Catalog retail at time of sale. Above unitPrice when a promotion applied. */
+  originalUnitPrice: number
+  /** Operator concession booked against this line, in rand. */
+  lineDiscount: number
   lineTotal: number
 }
 
@@ -112,6 +116,28 @@ function subtotal(lines: Line[]): number {
 }
 
 /**
+ * Rand the customer saved on a line, whether it came from a promotion or an
+ * operator concession. Printing it matters for returns: the thermal slip is often
+ * the only record the customer keeps of what they actually paid.
+ */
+function lineSaving(l: Line): number {
+  const promo = l.originalUnitPrice > l.unitPrice
+    ? (l.originalUnitPrice - l.unitPrice) * l.quantity
+    : 0
+  return Math.round((promo + (l.lineDiscount ?? 0)) * 100) / 100
+}
+
+/** Retail unit price to print above the discount. */
+function lineListPrice(l: Line): number {
+  return l.originalUnitPrice > 0 ? l.originalUnitPrice : l.unitPrice
+}
+
+/** Line value at retail, before the saving. Equals lineListPrice × quantity. */
+function lineGross(l: Line): number {
+  return Math.round((l.lineTotal + lineSaving(l)) * 100) / 100
+}
+
+/**
  * Line prices are VAT-inclusive in this system. For the receipt we want
  * the classical layout: subtotal excl VAT, VAT line, TOTAL incl VAT.
  * Ex-VAT is the inclusive grand total minus the VAT portion already
@@ -180,7 +206,23 @@ function fmtDate(iso: string): string {
         <div v-for="(l, idx) in inv.lines" :key="idx" class="rcpt__item">
           <div class="rcpt__item-name">{{ l.description }}</div>
           <div v-if="l.sku" class="rcpt__item-sku">SKU: {{ l.sku }}</div>
-          <div class="rcpt__item-line">
+          <!-- Discounted lines print at retail, then the saving, then what was paid,
+               so a customer returning without paperwork can prove the price. -->
+          <template v-if="lineSaving(l) > 0">
+            <div class="rcpt__item-line">
+              <span>{{ l.quantity }} &times; {{ formatZAR(lineListPrice(l)) }}</span>
+              <span class="rcpt__num">{{ formatZAR(lineGross(l)) }}</span>
+            </div>
+            <div class="rcpt__item-disc">
+              <span>Discount</span>
+              <span class="rcpt__num">-{{ formatZAR(lineSaving(l)) }}</span>
+            </div>
+            <div class="rcpt__item-paid">
+              <span>Paid</span>
+              <span class="rcpt__num">{{ formatZAR(l.lineTotal) }}</span>
+            </div>
+          </template>
+          <div v-else class="rcpt__item-line">
             <span>{{ l.quantity }} &times; {{ formatZAR(l.unitPrice) }}</span>
             <span class="rcpt__num">{{ formatZAR(l.lineTotal) }}</span>
           </div>
@@ -237,33 +279,13 @@ function fmtDate(iso: string): string {
         <section class="rcpt__policy">
           <div class="rcpt__policy-title">MC TACTICAL — RETURNS POLICY</div>
           <p class="rcpt__policy-p">
-            Full refund/exchange within 90 days if the item is unused,
-            undamaged, in original saleable packaging, and accompanied
-            by this invoice.
+            90 days for refund or exchange, if unused, undamaged, in
+            original packaging and with this receipt.
           </p>
           <p class="rcpt__policy-p">
-            <strong>Non-refundable:</strong> modified items, clothing
-            &amp; footwear, consumables, discounted/clearance/voetstoots
-            goods, gift cards, services (incl. missed appointments),
-            and shipping costs.
-          </p>
-          <p class="rcpt__policy-p">
-            Deposits (waiting-list) are non-refundable but convertible
-            to store credit.
-          </p>
-          <p class="rcpt__policy-p">
-            Defective items will be repaired, replaced or exchanged
-            within warranty. If not possible, a refund or store credit
-            may be offered.
-          </p>
-          <p class="rcpt__policy-p">
-            Shipping is for the customer's account on all
-            customer-initiated purchases, returns &amp; replacements.
-            If we supplied the wrong item, we cover the return and
-            correct shipping.
-          </p>
-          <p class="rcpt__policy-p">
-            Order cancellations attract a 10%+ admin fee.
+            <strong>Not returnable:</strong> modified items, clothing
+            &amp; footwear, consumables, clearance/voetstoots goods,
+            gift cards and services. Other terms apply.
           </p>
           <p class="rcpt__policy-url-line">
             Full policy:<br />
@@ -288,18 +310,17 @@ function fmtDate(iso: string): string {
 <style scoped>
 /* ── Page sizing for 80 mm thermal ────────────────────────────────────── */
 /*
- * Tuned for XP-Q200 in real-world use: at "Letter / A4" defaults the
- * browser fits content into the printer's actual printable area, which
- * on this device turned out to be ~58mm (printing at 100% with content
- * any wider clips on the right; 80% scale of 72mm content also worked
- * which is roughly 58mm — same target). 58mm gives a safe margin and
- * still produces a tidy receipt.
+ * `size: auto` hands page sizing to the printer driver. On the XP-Q200 as
+ * configured that is Letter/A4, whose printable area is ~58mm wide — hence
+ * .rcpt__paper at 58mm, which prints at 100% scale with no operator setup.
  *
- * If the operator later sets a "Receipt 80(72)x297" page size in the
- * Windows driver, we can widen this without code changes — but for now
- * 58mm prints cleanly at 100% scale without any operator intervention.
+ * Do not write `size: 58mm auto`: a length mixed with `auto` is not a legal
+ * value, so Chrome drops the whole declaration. Receipt height is therefore
+ * bounded by the driver page height (~297mm) and spills onto a second page
+ * past that, which is why the printed content below is kept short. For a true
+ * continuous roll, set a roll page size in the Windows driver instead.
  */
-@page { size: 58mm auto; margin: 0; }
+@page { size: auto; margin: 0; }
 
 .rcpt {
   background: #e8e6e1;
@@ -399,6 +420,15 @@ function fmtDate(iso: string): string {
   justify-content: space-between;
   gap: 2mm;
 }
+.rcpt__item-disc,
+.rcpt__item-paid {
+  display: flex;
+  justify-content: space-between;
+  gap: 2mm;
+  font-size: 9.5px;
+  padding-left: 2mm;
+}
+.rcpt__item-paid { font-weight: 700; }
 
 .rcpt__num {
   font-variant-numeric: tabular-nums;

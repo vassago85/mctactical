@@ -63,6 +63,78 @@ public class InvoicesController : ControllerBase
             .ToList();
     }
 
+    /// <summary>
+    /// Search every past sale line by SKU, barcode, item name, invoice number or customer name.
+    /// Exists for the returns counter: a customer brings an item back without the thermal
+    /// receipt, and staff need to find what they paid — including any discount given.
+    /// Available to Sales because that is who works the counter.
+    /// </summary>
+    [HttpGet("search-lines")]
+    public async Task<ActionResult<List<InvoiceLineSearchResultDto>>> SearchLines(
+        [FromQuery] string? q,
+        [FromQuery] DateTimeOffset? from,
+        [FromQuery] DateTimeOffset? to,
+        [FromQuery] bool includeVoided = false,
+        [FromQuery] int take = 100,
+        CancellationToken ct = default)
+    {
+        var term = (q ?? string.Empty).Trim();
+        if (term.Length < 2)
+            return BadRequest(new { error = "Enter at least 2 characters to search." });
+
+        var like = $"%{term}%";
+
+        // SQLite LIKE is case-insensitive for ASCII, which is what the counter wants.
+        var rows = await (
+            from line in _db.InvoiceLines.AsNoTracking()
+            join inv in _db.Invoices.AsNoTracking() on line.InvoiceId equals inv.Id
+            from prod in _db.Products.AsNoTracking().Where(p => p.Id == line.ProductId).DefaultIfEmpty()
+            where EF.Functions.Like(line.Description, like)
+               || (line.SkuAtSale != null && EF.Functions.Like(line.SkuAtSale, like))
+               || EF.Functions.Like(inv.InvoiceNumber, like)
+               || (inv.CustomerName != null && EF.Functions.Like(inv.CustomerName, like))
+               || (prod != null && EF.Functions.Like(prod.Sku, like))
+               || (prod != null && prod.Barcode != null && EF.Functions.Like(prod.Barcode, like))
+            select new { Line = line, Inv = inv, CatalogSku = prod == null ? null : prod.Sku }
+        ).ToListAsync(ct);
+
+        // Date filtering happens here rather than in SQL: SQLite stores DateTimeOffset as
+        // text and comparisons are unreliable across offsets (same reason the reports do it).
+        var filtered = rows.AsEnumerable();
+        if (!includeVoided)
+            filtered = filtered.Where(r => r.Inv.Status != InvoiceStatus.Voided);
+        if (from.HasValue)
+            filtered = filtered.Where(r => r.Inv.CreatedAt >= from.Value);
+        if (to.HasValue)
+            filtered = filtered.Where(r => r.Inv.CreatedAt <= to.Value);
+
+        return filtered
+            .OrderByDescending(r => r.Inv.CreatedAt)
+            .Take(Math.Clamp(take, 1, 500))
+            .Select(r => new InvoiceLineSearchResultDto
+            {
+                InvoiceId = r.Inv.Id,
+                InvoiceNumber = r.Inv.InvoiceNumber,
+                CreatedAt = r.Inv.CreatedAt,
+                Status = r.Inv.Status.ToString(),
+                CustomerName = r.Inv.CustomerName,
+                PaymentMethod = r.Inv.PaymentMethod,
+                PublicToken = r.Inv.PublicToken,
+                ProductId = r.Line.ProductId,
+                Sku = r.Line.SkuAtSale ?? r.CatalogSku,
+                Description = r.Line.Description,
+                Quantity = r.Line.Quantity,
+                OriginalUnitPrice = r.Line.OriginalUnitPrice,
+                UnitPrice = r.Line.UnitPrice,
+                LineDiscount = r.Line.LineDiscount,
+                LineTotal = r.Line.LineTotal,
+                EffectiveUnitPrice = r.Line.Quantity > 0
+                    ? Math.Round(r.Line.LineTotal / r.Line.Quantity, 2)
+                    : r.Line.UnitPrice
+            })
+            .ToList();
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<InvoiceDto>> Get(Guid id, CancellationToken ct)
     {

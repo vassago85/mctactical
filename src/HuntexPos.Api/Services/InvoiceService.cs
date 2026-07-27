@@ -104,31 +104,52 @@ public class InvoiceService
                 isSpecialOrder = true;
             }
 
-            var unit = l.UnitPriceOverride ?? p.SellPrice;
+            // The "going price" for this line is the promotion price when one is running,
+            // otherwise catalog retail. Every concession is measured against this rather
+            // than against whatever the operator typed.
+            var goingPrice = promoEffectivePrices != null && promoEffectivePrices.TryGetValue(p.Id, out var promoPrice)
+                ? promoPrice
+                : p.SellPrice;
+
+            // A price typed below the going price is a discount, not a new price. Charge the
+            // going price and book the difference as LineDiscount so the sale record shows
+            // what was given away. A price above it is still a genuine override.
+            var requested = l.UnitPriceOverride ?? goingPrice;
+            var unit = requested < goingPrice ? goingPrice : requested;
+            var priceConcession = requested < goingPrice
+                ? PricingCalculator.Round2((goingPrice - requested) * l.Quantity)
+                : 0m;
+
+            var lineDiscount = PricingCalculator.Round2(l.LineDiscount + priceConcession);
             var lineGross = unit * l.Quantity;
 
             if (!managerBypassPosRules)
             {
                 var maxLineDisc = PricingCalculator.Round2(lineGross * (_posRules.MaxLineDiscountPercent / 100m));
-                if (l.LineDiscount > maxLineDisc)
+                if (lineDiscount > maxLineDisc)
                     throw new InvalidOperationException(
                         $"Line discount for \"{p.Name}\" exceeds allowed {_posRules.MaxLineDiscountPercent}% of line total.");
 
-                if (l.UnitPriceOverride.HasValue)
-                {
-                    var list = promoEffectivePrices != null && promoEffectivePrices.TryGetValue(p.Id, out var promoPrice)
-                        ? promoPrice
-                        : p.SellPrice;
-                    var minUnit = PricingCalculator.Round2(list * (1 - _posRules.MaxPriceDecreasePercentFromList / 100m));
-                    var maxUnit = PricingCalculator.Round2(list * (1 + _posRules.MaxPriceIncreasePercentFromList / 100m));
-                    if (unit < minUnit || unit > maxUnit)
-                        throw new InvalidOperationException(
-                            $"Price for \"{p.Name}\" must stay within {_posRules.MaxPriceDecreasePercentFromList}% below and {_posRules.MaxPriceIncreasePercentFromList}% above list price for sales staff.");
-                }
+                // Floor the price the customer actually pays per unit. Holding the price box
+                // and the discount box to one limit stops either being used to undercut the other.
+                var effectiveUnit = l.Quantity > 0
+                    ? PricingCalculator.Round2((lineGross - lineDiscount) / l.Quantity)
+                    : unit;
+                var minUnit = PricingCalculator.Round2(goingPrice * (1 - _posRules.MaxPriceDecreasePercentFromList / 100m));
+                if (effectiveUnit < minUnit)
+                    throw new InvalidOperationException(
+                        $"\"{p.Name}\" cannot be discounted more than {_posRules.MaxPriceDecreasePercentFromList}% below R{goingPrice:N2} by sales staff.");
+
+                var maxUnit = PricingCalculator.Round2(goingPrice * (1 + _posRules.MaxPriceIncreasePercentFromList / 100m));
+                if (unit > maxUnit)
+                    throw new InvalidOperationException(
+                        $"\"{p.Name}\" cannot be priced more than {_posRules.MaxPriceIncreasePercentFromList}% above R{goingPrice:N2} by sales staff.");
             }
 
-            var lineTotal = PricingCalculator.Round2(unit * l.Quantity - l.LineDiscount);
-            if (lineTotal < 0) lineTotal = 0;
+            // Never book away more than the line is worth, so gross − discount = paid holds
+            // everywhere it is displayed (receipt, invoice PDF, sales-history search).
+            if (lineDiscount > lineGross) lineDiscount = PricingCalculator.Round2(lineGross);
+            var lineTotal = PricingCalculator.Round2(lineGross - lineDiscount);
             subTotal += lineTotal;
 
             lines.Add(new InvoiceLine
@@ -136,10 +157,11 @@ public class InvoiceService
                 Id = Guid.NewGuid(),
                 ProductId = p.Id,
                 Description = p.Name,
+                SkuAtSale = p.Sku,
                 Quantity = l.Quantity,
                 UnitPrice = unit,
                 OriginalUnitPrice = l.OriginalUnitPrice > 0 ? l.OriginalUnitPrice : p.SellPrice,
-                LineDiscount = l.LineDiscount,
+                LineDiscount = lineDiscount,
                 LineTotal = lineTotal,
                 CostAtSale = Math.Round(p.Cost * (1 - p.SupplierDiscountPercent / 100m), 2)
             });
@@ -310,7 +332,7 @@ public class InvoiceService
             {
                 ProductId = l.ProductId,
                 Description = l.Description,
-                Sku = l.Product?.Sku,
+                Sku = l.SkuAtSale ?? l.Product?.Sku,
                 Quantity = l.Quantity,
                 UnitPrice = l.UnitPrice,
                 OriginalUnitPrice = l.OriginalUnitPrice,

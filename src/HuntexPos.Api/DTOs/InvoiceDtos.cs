@@ -99,6 +99,35 @@ public class InvoiceLineDto
     public decimal LineTotal { get; set; }
 }
 
+/// <summary>
+/// One historical sale line. Returned by the sales-history search that the counter uses
+/// when a customer wants to return an item but has lost the printed receipt — it recovers
+/// what they actually paid, including any discount given at the time.
+/// </summary>
+public class InvoiceLineSearchResultDto
+{
+    public Guid InvoiceId { get; set; }
+    public string InvoiceNumber { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string? CustomerName { get; set; }
+    public string PaymentMethod { get; set; } = string.Empty;
+    /// <summary>Lets the counter reprint the thermal receipt straight from a search hit.</summary>
+    public Guid PublicToken { get; set; }
+
+    public Guid ProductId { get; set; }
+    public string? Sku { get; set; }
+    public string Description { get; set; } = string.Empty;
+    public int Quantity { get; set; }
+    /// <summary>Catalog retail price at time of sale, before any concession.</summary>
+    public decimal OriginalUnitPrice { get; set; }
+    public decimal UnitPrice { get; set; }
+    public decimal LineDiscount { get; set; }
+    public decimal LineTotal { get; set; }
+    /// <summary>What the customer actually paid per unit, after all line-level discounts.</summary>
+    public decimal EffectiveUnitPrice { get; set; }
+}
+
 public class VoidInvoiceRequest
 {
     [Required, MinLength(3)]

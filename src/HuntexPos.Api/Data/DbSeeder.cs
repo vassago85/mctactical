@@ -210,6 +210,22 @@ public static class DbSeeder
         if (!db.Database.IsSqlite()) return;
         try { await db.Database.ExecuteSqlRawAsync(
             """ALTER TABLE "InvoiceLines" ADD COLUMN "CostAtSale" TEXT NOT NULL DEFAULT '0';""", ct); } catch { }
+
+        try { await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "InvoiceLines" ADD COLUMN "SkuAtSale" TEXT NULL;""", ct); } catch { }
+        // Backfill historical lines from the catalog. Products deleted before this
+        // ran have no SKU to recover, but their Description snapshot is still searchable.
+        try { await db.Database.ExecuteSqlRawAsync("""
+            UPDATE "InvoiceLines"
+            SET "SkuAtSale" = (SELECT "Sku" FROM "Products" WHERE "Products"."Id" = "InvoiceLines"."ProductId")
+            WHERE "SkuAtSale" IS NULL;
+            """, ct); } catch { }
+
+        // Sales-history search filters on these columns across every past line.
+        try { await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_InvoiceLines_SkuAtSale" ON "InvoiceLines" ("SkuAtSale");""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_InvoiceLines_InvoiceId" ON "InvoiceLines" ("InvoiceId");""", ct); } catch { }
     }
 
     private static async Task EnsureStockReceiptsTableAsync(HuntexDbContext db, CancellationToken ct)
