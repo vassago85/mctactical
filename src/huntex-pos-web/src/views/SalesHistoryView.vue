@@ -7,6 +7,7 @@
  * (including any discount) so a return can be handled without the paper slip.
  */
 import { computed, nextTick, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { http } from '@/api/http'
 import { useToast } from '@/composables/useToast'
 import { formatZAR, formatNumber } from '@/utils/format'
@@ -38,8 +39,20 @@ type SaleLine = {
   effectiveUnitPrice: number
 }
 
+type SaleGroup = {
+  invoiceId: string
+  invoiceNumber: string
+  createdAt: string
+  status: string
+  customerName?: string | null
+  paymentMethod: string
+  publicToken: string
+  lines: SaleLine[]
+}
+
 const DEFAULT_LOOKBACK_DAYS = 90
 
+const route = useRoute()
 const toast = useToast()
 const q = ref('')
 const fromDate = ref('')
@@ -52,6 +65,40 @@ const err = ref<string | null>(null)
 const searchInput = ref<HTMLInputElement | null>(null)
 
 const canSearch = computed(() => q.value.trim().length >= 2)
+
+/** Group flat API lines into receipt cards (order follows API: newest first). */
+const groups = computed<SaleGroup[]>(() => {
+  if (!rows.value?.length) return []
+  const order: string[] = []
+  const map = new Map<string, SaleGroup>()
+  for (const l of rows.value) {
+    let g = map.get(l.invoiceId)
+    if (!g) {
+      g = {
+        invoiceId: l.invoiceId,
+        invoiceNumber: l.invoiceNumber,
+        createdAt: l.createdAt,
+        status: l.status,
+        customerName: l.customerName,
+        paymentMethod: l.paymentMethod,
+        publicToken: l.publicToken,
+        lines: []
+      }
+      map.set(l.invoiceId, g)
+      order.push(l.invoiceId)
+    }
+    g.lines.push(l)
+  }
+  return order.map((id) => map.get(id)!)
+})
+
+const resultsTitle = computed(() => {
+  if (!rows.value) return ''
+  const saleCount = groups.value.length
+  const lineCount = rows.value.length
+  if (saleCount === lineCount) return `Results (${saleCount})`
+  return `Results (${saleCount} sale${saleCount === 1 ? '' : 's'}, ${lineCount} line${lineCount === 1 ? '' : 's'})`
+})
 
 function toDateStr(d: Date) {
   return d.toISOString().slice(0, 10)
@@ -109,7 +156,6 @@ async function search() {
     toast.error(err.value)
   } finally {
     busy.value = false
-    // Keep focus ready for the next scan / typed query.
     void nextTick(() => searchInput.value?.focus())
   }
 }
@@ -120,12 +166,12 @@ function resetFilters() {
   if (canSearch.value) void search()
 }
 
-function receiptUrl(l: SaleLine) {
-  return `/#/receipt/${l.publicToken}?auto=0`
+function receiptUrl(g: SaleGroup) {
+  return `/#/receipt/${g.publicToken}?auto=0`
 }
 
-function invoiceUrl(l: SaleLine) {
-  return `/#/invoice/${l.publicToken}`
+function invoiceUrl(g: SaleGroup) {
+  return `/#/invoice/${g.publicToken}`
 }
 
 function fmtWhen(iso: string): string {
@@ -133,9 +179,13 @@ function fmtWhen(iso: string): string {
   return isNaN(d.getTime()) ? '—' : d.toLocaleString('en-ZA')
 }
 
-onMounted(() => {
+onMounted(async () => {
   applyDefaultDateRange()
-  void nextTick(() => searchInput.value?.focus())
+  const incoming = typeof route.query.q === 'string' ? route.query.q.trim() : ''
+  if (incoming) q.value = incoming
+  await nextTick()
+  searchInput.value?.focus()
+  if (canSearch.value) await search()
 })
 </script>
 
@@ -166,6 +216,7 @@ onMounted(() => {
             <span v-else>Find</span>
           </McButton>
         </div>
+        <p class="hist-till__help">No receipt? Scan the item or type the SKU.</p>
         <p class="hist-till__hint">
           Searching {{ dateRangeHint }}
           <span v-if="!canSearch"> · enter at least 2 characters</span>
@@ -202,58 +253,64 @@ onMounted(() => {
 
     <McAlert v-if="err" variant="error">{{ err }}</McAlert>
 
-    <McCard v-if="rows" :title="`Results (${rows.length})`">
+    <McCard v-if="rows" :title="resultsTitle">
       <McEmptyState
         v-if="rows.length === 0"
         title="No matching sales"
         message="Try the SKU on its own, part of the item name, or widen the date range under More filters."
       />
-      <div v-else class="hist-table-wrap">
-        <table class="mc-table">
-          <thead>
-            <tr>
-              <th>When</th>
-              <th>Invoice</th>
-              <th>Customer</th>
-              <th>Item</th>
-              <th class="hist-num">Qty</th>
-              <th class="hist-num">Retail</th>
-              <th class="hist-num">Discount</th>
-              <th class="hist-num">Paid each</th>
-              <th class="hist-num">Line total</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(l, i) in rows" :key="i" :class="{ 'hist-row--void': l.status === 'Voided' }">
-              <td>{{ fmtWhen(l.createdAt) }}</td>
-              <td class="hist-mono">
-                {{ l.invoiceNumber }}
-                <McBadge v-if="l.status === 'Voided'" variant="danger">Voided</McBadge>
-              </td>
-              <td>{{ l.customerName || '—' }}</td>
-              <td>
-                <span class="hist-item">{{ l.description }}</span>
-                <span v-if="l.sku" class="hist-mono hist-item__sku">{{ l.sku }}</span>
-              </td>
-              <td class="hist-num">{{ formatNumber(l.quantity) }}</td>
-              <td class="hist-num">{{ formatZAR(l.originalUnitPrice || l.unitPrice) }}</td>
-              <td class="hist-num">
-                <span v-if="saving(l) > 0" class="hist-disc">
-                  −{{ formatZAR(saving(l)) }}<br />
-                  <small>({{ savingPercent(l) }}%)</small>
-                </span>
-                <span v-else>—</span>
-              </td>
-              <td class="hist-num hist-paid">{{ formatZAR(l.effectiveUnitPrice) }}</td>
-              <td class="hist-num">{{ formatZAR(l.lineTotal) }}</td>
-              <td class="hist-actions">
-                <a class="hist-link" :href="invoiceUrl(l)" target="_blank" rel="noreferrer">Invoice</a>
-                <a class="hist-link" :href="receiptUrl(l)" target="_blank" rel="noreferrer">Receipt</a>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <div v-else class="hist-groups">
+        <article
+          v-for="g in groups"
+          :key="g.invoiceId"
+          class="hist-receipt"
+          :class="{ 'hist-receipt--void': g.status === 'Voided' }"
+        >
+          <header class="hist-receipt__head">
+            <div class="hist-receipt__meta">
+              <div class="hist-receipt__num">
+                {{ g.invoiceNumber }}
+                <McBadge v-if="g.status === 'Voided'" variant="danger">Voided</McBadge>
+              </div>
+              <div class="hist-receipt__when">{{ fmtWhen(g.createdAt) }}</div>
+              <div class="hist-receipt__who">
+                {{ g.customerName || 'No customer on receipt' }}
+                <span v-if="g.paymentMethod"> · {{ g.paymentMethod }}</span>
+              </div>
+            </div>
+            <div class="hist-receipt__actions">
+              <a class="hist-action hist-action--primary" :href="receiptUrl(g)" target="_blank" rel="noreferrer">
+                Reprint receipt
+              </a>
+              <a class="hist-action" :href="invoiceUrl(g)" target="_blank" rel="noreferrer">
+                Open invoice
+              </a>
+            </div>
+          </header>
+
+          <ul class="hist-receipt__lines">
+            <li v-for="(l, i) in g.lines" :key="i" class="hist-line">
+              <div class="hist-line__main">
+                <div class="hist-line__item">
+                  <span class="hist-line__name">{{ l.description }}</span>
+                  <span v-if="l.sku" class="hist-line__sku">{{ l.sku }}</span>
+                  <span class="hist-line__qty">Qty {{ formatNumber(l.quantity) }}</span>
+                </div>
+                <div class="hist-line__paid">
+                  <span class="hist-line__paid-label">Paid each</span>
+                  <strong class="hist-line__paid-val">{{ formatZAR(l.effectiveUnitPrice) }}</strong>
+                </div>
+              </div>
+              <div class="hist-line__foot">
+                <McBadge v-if="saving(l) > 0" variant="warning">
+                  Discount −{{ formatZAR(saving(l)) }} ({{ savingPercent(l) }}%)
+                </McBadge>
+                <span class="hist-line__retail">Retail {{ formatZAR(l.originalUnitPrice || l.unitPrice) }}</span>
+                <span class="hist-line__total">Line {{ formatZAR(l.lineTotal) }}</span>
+              </div>
+            </li>
+          </ul>
+        </article>
       </div>
     </McCard>
   </div>
@@ -289,8 +346,15 @@ onMounted(() => {
   outline-offset: 1px;
 }
 
+.hist-till__help {
+  margin: 0.65rem 0 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--mc-app-heading, #0a0a0c);
+}
+
 .hist-till__hint {
-  margin: 0.55rem 0 0;
+  margin: 0.35rem 0 0;
   font-size: 0.82rem;
   color: var(--mc-app-text-muted, #5c5a56);
 }
@@ -331,67 +395,180 @@ onMounted(() => {
   padding-bottom: 0.35rem;
 }
 
-.hist-table-wrap {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+.hist-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
 }
 
-.hist-num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+.hist-receipt {
+  border: 1px solid var(--mc-app-border-soft, #ddd9d3);
+  border-radius: 12px;
+  background: var(--mc-app-surface, #fff);
+  overflow: hidden;
 }
 
-.hist-paid {
-  font-weight: 700;
+.hist-receipt--void {
+  opacity: 0.65;
 }
 
-.hist-disc {
-  color: #cc0000;
-  font-weight: 600;
+.hist-receipt__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--mc-app-border-soft, #ddd9d3);
+  background: var(--mc-app-bg, #f6f4f0);
 }
 
-.hist-mono {
+.hist-receipt__num {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
   font-family: var(--mc-app-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 0.875rem;
+  font-weight: 700;
+  font-size: 1rem;
 }
 
-.hist-item {
-  display: block;
-}
-
-.hist-item__sku {
-  display: block;
+.hist-receipt__when,
+.hist-receipt__who {
+  font-size: 0.85rem;
   color: var(--mc-app-text-muted, #5c5a56);
+  margin-top: 0.2rem;
+}
+
+.hist-receipt__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.hist-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 0.9rem;
+  border-radius: 10px;
   font-size: 0.78rem;
-}
-
-.hist-row--void {
-  opacity: 0.6;
-}
-
-.hist-actions {
-  white-space: nowrap;
-}
-
-.hist-link {
-  color: var(--mc-app-accent, #8a6d3b);
-  font-size: 0.82rem;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
   text-decoration: none;
+  border: 1px solid var(--mc-app-border-soft, #ddd9d3);
+  color: var(--mc-app-heading, #0a0a0c);
+  background: #fff;
 }
 
-.hist-link + .hist-link {
-  margin-left: 0.6rem;
+.hist-action:hover {
+  background: rgba(0, 0, 0, 0.04);
 }
 
-.hist-link:hover {
-  text-decoration: underline;
+.hist-action--primary {
+  border-color: var(--mc-app-accent, #f47a20);
+  background: var(--mc-app-accent, #f47a20);
+  color: #fff;
+}
+
+.hist-action--primary:hover {
+  filter: brightness(0.95);
+  background: var(--mc-app-accent, #f47a20);
+}
+
+.hist-receipt__lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hist-line {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--mc-app-border-faint, #eceae5);
+}
+
+.hist-line:last-child {
+  border-bottom: none;
+}
+
+.hist-line__main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.hist-line__name {
+  display: block;
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.hist-line__sku,
+.hist-line__qty {
+  display: inline-block;
+  margin-top: 0.2rem;
+  margin-right: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--mc-app-text-muted, #5c5a56);
+}
+
+.hist-line__sku {
+  font-family: var(--mc-app-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
+.hist-line__paid {
+  text-align: right;
+  min-width: 7.5rem;
+}
+
+.hist-line__paid-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--mc-app-text-muted, #5c5a56);
+}
+
+.hist-line__paid-val {
+  display: block;
+  font-size: 1.45rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  color: var(--mc-app-heading, #0a0a0c);
+}
+
+.hist-line__foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.85rem;
+  align-items: center;
+  margin-top: 0.55rem;
+  font-size: 0.8rem;
+  color: var(--mc-app-text-muted, #5c5a56);
+}
+
+.hist-line__total {
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
 }
 
 @media (max-width: 640px) {
   .hist-till__search {
     flex-direction: column;
+  }
+
+  .hist-line__paid {
+    text-align: left;
+    width: 100%;
+  }
+
+  .hist-line__total {
+    margin-left: 0;
   }
 }
 </style>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { http } from '@/api/http'
 import { useToast } from '@/composables/useToast'
 import { formatZAR } from '@/utils/format'
@@ -15,6 +16,8 @@ import McCheckbox from '@/components/ui/McCheckbox.vue'
 import McBadge from '@/components/ui/McBadge.vue'
 import { Minus, Plus, ChevronDown, ChevronRight, Search, Camera, Check } from 'lucide-vue-next'
 import { beepSuccess, beepError } from '@/utils/beep'
+
+const router = useRouter()
 
 type Product = {
   id: string
@@ -291,12 +294,41 @@ async function commitEntry(rawCode: string, options?: { forceExact?: boolean }):
   return true
 }
 
+/**
+ * When armed, the next scan / Enter in the POS search box opens Find sale with
+ * that code instead of adding to the cart. One-shot so normal selling resumes
+ * automatically after the lookup.
+ */
+const scanToFindSale = ref(false)
+
+const findSaleRoute = computed(() => {
+  const term = q.value.trim()
+  return term.length >= 2
+    ? { path: '/find-sale', query: { q: term } }
+    : { path: '/find-sale' }
+})
+
+function goFindSale(code?: string) {
+  const term = (code ?? q.value).trim()
+  scanToFindSale.value = false
+  scanOpen.value = false
+  if (term.length >= 2) {
+    void router.push({ path: '/find-sale', query: { q: term } })
+  } else {
+    void router.push('/find-sale')
+  }
+}
+
 function onSearchKeydown(ev: KeyboardEvent) {
   noteKeyTimingFromKey(ev)
   if (ev.key !== 'Enter') return
   ev.preventDefault()
   const code = q.value.trim()
   if (!code) return
+  if (scanToFindSale.value) {
+    goFindSale(code)
+    return
+  }
   // Scanner-shaped input: treat Enter as a firm commit (error toast on miss).
   // Slow manual typing: only commit if there's a single, unambiguous hit.
   const forceExact = scannerBufferActive
@@ -339,6 +371,10 @@ function addToCart(p: Product) {
 
 function onScan(code: string) {
   const trimmed = code.trim()
+  if (scanToFindSale.value) {
+    goFindSale(trimmed)
+    return
+  }
   q.value = trimmed
   scanOpen.value = false
   void commitEntry(trimmed, { forceExact: true })
@@ -762,8 +798,23 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
         <div class="pos-panel pos-panel--recent">
           <div class="pos-panel__head">
             <span>Recent invoices</span>
-            <RouterLink class="pos-find-sale" to="/find-sale">Find sale</RouterLink>
+            <div class="pos-find-sale-wrap">
+              <button
+                type="button"
+                class="pos-scan-to-find"
+                :class="{ 'pos-scan-to-find--on': scanToFindSale }"
+                :aria-pressed="scanToFindSale"
+                title="Arm the next barcode scan to open Find sale instead of adding to cart"
+                @click="scanToFindSale = !scanToFindSale"
+              >
+                {{ scanToFindSale ? 'Scan item now…' : 'Scan to find' }}
+              </button>
+              <RouterLink class="pos-find-sale" :to="findSaleRoute">Find sale</RouterLink>
+            </div>
           </div>
+          <p v-if="scanToFindSale" class="pos-scan-to-find-hint">
+            Next scan opens Find sale with that barcode. Tap again to cancel.
+          </p>
           <div v-if="recentInvoices.length" class="pos-panel__body pos-recent-list">
             <div
               v-for="inv in recentInvoices"
@@ -1590,7 +1641,15 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   color: var(--mc-text-muted, #7a7874);
   border-bottom: 1px solid var(--mc-app-border-soft, #ddd9d3);
 }
-.pos-find-sale {
+.pos-find-sale-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  justify-content: flex-end;
+}
+.pos-find-sale,
+.pos-scan-to-find {
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -1601,9 +1660,29 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   border: 1px solid currentColor;
   border-radius: 999px;
   white-space: nowrap;
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
 }
-.pos-find-sale:hover {
+.pos-find-sale:hover,
+.pos-scan-to-find:hover {
   background: rgba(244, 122, 32, 0.1);
+}
+.pos-scan-to-find--on {
+  background: var(--mc-app-accent, #f47a20);
+  color: #fff;
+  border-color: var(--mc-app-accent, #f47a20);
+}
+.pos-scan-to-find--on:hover {
+  filter: brightness(0.95);
+  background: var(--mc-app-accent, #f47a20);
+}
+.pos-scan-to-find-hint {
+  margin: 0;
+  padding: 0.55rem 0.9rem 0;
+  font-size: 0.8rem;
+  color: var(--mc-app-accent, #f47a20);
+  font-weight: 600;
 }
 .pos-recent-empty {
   margin: 0;
