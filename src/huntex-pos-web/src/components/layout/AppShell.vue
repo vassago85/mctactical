@@ -70,7 +70,7 @@ function logout() {
           <RouterLink class="mc-nav-link" to="/pos" @click="sidebarOpen = false"><ShoppingCart :size="16" />POS</RouterLink>
           <RouterLink v-if="features.quotes" class="mc-nav-link" to="/quotes" @click="sidebarOpen = false"><FileText :size="16" />{{ terminology.quote }}s</RouterLink>
           <RouterLink class="mc-nav-link" to="/price-lookup" @click="sidebarOpen = false"><Search :size="16" />Price lookup</RouterLink>
-          <RouterLink class="mc-nav-link" to="/sales-history" @click="sidebarOpen = false"><History :size="16" />Sales history</RouterLink>
+          <RouterLink class="mc-nav-link" to="/find-sale" @click="sidebarOpen = false"><History :size="16" />Find sale</RouterLink>
         </div>
         <div class="mc-nav-group">
           <p class="mc-nav-group__label">Stock</p>

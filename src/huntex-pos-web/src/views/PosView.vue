@@ -758,12 +758,13 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
           </div>
         </div>
 
-        <!-- Recent invoices -->
-        <div v-if="recentInvoices.length" class="pos-panel pos-panel--recent">
+        <!-- Recent invoices + Find sale (returns lookup without leaving the till flow) -->
+        <div class="pos-panel pos-panel--recent">
           <div class="pos-panel__head">
             <span>Recent invoices</span>
+            <RouterLink class="pos-find-sale" to="/find-sale">Find sale</RouterLink>
           </div>
-          <div class="pos-panel__body pos-recent-list">
+          <div v-if="recentInvoices.length" class="pos-panel__body pos-recent-list">
             <div
               v-for="inv in recentInvoices"
               :key="inv.id"
@@ -789,6 +790,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
               >Print</a>
             </div>
           </div>
+          <p v-else class="pos-recent-empty">No recent sales yet. Use Find sale to look up older invoices.</p>
         </div>
       </div>
 
@@ -1579,6 +1581,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.75rem;
   padding: 0.55rem 0.9rem;
   font-size: 0.82rem;
   font-weight: 600;
@@ -1586,6 +1589,27 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   letter-spacing: 0.03em;
   color: var(--mc-text-muted, #7a7874);
   border-bottom: 1px solid var(--mc-app-border-soft, #ddd9d3);
+}
+.pos-find-sale {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--mc-app-accent, #f47a20);
+  padding: 0.25rem 0.55rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.pos-find-sale:hover {
+  background: rgba(244, 122, 32, 0.1);
+}
+.pos-recent-empty {
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  font-size: 0.84rem;
+  color: var(--mc-app-text-muted, #5c5a56);
 }
 .pos-recent-list {
   display: flex;

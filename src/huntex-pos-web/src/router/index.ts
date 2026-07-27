@@ -13,7 +13,9 @@ const router = createRouter({
     },
     { path: '/pos', component: () => import('@/views/PosView.vue'), meta: { layout: 'app' } },
     { path: '/price-lookup', component: () => import('@/views/PriceLookupView.vue'), meta: { layout: 'app' } },
-    { path: '/sales-history', component: () => import('@/views/SalesHistoryView.vue'), meta: { layout: 'app' } },
+    { path: '/find-sale', component: () => import('@/views/SalesHistoryView.vue'), meta: { layout: 'app' } },
+    // Keep the old path so existing bookmarks / PWA caches still land on the page.
+    { path: '/sales-history', redirect: '/find-sale' },
     { path: '/stock', component: () => import('@/views/StockListView.vue'), meta: { layout: 'app' } },
     { path: '/stock/labels', component: () => import('@/views/LabelsPrintView.vue'), meta: { layout: 'app' } },
     { path: '/stocktake', component: () => import('@/views/StocktakeView.vue'), meta: { layout: 'app' } },

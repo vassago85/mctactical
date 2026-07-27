@@ -1,14 +1,12 @@
 <script setup lang="ts">
 /**
- * Sales history lookup for the returns counter.
+ * Find sale — till-side lookup for the returns counter.
  *
- * Most receipts are printed on the thermal printer without customer details, so when
- * someone brings an item back without paperwork there is nothing to tie them to a sale.
- * This searches every past invoice line by SKU, barcode, item name, invoice number or
- * customer name, and shows what was actually paid per unit after any discount — which
- * is the number the counter needs before agreeing a refund or exchange.
+ * Most receipts are printed without customer details. Staff scan/type a SKU,
+ * barcode, item name, invoice number or customer name to see what was paid
+ * (including any discount) so a return can be handled without the paper slip.
  */
-import { computed, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { http } from '@/api/http'
 import { useToast } from '@/composables/useToast'
 import { formatZAR, formatNumber } from '@/utils/format'
@@ -40,16 +38,40 @@ type SaleLine = {
   effectiveUnitPrice: number
 }
 
+const DEFAULT_LOOKBACK_DAYS = 90
+
 const toast = useToast()
 const q = ref('')
 const fromDate = ref('')
 const toDate = ref('')
 const includeVoided = ref(false)
+const showMoreFilters = ref(false)
 const rows = ref<SaleLine[] | null>(null)
 const busy = ref(false)
 const err = ref<string | null>(null)
+const searchInput = ref<HTMLInputElement | null>(null)
 
 const canSearch = computed(() => q.value.trim().length >= 2)
+
+function toDateStr(d: Date) {
+  return d.toISOString().slice(0, 10)
+}
+
+/** Default window matches the 90-day returns policy on the receipt. */
+function applyDefaultDateRange() {
+  const end = new Date()
+  const start = new Date()
+  start.setDate(start.getDate() - DEFAULT_LOOKBACK_DAYS)
+  fromDate.value = toDateStr(start)
+  toDate.value = toDateStr(end)
+}
+
+const dateRangeHint = computed(() => {
+  if (!fromDate.value && !toDate.value) return 'All dates'
+  if (fromDate.value && toDate.value) return `${fromDate.value} → ${toDate.value}`
+  if (fromDate.value) return `From ${fromDate.value}`
+  return `Until ${toDate.value}`
+})
 
 /** Rand off retail on this line, however it was given (promotion or operator concession). */
 function saving(l: SaleLine): number {
@@ -87,12 +109,13 @@ async function search() {
     toast.error(err.value)
   } finally {
     busy.value = false
+    // Keep focus ready for the next scan / typed query.
+    void nextTick(() => searchInput.value?.focus())
   }
 }
 
-function clearFilters() {
-  fromDate.value = ''
-  toDate.value = ''
+function resetFilters() {
+  applyDefaultDateRange()
   includeVoided.value = false
   if (canSearch.value) void search()
 }
@@ -109,46 +132,72 @@ function fmtWhen(iso: string): string {
   const d = new Date(iso)
   return isNaN(d.getTime()) ? '—' : d.toLocaleString('en-ZA')
 }
+
+onMounted(() => {
+  applyDefaultDateRange()
+  void nextTick(() => searchInput.value?.focus())
+})
 </script>
 
 <template>
   <div class="hist-page">
-    <McPageHeader title="Sales history">
+    <McPageHeader title="Find sale">
       <template #default>
-        Find what a customer paid for an item when they have no receipt. Search by SKU,
-        barcode, item name, invoice number or customer name.
+        Look up what a customer paid when they have no receipt. Scan a barcode or type a
+        SKU, item name, invoice number or customer name.
       </template>
     </McPageHeader>
 
-    <McCard title="Search">
-      <form class="hist-search" @submit.prevent="search">
-        <McField label="SKU, barcode, item, invoice or customer" for-id="hist-q">
+    <McCard>
+      <form class="hist-till" @submit.prevent="search">
+        <div class="hist-till__search">
           <input
             id="hist-q"
+            ref="searchInput"
             v-model="q"
             type="search"
-            placeholder="e.g. MCT-1234, Leupold VX-3, INV-202607-0007"
+            class="hist-till__input"
+            placeholder="Scan barcode or type SKU / item / invoice…"
             autocomplete="off"
+            enterkeyhint="search"
           />
-        </McField>
-        <McField label="From" for-id="hist-from">
-          <input id="hist-from" v-model="fromDate" type="date" />
-        </McField>
-        <McField label="To" for-id="hist-to">
-          <input id="hist-to" v-model="toDate" type="date" />
-        </McField>
-        <McButton variant="primary" type="submit" :disabled="busy || !canSearch">
-          <McSpinner v-if="busy" />
-          <span v-else>Search</span>
-        </McButton>
+          <McButton variant="primary" type="submit" :disabled="busy || !canSearch">
+            <McSpinner v-if="busy" />
+            <span v-else>Find</span>
+          </McButton>
+        </div>
+        <p class="hist-till__hint">
+          Searching {{ dateRangeHint }}
+          <span v-if="!canSearch"> · enter at least 2 characters</span>
+        </p>
+
+        <div class="hist-till__toggle-row">
+          <button
+            type="button"
+            class="hist-till__more"
+            :aria-expanded="showMoreFilters"
+            @click="showMoreFilters = !showMoreFilters"
+          >
+            {{ showMoreFilters ? 'Hide filters' : 'More filters' }}
+          </button>
+        </div>
+
+        <div v-if="showMoreFilters" class="hist-till__filters">
+          <McField label="From" for-id="hist-from">
+            <input id="hist-from" v-model="fromDate" type="date" />
+          </McField>
+          <McField label="To" for-id="hist-to">
+            <input id="hist-to" v-model="toDate" type="date" />
+          </McField>
+          <label class="hist-check">
+            <input v-model="includeVoided" type="checkbox" />
+            Include voided sales
+          </label>
+          <McButton variant="ghost" dense type="button" @click="resetFilters">
+            Reset to last {{ DEFAULT_LOOKBACK_DAYS }} days
+          </McButton>
+        </div>
       </form>
-      <div class="hist-search__opts">
-        <label class="hist-check">
-          <input v-model="includeVoided" type="checkbox" @change="canSearch && search()" />
-          Include voided sales
-        </label>
-        <McButton variant="ghost" dense type="button" @click="clearFilters">Clear filters</McButton>
-      </div>
     </McCard>
 
     <McAlert v-if="err" variant="error">{{ err }}</McAlert>
@@ -157,7 +206,7 @@ function fmtWhen(iso: string): string {
       <McEmptyState
         v-if="rows.length === 0"
         title="No matching sales"
-        message="Try the SKU on its own, part of the item name, or widen the date range."
+        message="Try the SKU on its own, part of the item name, or widen the date range under More filters."
       />
       <div v-else class="hist-table-wrap">
         <table class="mc-table">
@@ -218,23 +267,59 @@ function fmtWhen(iso: string): string {
   gap: 1rem;
 }
 
-.hist-search {
+.hist-till__search {
+  display: flex;
+  gap: 0.6rem;
+  align-items: stretch;
+}
+
+.hist-till__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 1.15rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--mc-app-border-soft, #ddd9d3);
+  border-radius: 10px;
+  background: var(--mc-app-surface, #fff);
+  color: inherit;
+}
+
+.hist-till__input:focus {
+  outline: 2px solid var(--mc-app-accent, #8a6d3b);
+  outline-offset: 1px;
+}
+
+.hist-till__hint {
+  margin: 0.55rem 0 0;
+  font-size: 0.82rem;
+  color: var(--mc-app-text-muted, #5c5a56);
+}
+
+.hist-till__toggle-row {
+  margin-top: 0.65rem;
+}
+
+.hist-till__more {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--mc-app-accent, #8a6d3b);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.hist-till__filters {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
   align-items: end;
-}
-
-.hist-search :deep(.mc-field):first-child {
-  flex: 1 1 320px;
-}
-
-.hist-search__opts {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-  margin-top: 0.75rem;
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--mc-app-border-soft, #ddd9d3);
 }
 
 .hist-check {
@@ -243,6 +328,7 @@ function fmtWhen(iso: string): string {
   gap: 0.4rem;
   font-size: 0.85rem;
   color: var(--mc-app-text-muted, #5c5a56);
+  padding-bottom: 0.35rem;
 }
 
 .hist-table-wrap {
@@ -301,5 +387,11 @@ function fmtWhen(iso: string): string {
 
 .hist-link:hover {
   text-decoration: underline;
+}
+
+@media (max-width: 640px) {
+  .hist-till__search {
+    flex-direction: column;
+  }
 }
 </style>
