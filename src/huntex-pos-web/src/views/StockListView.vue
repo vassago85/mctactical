@@ -83,8 +83,28 @@ const busy = ref(false)
 const err = ref<string | null>(null)
 const suppliers = ref<Supplier[]>([])
 const actionsMenuId = ref<string | null>(null)
-function toggleActionsMenu(id: string) {
-  actionsMenuId.value = actionsMenuId.value === id ? null : id
+
+/**
+ * The menu is teleported and fixed-positioned from the toggle: the table scrolls
+ * horizontally (overflow: auto), which would otherwise clip an absolute dropdown.
+ */
+const actionsMenuPos = ref<{ top: number; right: number } | null>(null)
+
+function toggleActionsMenu(id: string, ev: MouseEvent) {
+  if (actionsMenuId.value === id) {
+    actionsMenuId.value = null
+    return
+  }
+  const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect()
+  actionsMenuPos.value = {
+    top: Math.round(rect.bottom + 4),
+    right: Math.round(Math.max(8, window.innerWidth - rect.right))
+  }
+  actionsMenuId.value = id
+}
+
+function closeActionsMenuOnViewportChange() {
+  actionsMenuId.value = null
 }
 
 const canManage = computed(() => auth.hasRole('Admin', 'Owner', 'Dev'))
@@ -663,12 +683,35 @@ function closeActionsMenu(e: MouseEvent) {
   if (actionsMenuId.value && !(e.target as HTMLElement)?.closest('.stock-actions-more'))
     actionsMenuId.value = null
 }
+
+/** The drawers are hand-rolled dialogs, so Escape has to be wired up explicitly. */
+function onKeydown(e: KeyboardEvent) {
+  if (e.key !== 'Escape') return
+  if (actionsMenuId.value) {
+    actionsMenuId.value = null
+    return
+  }
+  if (showHistory.value) {
+    showHistory.value = false
+    return
+  }
+  if (showForm.value) closeDrawer()
+}
+
 onMounted(() => {
   void load()
   void loadSuppliers()
   document.addEventListener('click', closeActionsMenu)
+  document.addEventListener('keydown', onKeydown)
+  window.addEventListener('scroll', closeActionsMenuOnViewportChange, true)
+  window.addEventListener('resize', closeActionsMenuOnViewportChange)
 })
-onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
+onUnmounted(() => {
+  document.removeEventListener('click', closeActionsMenu)
+  document.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('scroll', closeActionsMenuOnViewportChange, true)
+  window.removeEventListener('resize', closeActionsMenuOnViewportChange)
+})
 </script>
 
 <template>
@@ -814,19 +857,31 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
                 <McButton variant="secondary" dense type="button" @click="openEdit(p)">Edit</McButton>
                 <McButton variant="secondary" dense type="button" @click="openLabelModal(p)">Label</McButton>
                 <div class="stock-actions-more">
-                  <button type="button" class="stock-actions-toggle" @click="toggleActionsMenu(p.id)"><MoreHorizontal :size="16" /></button>
-                  <div v-if="actionsMenuId === p.id" class="stock-actions-dropdown">
-                    <button type="button" @click="openReceiptModal(p, 'OwnedIn'); actionsMenuId = null">+ Owned stock</button>
-                    <button type="button" @click="openReceiptModal(p, 'ConsignmentIn'); actionsMenuId = null">+ Consignment</button>
-                    <button v-if="p.qtyConsignment > 0" type="button" @click="openReceiptModal(p, 'ConsignmentToStock'); actionsMenuId = null">Consign → Stock</button>
-                    <button v-if="p.qtyOnHand > 0" type="button" @click="openReceiptModal(p, 'StockToConsignment'); actionsMenuId = null">Stock → Consign</button>
-                    <button v-if="p.qtyConsignment > 0" type="button" @click="openReceiptModal(p, 'ConsignmentReturn'); actionsMenuId = null">Return consignment</button>
-                    <button type="button" @click="openSpecialModal(p); actionsMenuId = null">Manage specials</button>
-                    <button type="button" @click="openHistory(p); actionsMenuId = null">View history</button>
-                    <button type="button" @click="toggleActive(p); actionsMenuId = null">
-                      {{ p.active ? 'Deactivate' : 'Activate' }}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    class="stock-actions-toggle"
+                    :aria-expanded="actionsMenuId === p.id"
+                    :aria-label="`More actions for ${p.name}`"
+                    @click="toggleActionsMenu(p.id, $event)"
+                  ><MoreHorizontal :size="16" /></button>
+                  <Teleport to="body">
+                    <div
+                      v-if="actionsMenuId === p.id && actionsMenuPos"
+                      class="stock-actions-dropdown"
+                      :style="{ top: `${actionsMenuPos.top}px`, right: `${actionsMenuPos.right}px` }"
+                    >
+                      <button type="button" @click="openReceiptModal(p, 'OwnedIn'); actionsMenuId = null">+ Owned stock</button>
+                      <button type="button" @click="openReceiptModal(p, 'ConsignmentIn'); actionsMenuId = null">+ Consignment</button>
+                      <button v-if="p.qtyConsignment > 0" type="button" @click="openReceiptModal(p, 'ConsignmentToStock'); actionsMenuId = null">Consign → Stock</button>
+                      <button v-if="p.qtyOnHand > 0" type="button" @click="openReceiptModal(p, 'StockToConsignment'); actionsMenuId = null">Stock → Consign</button>
+                      <button v-if="p.qtyConsignment > 0" type="button" @click="openReceiptModal(p, 'ConsignmentReturn'); actionsMenuId = null">Return consignment</button>
+                      <button type="button" @click="openSpecialModal(p); actionsMenuId = null">Manage specials</button>
+                      <button type="button" @click="openHistory(p); actionsMenuId = null">View history</button>
+                      <button type="button" @click="toggleActive(p); actionsMenuId = null">
+                        {{ p.active ? 'Deactivate' : 'Activate' }}
+                      </button>
+                    </div>
+                  </Teleport>
                 </div>
               </td>
             </tr>
@@ -849,7 +904,7 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
         <div v-if="showForm" class="stock-drawer-overlay" aria-hidden="true" @click.self="closeDrawer" />
       </Transition>
       <Transition name="stock-drawer-slide">
-        <aside v-if="showForm" class="stock-drawer" role="dialog" aria-labelledby="stock-drawer-title">
+        <aside v-if="showForm" class="stock-drawer" role="dialog" aria-modal="true" aria-labelledby="stock-drawer-title">
           <header class="stock-drawer__head">
             <h2 id="stock-drawer-title" class="stock-drawer__title">{{ editId ? 'Edit product' : 'Add product' }}</h2>
             <button type="button" class="stock-drawer__close" aria-label="Close" @click="closeDrawer"><X :size="20" /></button>
@@ -1069,7 +1124,7 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
         <div v-if="showHistory" class="stock-drawer-overlay" aria-hidden="true" @click.self="showHistory = false" />
       </Transition>
       <Transition name="stock-drawer-slide">
-        <aside v-if="showHistory" class="stock-drawer stock-drawer--wide" role="dialog" aria-labelledby="history-title">
+        <aside v-if="showHistory" class="stock-drawer stock-drawer--wide" role="dialog" aria-modal="true" aria-labelledby="history-title">
           <header class="stock-drawer__head">
             <h2 id="history-title" class="stock-drawer__title">Stock history — {{ historyProduct?.name }}</h2>
             <button type="button" class="stock-drawer__close" aria-label="Close" @click="showHistory = false"><X :size="20" /></button>
@@ -1384,25 +1439,26 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
   justify-content: center;
   background: none;
   border: 1px solid var(--mc-app-border, #ddd);
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 1.1rem;
-  padding: 4px 8px;
+  min-width: var(--mc-touch-min, 44px);
+  min-height: var(--mc-touch-min, 44px);
   line-height: 1;
   color: var(--mc-app-text, #333);
 }
 .stock-actions-toggle:hover { background: var(--mc-app-bg-hover, #f0f0f0); }
 
+/* Teleported to body and positioned from the toggle rect, so the horizontally
+   scrolling table wrapper can't clip it. */
 .stock-actions-dropdown {
-  position: absolute;
-  right: 0;
-  top: 100%;
-  z-index: 100;
+  position: fixed;
+  z-index: 10030;
   background: #fff;
   border: 1px solid var(--mc-app-border, #ddd);
-  border-radius: 6px;
+  border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-  min-width: 180px;
+  min-width: 200px;
   padding: 4px 0;
 }
 .stock-actions-dropdown button {
@@ -1411,8 +1467,9 @@ onUnmounted(() => document.removeEventListener('click', closeActionsMenu))
   text-align: left;
   background: none;
   border: none;
-  padding: 6px 14px;
-  font-size: 0.84rem;
+  padding: 0.6rem 0.9rem;
+  min-height: var(--mc-touch-min, 44px);
+  font-size: 0.88rem;
   cursor: pointer;
   color: var(--mc-app-text, #333);
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { http } from '@/api/http'
 import { useToast } from '@/composables/useToast'
 import { formatZAR } from '@/utils/format'
@@ -14,7 +14,7 @@ import McModal from '@/components/ui/McModal.vue'
 import McSpinner from '@/components/ui/McSpinner.vue'
 import McCheckbox from '@/components/ui/McCheckbox.vue'
 import McBadge from '@/components/ui/McBadge.vue'
-import { Minus, Plus, ChevronDown, ChevronRight, Search, Camera, Check } from 'lucide-vue-next'
+import { Minus, Plus, ChevronDown, ChevronRight, Search, Camera, Check, Printer } from 'lucide-vue-next'
 import { beepSuccess, beepError } from '@/utils/beep'
 
 const router = useRouter()
@@ -87,6 +87,7 @@ const showSaleSummary = ref(false)
 const saleSummary = ref<{
   invoiceId: string
   invoiceNumber: string
+  publicToken: string
   grandTotal: number
   customerName: string | null
   paymentMethod: string
@@ -157,11 +158,17 @@ type RecentInvoice = {
 }
 const recentInvoices = ref<RecentInvoice[]>([])
 
+/** Distinguishes "no sales yet" from "we could not load them". */
+const recentInvoicesFailed = ref(false)
+
 async function loadRecentInvoices() {
   try {
     const { data } = await http.get<RecentInvoice[]>('/api/invoices/recent?take=5')
     recentInvoices.value = data
-  } catch { /* best effort */ }
+    recentInvoicesFailed.value = false
+  } catch {
+    recentInvoicesFailed.value = true
+  }
 }
 
 onMounted(async () => {
@@ -355,20 +362,39 @@ async function runSearch() {
       params: { q: s, take: 40 }
     })
     results.value = data
-  } catch {
+  } catch (e: unknown) {
+    // Without this a dropped connection looks identical to "no such product".
     results.value = []
+    const ax = e as { response?: { data?: { error?: string } }; message?: string }
+    err.value = ax.response?.data?.error ?? ax.message ?? 'Product search failed'
   } finally {
     searchLoading.value = false
   }
 }
 
+/** Stock ceiling for staff who cannot raise a special order. */
+function warnStockCap(p: Product) {
+  toast.error(
+    p.qtyOnHand < 1
+      ? `${p.name} is out of stock.`
+      : `Only ${p.qtyOnHand} of ${p.name} in stock.`
+  )
+  try { beepError() } catch { /* audio not available — ignore */ }
+}
+
 function addToCart(p: Product) {
   const existing = cart.value.find((l) => l.product.id === p.id)
   if (existing) {
-    if (!isManager.value && existing.qty >= p.qtyOnHand) return
+    if (!isManager.value && existing.qty >= p.qtyOnHand) {
+      warnStockCap(p)
+      return
+    }
     existing.qty += 1
   } else {
-    if (!isManager.value && p.qtyOnHand < 1) return
+    if (!isManager.value && p.qtyOnHand < 1) {
+      warnStockCap(p)
+      return
+    }
     const { price } = getEffectivePrice(p)
     cart.value.push({ product: p, qty: 1, unitPrice: price, originalPrice: p.sellPrice, basePrice: price, lineDiscount: 0, discMode: 'R', discInput: 0 })
   }
@@ -389,7 +415,10 @@ function onScan(code: string) {
 function bumpQty(l: Line, delta: number) {
   const next = l.qty + delta
   if (next < 1) return
-  if (!isManager.value && next > l.product.qtyOnHand) return
+  if (!isManager.value && next > l.product.qtyOnHand) {
+    warnStockCap(l.product)
+    return
+  }
   l.qty = next
 }
 
@@ -424,16 +453,37 @@ function lineDiscountPercent(l: Line): number {
   return Math.round(totalLineDiscount(l) / gross * 1000) / 10
 }
 
+/** Sanity threshold for managers, who bypass the configured cap on the server. */
+const MANAGER_CONCESSION_WARN_PERCENT = 40
+
 /**
  * Sales staff are capped at MaxPriceDecreasePercentFromList off the going price, and the
- * server applies it to the price box and the discount box together. Flag it in the cart
- * so the operator finds out before checkout fails.
+ * server applies it to the price box and the discount box together. Managers bypass that
+ * cap, so they get a mis-key warning at a much higher threshold instead.
  */
-function lineOverDiscountLimit(l: Line): boolean {
-  if (isManager.value || !posRules.value) return false
-  const limit = posRules.value.maxPriceDecreasePercentFromList
-  return totalLineDiscount(l) > 0 && lineDiscountPercent(l) > limit
+function lineDiscountLimit(): number {
+  if (isManager.value) return MANAGER_CONCESSION_WARN_PERCENT
+  return posRules.value?.maxPriceDecreasePercentFromList ?? 100
 }
+
+function lineOverDiscountLimit(l: Line): boolean {
+  if (!posRules.value) return false
+  return totalLineDiscount(l) > 0 && lineDiscountPercent(l) > lineDiscountLimit()
+}
+
+/**
+ * Lines the server will refuse. Managers are allowed to exceed the cap, so their
+ * over-threshold lines warn without blocking the sale.
+ */
+const blockedDiscountLines = computed(() =>
+  isManager.value ? [] : cart.value.filter((l) => lineOverDiscountLimit(l))
+)
+
+const discountBlockWarning = computed(() => {
+  if (!blockedDiscountLines.value.length) return null
+  const names = blockedDiscountLines.value.map((l) => l.product.name).join(', ')
+  return `Over the ${lineDiscountLimit()}% limit — a manager must approve: ${names}`
+})
 
 const subTotal = computed(() =>
   cart.value.reduce((s, l) => {
@@ -532,6 +582,7 @@ async function doCheckout() {
     saleSummary.value = {
       invoiceId: data.id,
       invoiceNumber: data.invoiceNumber,
+      publicToken: data.publicToken,
       grandTotal: data.grandTotal,
       customerName: customerName.value || null,
       paymentMethod: paymentMethod.value,
@@ -569,6 +620,10 @@ async function doCheckout() {
 
 function requestCheckout() {
   if (!cart.value.length) return
+  if (discountBlockWarning.value) {
+    toast.error(discountBlockWarning.value)
+    return
+  }
   if (hasSpecialOrderLines.value) {
     showSpecialOrderModal.value = true
     return
@@ -589,6 +644,20 @@ function confirmSpecialOrder() {
   void doCheckout()
 }
 
+/**
+ * Print straight from the success moment. Without this the operator has to close the
+ * modal, find the sale again in Recent invoices, and print from there.
+ */
+function printSaleReceipt() {
+  if (!saleSummary.value) return
+  window.open(`/#/receipt/${saleSummary.value.publicToken}`, '_blank')
+}
+
+function openSaleInvoice() {
+  if (!saleSummary.value) return
+  window.open(`/#/invoice/${saleSummary.value.publicToken}`, '_blank')
+}
+
 async function openOrderConfirmationPdf() {
   if (!saleSummary.value) return
   try {
@@ -599,7 +668,26 @@ async function openOrderConfirmationPdf() {
   } catch { /* silently fail */ }
 }
 
-const searchEmpty = computed(() => !q.value.trim())
+/**
+ * The cart lives in memory only, so a stray refresh, back-swipe or nav tap loses a
+ * sale in progress. Both guards below are skipped once the cart is empty.
+ */
+function guardUnload(ev: BeforeUnloadEvent) {
+  if (!cart.value.length) return
+  ev.preventDefault()
+  ev.returnValue = ''
+}
+
+onMounted(() => window.addEventListener('beforeunload', guardUnload))
+onBeforeUnmount(() => window.removeEventListener('beforeunload', guardUnload))
+
+onBeforeRouteLeave(() => {
+  if (!cart.value.length) return true
+  return window.confirm(
+    `This sale has ${cart.value.length} line${cart.value.length === 1 ? '' : 's'} that will be lost. Leave the till anyway?`
+  )
+})
+
 const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !results.value.length)
 </script>
 
@@ -610,7 +698,9 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
       <div class="pos-banner-row__left">
         <h1 class="pos-title">Point of sale</h1>
         <span v-if="posRules && isManager" class="pos-mode pos-mode--manager">Manager — overrides allowed</span>
-        <span v-else-if="posRules" class="pos-mode">Sales — list price only</span>
+        <span v-else-if="posRules" class="pos-mode">
+          Sales — up to {{ posRules.maxPriceDecreasePercentFromList }}% off
+        </span>
       </div>
       <div v-if="activePromo?.promotionName" class="pos-promo-chip">
         <McBadge variant="accent">{{ activePromo.promotionName }}</McBadge>
@@ -630,6 +720,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
           v-model="q"
           type="search"
           autocomplete="off"
+          aria-label="Scan barcode, or search products by SKU or name"
           placeholder="Scan barcode, or type SKU / name…"
           class="pos-toolbar__input"
           @keydown="onSearchKeydown"
@@ -646,6 +737,8 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
         type="button"
         class="pos-toolbar__camera"
         :class="{ 'pos-toolbar__camera--on': scanOpen }"
+        :aria-pressed="scanOpen"
+        aria-label="Scan with the device camera"
         @click="scanOpen = !scanOpen"
       >
         <Camera :size="16" />
@@ -757,7 +850,9 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
                       Price raised from {{ formatZAR(l.basePrice) }}
                     </span>
                     <McBadge v-if="lineOverDiscountLimit(l)" variant="warning">
-                      Over the {{ posRules?.maxPriceDecreasePercentFromList }}% limit — a manager must approve
+                      {{ isManager
+                        ? `Large concession — ${lineDiscountPercent(l)}% off retail`
+                        : `Over the ${lineDiscountLimit()}% limit — a manager must approve` }}
                     </McBadge>
                     <McBadge v-if="l.qty > l.product.qtyOnHand" variant="warning">Special order — {{ l.qty - Math.max(0, l.product.qtyOnHand) }} to deliver</McBadge>
                   </td>
@@ -849,6 +944,10 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
               >Print</a>
             </div>
           </div>
+          <p v-else-if="recentInvoicesFailed" class="pos-recent-empty">
+            Could not load recent sales.
+            <button type="button" class="pos-recent-retry" @click="loadRecentInvoices">Retry</button>
+          </p>
           <p v-else class="pos-recent-empty">No recent sales yet. Use Find sale to look up older invoices.</p>
         </div>
       </div>
@@ -870,6 +969,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
                   type="button"
                   class="pos-pay-btn"
                   :class="{ 'pos-pay-btn--on': paymentMethod === method }"
+                  :aria-pressed="paymentMethod === method"
                   @click="paymentMethod = method"
                 >{{ method }}</button>
               </div>
@@ -958,13 +1058,14 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
               </div>
             </div>
 
+            <McAlert v-if="discountBlockWarning" variant="error" class="pos-checkout__warn">{{ discountBlockWarning }}</McAlert>
             <McAlert v-if="belowCostWarning" variant="warning" class="pos-checkout__warn">{{ belowCostWarning }}</McAlert>
 
             <McButton
               variant="primary"
               type="button"
               block
-              :disabled="busy || !cart.length"
+              :disabled="busy || !cart.length || !!discountBlockWarning"
               class="pos-checkout-btn"
               @click="requestCheckout"
             >
@@ -974,6 +1075,27 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
           </div>
         </div>
       </aside>
+    </div>
+
+    <!--
+      Below 1100px the checkout column sits under the cart, so the tender action would
+      otherwise be a long scroll away. This bar keeps it one tap from anywhere.
+    -->
+    <div v-if="cart.length" class="pos-tender-bar">
+      <div class="pos-tender-bar__total">
+        <span>Total due</span>
+        <strong>{{ formatZAR(grandPreview) }}</strong>
+      </div>
+      <McButton
+        variant="primary"
+        type="button"
+        :disabled="busy || !!discountBlockWarning"
+        class="pos-tender-bar__btn"
+        @click="requestCheckout"
+      >
+        <McSpinner v-if="busy" />
+        <span v-else>{{ paymentMethod }} · Complete sale</span>
+      </McButton>
     </div>
 
     <McModal v-model="showBelowCostModal" title="Below cost">
@@ -1043,7 +1165,12 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
       </template>
       <template #footer>
         <McButton v-if="saleSummary?.isSpecialOrder" variant="secondary" type="button" @click="openOrderConfirmationPdf">Order confirmation PDF</McButton>
-        <McButton variant="primary" type="button" @click="showSaleSummary = false">Done</McButton>
+        <McButton variant="secondary" type="button" @click="openSaleInvoice">Open invoice</McButton>
+        <McButton variant="primary" type="button" @click="printSaleReceipt">
+          <Printer :size="16" />
+          Print receipt
+        </McButton>
+        <McButton variant="ghost" type="button" @click="showSaleSummary = false">Done</McButton>
       </template>
     </McModal>
   </div>
@@ -1060,6 +1187,58 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 .pos-shell {
   display: block;
   max-width: 100%;
+}
+
+/* ── Fixed tender bar (tablet / phone) ────────────────────────────────── */
+.pos-tender-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.9rem;
+  padding-bottom: calc(0.6rem + env(safe-area-inset-bottom, 0px));
+  background: var(--mc-app-surface, #fff);
+  border-top: 1px solid var(--mc-app-border-soft, #ddd9d3);
+}
+.pos-tender-bar__total {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+.pos-tender-bar__total span {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--mc-app-text-muted, #5c5a56);
+}
+.pos-tender-bar__total strong {
+  font-size: 1.3rem;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--mc-app-heading, #0a0a0c);
+}
+.pos-tender-bar__btn {
+  flex: 1;
+  min-height: var(--mc-touch-min, 44px);
+}
+/* Reserve room so the bar never covers the last cart line or the checkout panel. */
+.pos-shell {
+  padding-bottom: 4.75rem;
+}
+@media (min-width: 1100px) {
+  /* Checkout column is sticky from here up, so the bar (and its spacing) is redundant. */
+  .pos-tender-bar { display: none; }
+  .pos-shell { padding-bottom: 0; }
+}
+@media (max-width: 1099px) {
+  /* One tender action only — the bar is the primary CTA at these widths. */
+  .pos-checkout__footer .pos-checkout-btn { display: none; }
 }
 
 .pos-banner-row {
@@ -1509,8 +1688,8 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 36px;
-  min-height: 36px;
+  min-width: var(--mc-touch-min, 44px);
+  min-height: var(--mc-touch-min, 44px);
   border: none;
   background: var(--mc-app-surface-muted, #f0eeea);
   font-weight: 700;
@@ -1783,6 +1962,18 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   padding: 0.75rem 0.9rem;
   font-size: 0.84rem;
   color: var(--mc-app-text-muted, #5c5a56);
+}
+.pos-recent-retry {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0;
+  margin-left: 0.35rem;
+  font: inherit;
+  font-weight: 700;
+  color: var(--mc-accent, #f47a20);
+  cursor: pointer;
+  text-decoration: underline;
 }
 .pos-recent-list {
   display: flex;

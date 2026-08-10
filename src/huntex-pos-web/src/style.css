@@ -494,6 +494,41 @@ body.mc-body-app .app-main tbody tr:hover {
   border-top: 1px solid #232326;
 }
 
+.mc-sidebar__who {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem;
+  min-width: 0;
+}
+
+.mc-sidebar__who-email {
+  font-size: 0.78rem;
+  color: #8d8a83;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-sidebar__who-role {
+  flex-shrink: 0;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mc-accent, #f47a20);
+}
+
+.mc-topbar__role {
+  margin-left: auto;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mc-app-text-muted, #5c5a56);
+}
+
 .mc-sidebar__logout {
   display: inline-flex;
   align-items: center;
@@ -546,6 +581,11 @@ body.mc-body-app .app-main tbody tr:hover {
   background: var(--mc-app-surface, #fff);
   border-bottom: 1px solid var(--mc-app-border-soft, #ddd9d3);
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  /* .app-main is the scroll container, so this pins the menu while a long
+     page (the till, the stock list) scrolls underneath it. */
+  position: sticky;
+  top: 0;
+  z-index: 60;
 }
 
 .mc-topbar__menu {

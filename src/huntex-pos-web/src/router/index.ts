@@ -1,6 +1,10 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useBranding } from '@/composables/useBranding'
+import { useToast } from '@/composables/useToast'
+
+/** Manage / Settings areas. The API enforces these too — this keeps the UI honest. */
+const MANAGER_ROLES = ['Admin', 'Owner', 'Dev']
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -21,18 +25,18 @@ const router = createRouter({
     { path: '/stocktake', component: () => import('@/views/StocktakeView.vue'), meta: { layout: 'app' } },
     { path: '/consignment', component: () => import('@/views/ConsignmentBatchView.vue'), meta: { layout: 'app' } },
     { path: '/receiving', redirect: (to) => ({ path: '/consignment', query: { type: (to.query.type as string) || 'OwnedReceive' } }) },
-    { path: '/deliveries', component: () => import('@/views/DeliveriesView.vue'), meta: { layout: 'app' } },
-    { path: '/wholesalers', component: () => import('@/views/WholesalersView.vue'), meta: { layout: 'app' } },
-    { path: '/import', component: () => import('@/views/ImportView.vue'), meta: { layout: 'app' } },
-    { path: '/reports', component: () => import('@/views/ReportsView.vue'), meta: { layout: 'app' } },
-    { path: '/financial-report', component: () => import('@/views/FinancialReportView.vue'), meta: { layout: 'app' } },
-    { path: '/vendor-report', component: () => import('@/views/VendorReportView.vue'), meta: { layout: 'app' } },
-    { path: '/settings', component: () => import('@/views/SettingsView.vue'), meta: { layout: 'app' } },
-    { path: '/settings/business', component: () => import('@/views/BusinessSettingsView.vue'), meta: { layout: 'app' } },
+    { path: '/deliveries', component: () => import('@/views/DeliveriesView.vue'), meta: { layout: 'app', roles: MANAGER_ROLES } },
+    { path: '/wholesalers', component: () => import('@/views/WholesalersView.vue'), meta: { layout: 'app', roles: MANAGER_ROLES } },
+    { path: '/import', component: () => import('@/views/ImportView.vue'), meta: { layout: 'app', roles: MANAGER_ROLES } },
+    { path: '/reports', component: () => import('@/views/ReportsView.vue'), meta: { layout: 'app', roles: MANAGER_ROLES } },
+    { path: '/financial-report', component: () => import('@/views/FinancialReportView.vue'), meta: { layout: 'app', roles: MANAGER_ROLES } },
+    { path: '/vendor-report', component: () => import('@/views/VendorReportView.vue'), meta: { layout: 'app', vendorScope: true } },
+    { path: '/settings', component: () => import('@/views/SettingsView.vue'), meta: { layout: 'app', roles: MANAGER_ROLES } },
+    { path: '/settings/business', component: () => import('@/views/BusinessSettingsView.vue'), meta: { layout: 'app', roles: MANAGER_ROLES } },
     { path: '/settings/pricing-rules', redirect: '/settings' },
     { path: '/settings/email', redirect: '/setup' },
-    { path: '/setup', component: () => import('@/views/SetupView.vue'), meta: { layout: 'app' } },
-    { path: '/admin/team', component: () => import('@/views/AdminTeamView.vue'), meta: { layout: 'app' } },
+    { path: '/setup', component: () => import('@/views/SetupView.vue'), meta: { layout: 'app', roles: MANAGER_ROLES } },
+    { path: '/admin/team', component: () => import('@/views/AdminTeamView.vue'), meta: { layout: 'app', roles: MANAGER_ROLES } },
     {
       path: '/setup-password',
       component: () => import('@/views/SetupPasswordView.vue'),
@@ -72,6 +76,18 @@ router.beforeEach(async (to) => {
   if (to.path.startsWith('/quotes')) {
     const { features } = useBranding()
     if (!features.value.quotes) return '/pos'
+  }
+
+  // Without this a Sales bookmark to an admin page loads the view and then fails
+  // on every API call, which reads as a broken app rather than "no access".
+  const needed = to.meta.roles as string[] | undefined
+  if (needed?.length && !auth.hasRole(...needed)) {
+    useToast().error('You do not have access to that page.')
+    return '/pos'
+  }
+  if (to.meta.vendorScope && !auth.hasVendorScope) {
+    useToast().error('That page is only for vendor accounts.')
+    return '/pos'
   }
 
   return true

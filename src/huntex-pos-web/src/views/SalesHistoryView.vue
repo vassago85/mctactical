@@ -6,7 +6,7 @@
  * barcode, item name, invoice number or customer name to see what was paid
  * (including any discount) so a return can be handled without the paper slip.
  */
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { http } from '@/api/http'
 import { useToast } from '@/composables/useToast'
@@ -100,8 +100,11 @@ const resultsTitle = computed(() => {
   return `Results (${saleCount} sale${saleCount === 1 ? '' : 's'}, ${lineCount} line${lineCount === 1 ? '' : 's'})`
 })
 
+/** Local calendar date — toISOString would shift the SA day either side of midnight. */
 function toDateStr(d: Date) {
-  return d.toISOString().slice(0, 10)
+  const month = `${d.getMonth() + 1}`.padStart(2, '0')
+  const day = `${d.getDate()}`.padStart(2, '0')
+  return `${d.getFullYear()}-${month}-${day}`
 }
 
 /** Default window matches the 90-day returns policy on the receipt. */
@@ -187,6 +190,20 @@ onMounted(async () => {
   searchInput.value?.focus()
   if (canSearch.value) await search()
 })
+
+// POS "Scan to find" links here with ?q=. When the page is already mounted the
+// component is reused, so re-run the search instead of showing stale results.
+watch(
+  () => route.query.q,
+  async (incoming) => {
+    const term = typeof incoming === 'string' ? incoming.trim() : ''
+    if (!term || term === q.value.trim()) return
+    q.value = term
+    await nextTick()
+    searchInput.value?.focus()
+    if (canSearch.value) await search()
+  }
+)
 </script>
 
 <template>
@@ -257,7 +274,7 @@ onMounted(async () => {
       <McEmptyState
         v-if="rows.length === 0"
         title="No matching sales"
-        message="Try the SKU on its own, part of the item name, or widen the date range under More filters."
+        hint="Try the SKU on its own, part of the item name, or widen the date range under More filters."
       />
       <div v-else class="hist-groups">
         <article

@@ -88,6 +88,19 @@ function maybePrint() {
   })
 }
 
+/** `window` is not exposed to the template from `<script setup>`, so bind through these. */
+function reprint() {
+  window.print()
+}
+
+function closeReceipt() {
+  window.close()
+  // A tab the operator opened themselves can't be closed by script; fall back to history.
+  setTimeout(() => {
+    if (!window.closed) window.history.back()
+  }, 150)
+}
+
 function onLogoLoaded() {
   logoLoaded.value = true
   maybePrint()
@@ -300,8 +313,8 @@ function fmtDate(iso: string): string {
 
       <!-- Screen-only controls — never printed -->
       <div class="rcpt__controls no-print">
-        <button type="button" class="rcpt__btn" @click="window.print()">Print again</button>
-        <button type="button" class="rcpt__btn rcpt__btn--secondary" @click="window.close()">Close</button>
+        <button type="button" class="rcpt__btn" @click="reprint">Print again</button>
+        <button type="button" class="rcpt__btn rcpt__btn--secondary" @click="closeReceipt">Close</button>
       </div>
     </article>
   </div>

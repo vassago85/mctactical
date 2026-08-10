@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch, onMounted, onUnmounted } from 'vue'
+import { watch, onMounted, onUnmounted, nextTick, ref } from 'vue'
 import { X } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -12,6 +12,12 @@ const emit = defineEmits<{
   'update:modelValue': [v: boolean]
 }>()
 
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
+const panel = ref<HTMLElement | null>(null)
+let lastFocused: HTMLElement | null = null
+
 function close() {
   emit('update:modelValue', false)
 }
@@ -20,15 +26,54 @@ function onBackdrop() {
   if (props.closeOnBackdrop !== false) close()
 }
 
+function focusables(): HTMLElement[] {
+  if (!panel.value) return []
+  return Array.from(panel.value.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+    (el) => el.offsetParent !== null || el === document.activeElement
+  )
+}
+
 watch(
   () => props.modelValue,
-  (open) => {
+  async (open) => {
     document.body.style.overflow = open ? 'hidden' : ''
+    if (open) {
+      lastFocused = document.activeElement as HTMLElement | null
+      await nextTick()
+      const first = focusables()[0]
+      ;(first ?? panel.value)?.focus()
+    } else {
+      lastFocused?.focus()
+      lastFocused = null
+    }
   }
 )
 
 function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape' && props.modelValue) close()
+  if (!props.modelValue) return
+  if (e.key === 'Escape') {
+    close()
+    return
+  }
+  // Keep Tab inside the dialog so keyboard and screen-reader users can't land
+  // on the page behind, which is still rendered under the backdrop.
+  if (e.key !== 'Tab') return
+  const items = focusables()
+  if (!items.length) {
+    e.preventDefault()
+    panel.value?.focus()
+    return
+  }
+  const first = items[0]
+  const last = items[items.length - 1]
+  const active = document.activeElement
+  if (e.shiftKey && (active === first || !panel.value?.contains(active))) {
+    e.preventDefault()
+    last.focus()
+  } else if (!e.shiftKey && active === last) {
+    e.preventDefault()
+    first.focus()
+  }
 }
 
 onMounted(() => {
@@ -46,7 +91,7 @@ onUnmounted(() => {
     <Transition name="mc-modal">
       <div v-if="modelValue" class="mc-modal-root" role="dialog" aria-modal="true" :aria-labelledby="title ? 'mc-modal-title' : undefined">
         <div class="mc-modal-backdrop" @click="onBackdrop" />
-        <div class="mc-modal-panel">
+        <div ref="panel" class="mc-modal-panel" tabindex="-1">
           <header v-if="title || $slots.title" class="mc-modal-header">
             <slot name="title">
               <h2 id="mc-modal-title" class="mc-modal-title">{{ title }}</h2>
@@ -92,6 +137,10 @@ onUnmounted(() => {
   border-radius: 16px;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.25), 0 8px 24px rgba(0, 0, 0, 0.1);
   border: 1px solid var(--mc-app-border-soft, #ddd9d3);
+}
+.mc-modal-panel:focus-visible {
+  outline: 2px solid var(--mc-accent, #f47a20);
+  outline-offset: 2px;
 }
 .mc-modal-header {
   display: flex;
