@@ -10,6 +10,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { http } from '@/api/http'
 import { useToast } from '@/composables/useToast'
+import { useAuthStore } from '@/stores/auth'
 import { formatZAR, formatNumber } from '@/utils/format'
 import McPageHeader from '@/components/ui/McPageHeader.vue'
 import McCard from '@/components/ui/McCard.vue'
@@ -54,6 +55,12 @@ const DEFAULT_LOOKBACK_DAYS = 90
 
 const route = useRoute()
 const toast = useToast()
+const auth = useAuthStore()
+
+/** Only managers pull online sales in; Sales staff just look sales up. */
+const canSyncShopify = computed(() => auth.hasRole('Owner', 'Dev'))
+const syncingShopify = ref(false)
+
 const q = ref('')
 const fromDate = ref('')
 const toDate = ref('')
@@ -169,6 +176,33 @@ function resetFilters() {
   if (canSearch.value) void search()
 }
 
+/**
+ * Pull recently-paid Shopify orders in as invoices tagged "Shopify" (visibility only — no stock
+ * change). Idempotent: already-imported orders are skipped, so it doubles as a "refresh" button.
+ */
+async function syncShopify() {
+  if (syncingShopify.value) return
+  syncingShopify.value = true
+  try {
+    const { data } = await http.post('/api/shopify/orders/sync?apply=true')
+    const imported = data.importedCount ?? 0
+    const skipped = data.skippedExistingCount ?? 0
+    if (imported > 0) {
+      const skippedNote = skipped ? ` (${skipped} already imported)` : ''
+      toast.success(`Imported ${imported} Shopify sale${imported === 1 ? '' : 's'}${skippedNote}.`)
+    } else {
+      const skippedNote = skipped ? ` (${skipped} already imported)` : ''
+      toast.info(`No new Shopify sales to import${skippedNote}.`)
+    }
+    if (canSearch.value) await search()
+  } catch (e: unknown) {
+    const ax = e as { response?: { data?: { error?: string } }; message?: string }
+    toast.error(ax.response?.data?.error ?? ax.message ?? 'Shopify sync failed')
+  } finally {
+    syncingShopify.value = false
+  }
+}
+
 function receiptUrl(g: SaleGroup) {
   return `/#/receipt/${g.publicToken}?auto=0`
 }
@@ -212,6 +246,12 @@ watch(
       <template #default>
         Look up what a customer paid when they have no receipt. Scan a barcode or type a
         SKU, item name, invoice number or customer name.
+      </template>
+      <template v-if="canSyncShopify" #actions>
+        <McButton variant="secondary" :disabled="syncingShopify" @click="syncShopify">
+          <McSpinner v-if="syncingShopify" />
+          <span v-else>Sync Shopify sales</span>
+        </McButton>
       </template>
     </McPageHeader>
 
