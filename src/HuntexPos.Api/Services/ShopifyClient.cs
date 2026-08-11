@@ -481,6 +481,7 @@ public class ShopifyClient
                       edges {
                         node {
                           title
+                          variantTitle
                           quantity
                           sku
                           variant { id }
@@ -517,6 +518,19 @@ public class ShopifyClient
         return orders;
     }
 
+    /// <summary>
+    /// Build the display title for a line item: product title plus the variant title when it is a real
+    /// variant (Shopify uses "Default Title" for products that have none, which we drop). Matches what
+    /// the Shopify order screen shows, e.g. "ULTRA MICROMETER SEATER DIE – 6 DASHER".
+    /// </summary>
+    private static string ComposeLineTitle(string title, string? variantTitle)
+    {
+        var variant = variantTitle?.Trim();
+        if (string.IsNullOrWhiteSpace(variant) || variant.Equals("Default Title", StringComparison.OrdinalIgnoreCase))
+            return title;
+        return string.IsNullOrWhiteSpace(title) ? variant : $"{title} \u2013 {variant}";
+    }
+
     private static ShopifyOrder ParseOrder(JsonElement o)
     {
         var lineItems = new List<ShopifyOrderLine>();
@@ -528,9 +542,11 @@ public class ShopifyClient
                 var variantId = li.TryGetProperty("variant", out var variant) && variant.ValueKind == JsonValueKind.Object
                     ? ParseGidNumber(variant.GetProperty("id").GetString())
                     : (long?)null;
+                var title = li.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
+                var variantTitle = li.TryGetProperty("variantTitle", out var vt) ? vt.GetString() : null;
                 lineItems.Add(new ShopifyOrderLine(
                     Sku: li.TryGetProperty("sku", out var sku) ? sku.GetString() : null,
-                    Title: li.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "",
+                    Title: ComposeLineTitle(title, variantTitle),
                     VariantId: variantId is > 0 ? variantId : null,
                     Quantity: li.TryGetProperty("quantity", out var q) ? q.GetInt32() : 0,
                     Price: ParseMoney(li, "originalUnitPriceSet")));

@@ -62,8 +62,10 @@ public class ShopifyOrderImportService
 
             if (existingInvoices.TryGetValue(order.Id, out var existing))
             {
-                // Only touch orders whose stored invoice is missing items; leave complete ones alone.
-                if (existing.Lines.Count >= order.Lines.Count)
+                // Repair when the stored invoice is missing items OR its lines no longer match what
+                // Shopify reports (e.g. a description that now includes the variant like "6 DASHER").
+                // Once repaired the lines match, so subsequent syncs skip it — this stays idempotent.
+                if (!NeedsRepair(existing, lines))
                 {
                     summary.SkippedExistingCount++;
                     continue;
@@ -189,6 +191,21 @@ public class ShopifyOrderImportService
         }
 
         return (lines, matched, unmatched);
+    }
+
+    /// <summary>
+    /// Whether a stored Shopify invoice needs rebuilding: true if the line count differs or any line's
+    /// description, SKU or quantity no longer matches the freshly-built lines. Compared order-insensitively
+    /// on display fields only (no money) so it converges after one repair and won't rewrite forever.
+    /// </summary>
+    private static bool NeedsRepair(Invoice existing, List<InvoiceLine> fresh)
+    {
+        if (existing.Lines.Count != fresh.Count) return true;
+
+        static string Key(InvoiceLine l) => $"{l.Description}\u0001{l.SkuAtSale}\u0001{l.Quantity}";
+        var stored = existing.Lines.Select(Key).OrderBy(s => s, StringComparer.Ordinal);
+        var built = fresh.Select(Key).OrderBy(s => s, StringComparer.Ordinal);
+        return !stored.SequenceEqual(built, StringComparer.Ordinal);
     }
 
     /// <summary>
