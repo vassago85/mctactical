@@ -153,6 +153,75 @@ async function pushPrices() {
   }
 }
 
+// ── Price review (POS vs Shopify) ────────────────────────────────────────────
+type PriceRow = { productId: string; sku: string; name: string; posPrice: number; shopifyPrice: number | null; differs: boolean }
+const priceRows = ref<PriceRow[]>([])
+const priceLoaded = ref(false)
+const priceBusy = ref(false)
+const priceErr = ref<string | null>(null)
+const onlyChanged = ref(true)
+const pushingId = ref<string | null>(null)
+const pushAllBusy = ref(false)
+
+const visiblePriceRows = computed(() => (onlyChanged.value ? priceRows.value.filter(r => r.differs) : priceRows.value))
+const changedCount = computed(() => priceRows.value.filter(r => r.differs).length)
+
+async function loadPriceReview() {
+  priceBusy.value = true
+  priceErr.value = null
+  try {
+    const { data } = await http.get<{ items: PriceRow[] }>('/api/shopify/price-review')
+    priceRows.value = data.items
+    priceLoaded.value = true
+  } catch (e) {
+    priceErr.value = handleErr(e, 'Could not load price comparison')
+  } finally {
+    priceBusy.value = false
+  }
+}
+
+async function pushOnePrice(row: PriceRow) {
+  if (pushingId.value) return
+  pushingId.value = row.productId
+  try {
+    await http.post(`/api/shopify/push-price/${row.productId}`)
+    row.shopifyPrice = row.posPrice
+    row.differs = false
+    toast.success(`Pushed ${row.sku} price to Shopify.`)
+    await loadDashboard()
+  } catch (e) {
+    toast.error(handleErr(e, 'Push failed'))
+  } finally {
+    pushingId.value = null
+  }
+}
+
+async function pushAllChanged() {
+  const changed = priceRows.value.filter(r => r.differs)
+  if (!changed.length) {
+    toast.info('No changed prices to push.')
+    return
+  }
+  if (!confirm(`Push ${changed.length} changed price${changed.length === 1 ? '' : 's'} to Shopify? Stock is not changed.`)) return
+  pushAllBusy.value = true
+  let ok = 0
+  let fail = 0
+  for (const row of changed) {
+    try {
+      await http.post(`/api/shopify/push-price/${row.productId}`)
+      row.shopifyPrice = row.posPrice
+      row.differs = false
+      ok++
+    } catch {
+      fail++
+    }
+  }
+  pushAllBusy.value = false
+  if (fail) toast.error(`Pushed ${ok}, ${fail} failed.`)
+  else toast.success(`Pushed ${ok} price${ok === 1 ? '' : 's'}.`)
+  await loadDashboard()
+}
+
 const creatingVariantId = ref<number | null>(null)
 
 async function createInPos(v: Variant) {
@@ -568,6 +637,65 @@ onMounted(() => {
       </template>
     </McCard>
 
+    <!-- Price sync (POS -> Shopify) -->
+    <McCard title="Price sync (POS &rarr; Shopify)">
+      <p class="shp-hint">
+        Compare each linked product's POS price with its current Shopify price and push changes — one at
+        a time or all at once. Price-only: stock and availability are never changed.
+      </p>
+      <McAlert v-if="priceErr" variant="error">{{ priceErr }}</McAlert>
+
+      <div v-if="!priceLoaded" class="shp-actions">
+        <McButton variant="secondary" type="button" :disabled="priceBusy" @click="loadPriceReview">
+          <McSpinner v-if="priceBusy" />
+          <span v-else>Load price comparison</span>
+        </McButton>
+      </div>
+
+      <template v-else>
+        <div class="shp-var-controls">
+          <label class="shp-check"><input type="checkbox" v-model="onlyChanged" /> Only changed</label>
+          <span class="shp-hint shp-hint--inline">{{ formatNumber(changedCount) }} changed of {{ formatNumber(priceRows.length) }}</span>
+          <McButton variant="primary" dense type="button" :disabled="pushAllBusy || changedCount === 0" @click="pushAllChanged">
+            <McSpinner v-if="pushAllBusy" />
+            <span v-else>Push all changed</span>
+          </McButton>
+          <McButton variant="ghost" dense type="button" :disabled="priceBusy" @click="loadPriceReview">Reload</McButton>
+        </div>
+
+        <McEmptyState
+          v-if="!visiblePriceRows.length"
+          title="Nothing to show"
+          hint="No products match the current filter."
+        />
+        <table v-else class="shp-table">
+          <thead>
+            <tr><th>Item</th><th class="shp-r">POS price</th><th class="shp-r">Shopify price</th><th></th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in visiblePriceRows" :key="row.productId">
+              <td>
+                <div class="shp-item-title">{{ row.name }}</div>
+                <div class="shp-item-sku">{{ row.sku }}</div>
+              </td>
+              <td class="shp-r">{{ formatZAR(row.posPrice) }}</td>
+              <td class="shp-r" :class="{ 'shp-diff': row.differs }">
+                {{ row.shopifyPrice === null ? '—' : formatZAR(row.shopifyPrice) }}
+              </td>
+              <td class="shp-r">
+                <McButton v-if="row.differs" variant="secondary" dense type="button"
+                  :disabled="pushingId === row.productId" @click="pushOnePrice(row)">
+                  <McSpinner v-if="pushingId === row.productId" />
+                  <span v-else>Push</span>
+                </McButton>
+                <McBadge v-else variant="success">Synced</McBadge>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </template>
+    </McCard>
+
     <!-- Categories & tags -->
     <McCard title="Categories &amp; tags">
       <p class="shp-hint">
@@ -645,6 +773,9 @@ onMounted(() => {
 .shp-table td { padding: 0.5rem 0.5rem; border-bottom: 1px solid var(--mc-app-border-faint, #eceae5); vertical-align: top; }
 .shp-r { text-align: right; font-variant-numeric: tabular-nums; }
 .shp-row-actions { display: flex; gap: 0.4rem; justify-content: flex-end; }
+.shp-hint--inline { margin: 0; }
+.shp-check { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; font-weight: 600; color: var(--mc-app-text-secondary, #333); cursor: pointer; }
+.shp-diff { color: #b45309; font-weight: 700; }
 .shp-item-title { font-weight: 600; color: var(--mc-app-text, #1a1a1c); }
 .shp-item-sku { font-size: 0.78rem; color: var(--mc-app-text-muted, #8a8780); font-variant-numeric: tabular-nums; }
 

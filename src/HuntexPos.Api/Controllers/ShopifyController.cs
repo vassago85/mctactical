@@ -836,6 +836,79 @@ public class ShopifyController : ControllerBase
         });
     }
 
+    /// <summary>
+    /// Push a single linked product's POS sell price to its Shopify variant. Price-only — never changes
+    /// stock or availability. Owner/Dev only.
+    /// </summary>
+    [HttpPost("push-price/{productId:guid}")]
+    public async Task<IActionResult> PushPrice(Guid productId, CancellationToken ct = default)
+    {
+        var p = await _db.Products.FirstOrDefaultAsync(x => x.Id == productId, ct);
+        if (p == null) return NotFound(new { error = "POS product not found." });
+        if (p.ShopifyProductId is null || p.ShopifyVariantId is null)
+            return BadRequest(new { error = "This product is not linked to Shopify." });
+
+        try
+        {
+            await _shopify.UpdateVariantPriceAsync(p.ShopifyProductId.Value, p.ShopifyVariantId.Value, p.SellPrice, ct);
+        }
+        catch (ShopifyNotConfiguredException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (ShopifyApiException ex) { return StatusCode(502, new { error = "Shopify rejected the request.", status = ex.StatusCode, detail = ex.Message }); }
+
+        p.ShopifySyncedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+
+        return Ok(new { posProductId = p.Id, p.Sku, pushedPrice = p.SellPrice, note = "Price pushed to Shopify. Stock unchanged." });
+    }
+
+    /// <summary>
+    /// Compare every linked product's POS sell price against its current Shopify price so staff can
+    /// review and push changes individually. Calls Shopify, so the UI loads it on demand. Owner/Dev only.
+    /// </summary>
+    [HttpGet("price-review")]
+    public async Task<IActionResult> PriceReview(CancellationToken ct = default)
+    {
+        List<ShopifyVariantDetail> variants;
+        try { variants = await _shopify.GetAllVariantDetailsAsync(ct); }
+        catch (ShopifyNotConfiguredException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (ShopifyApiException ex) { return StatusCode(502, new { error = "Shopify rejected the request.", status = ex.StatusCode, detail = ex.Message }); }
+
+        var shopifyPriceByVariant = variants
+            .GroupBy(v => v.VariantId)
+            .ToDictionary(g => g.Key, g => g.First().Price);
+
+        var linked = await _db.Products
+            .Where(p => p.ShopifyVariantId != null && p.Sku != ShopifyOrderImportService.UnlinkedPlaceholderSku)
+            .Select(p => new { p.Id, p.Sku, p.Name, p.SellPrice, VariantId = p.ShopifyVariantId!.Value })
+            .ToListAsync(ct);
+
+        var rows = linked
+            .Select(p =>
+            {
+                var hasShopify = shopifyPriceByVariant.TryGetValue(p.VariantId, out var sp);
+                var differs = hasShopify && Math.Round(p.SellPrice, 2) != Math.Round(sp, 2);
+                return new
+                {
+                    productId = p.Id,
+                    p.Sku,
+                    name = p.Name,
+                    posPrice = p.SellPrice,
+                    shopifyPrice = hasShopify ? sp : (decimal?)null,
+                    differs
+                };
+            })
+            .OrderByDescending(r => r.differs)
+            .ThenBy(r => r.name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return Ok(new
+        {
+            total = rows.Count,
+            changed = rows.Count(r => r.differs),
+            items = rows
+        });
+    }
+
     private static string ComposePosName(string title, string? variantTitle)
     {
         var t = title?.Trim() ?? string.Empty;
