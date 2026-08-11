@@ -108,7 +108,13 @@ public class ProductSoldSummaryDto
     public string Name { get; set; } = string.Empty;
     public int QtySold { get; set; }
     public decimal Revenue { get; set; }
+    /// <summary>Proportional share of the invoice's order-level (cart) discount. Revenue is
+    /// already net of this, so GP subtracts it. Kept separate from <see cref="LineDiscount"/>.</summary>
     public decimal Discount { get; set; }
+    /// <summary>Sum of per-line discounts (operator concessions + explicit line discounts) for
+    /// this product. Revenue is already net of this — it is reported for the "discounts given"
+    /// total only and must NOT be subtracted again when computing GP.</summary>
+    public decimal LineDiscount { get; set; }
     public decimal CostExVat { get; set; }
     public decimal CostInclVat { get; set; }
 }

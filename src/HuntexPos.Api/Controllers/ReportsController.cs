@@ -442,6 +442,7 @@ public class ReportsController : ControllerBase
                 var costEx = g.Sum(x => (x.Line.CostAtSale > 0 ? x.Line.CostAtSale : (x.Line.Product?.Cost ?? 0)) * x.Line.Quantity);
                 var costIncl = g.Sum(x => Math.Round((x.Line.CostAtSale > 0 ? x.Line.CostAtSale : (x.Line.Product?.Cost ?? 0)) * 1.15m, 2) * x.Line.Quantity);
                 var discount = g.Sum(x => x.OrderDiscountShare);
+                var lineDiscount = g.Sum(x => x.Line.LineDiscount);
                 return new ProductSoldSummaryDto
                 {
                     Sku = unlinked
@@ -451,6 +452,7 @@ public class ReportsController : ControllerBase
                     QtySold = g.Sum(x => x.Line.Quantity),
                     Revenue = g.Sum(x => x.Line.LineTotal),
                     Discount = discount,
+                    LineDiscount = lineDiscount,
                     CostExVat = costEx,
                     CostInclVat = costIncl
                 };

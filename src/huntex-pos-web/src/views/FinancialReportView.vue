@@ -18,7 +18,7 @@ const { privacyActive, toggle: togglePrivacy } = usePrivacyMode()
 
 type ProductSoldLine = {
   sku: string; name: string
-  qtySold: number; revenue: number; discount: number; costExVat: number; costInclVat: number
+  qtySold: number; revenue: number; discount: number; lineDiscount: number; costExVat: number; costInclVat: number
 }
 type StockReport = { soldInPeriod: ProductSoldLine[] }
 type DailySummary = { date: string; invoiceCount: number; grandTotal: number; grossProfit: number }
@@ -91,12 +91,16 @@ onMounted(loadReport)
 
 const sold = computed(() => stock.value?.soldInPeriod ?? [])
 const totalRevenue = computed(() => sold.value.reduce((s, p) => s + p.revenue, 0))
-const totalDiscount = computed(() => sold.value.reduce((s, p) => s + p.discount, 0))
-const totalCostEx = computed(() => sold.value.reduce((s, p) => s + p.costExVat, 0))
+// Order/cart discount share. Revenue is NOT net of this, so GP subtracts it.
+const totalOrderDiscount = computed(() => sold.value.reduce((s, p) => s + p.discount, 0))
+// Per-line discounts. Revenue is ALREADY net of these, so they must not be subtracted
+// again in GP — they are only rolled into the "discounts given" headline.
+const totalLineDiscount = computed(() => sold.value.reduce((s, p) => s + p.lineDiscount, 0))
+const totalDiscountsGiven = computed(() => totalOrderDiscount.value + totalLineDiscount.value)
 const totalCostInclVat = computed(() => sold.value.reduce((s, p) => s + p.costInclVat, 0))
-const totalGP = computed(() => (totalRevenue.value - totalDiscount.value) - totalCostInclVat.value)
+const totalGP = computed(() => (totalRevenue.value - totalOrderDiscount.value) - totalCostInclVat.value)
 const gpMargin = computed(() => {
-  const netRev = totalRevenue.value - totalDiscount.value
+  const netRev = totalRevenue.value - totalOrderDiscount.value
   return netRev > 0 ? (totalGP.value / netRev) * 100 : 0
 })
 const totalQtySold = computed(() => sold.value.reduce((s, p) => s + p.qtySold, 0))
@@ -407,7 +411,7 @@ function renderTopProductsChart() {
         />
         <McMetricCard
           label="Discounts Given"
-          :value="formatZAR(totalDiscount)"
+          :value="formatZAR(totalDiscountsGiven)"
           variant="warning"
           sensitive
         />
@@ -493,7 +497,7 @@ function renderTopProductsChart() {
               <td>{{ p.name }}</td>
               <td class="fr-r"><span class="sensitive-value">{{ formatNumber(p.qtySold) }}</span></td>
               <td class="fr-r"><span class="sensitive-value">{{ formatZAR(p.revenue) }}</span></td>
-              <td class="fr-r"><span class="sensitive-value">{{ p.discount ? formatZAR(p.discount) : '—' }}</span></td>
+              <td class="fr-r"><span class="sensitive-value">{{ (p.discount + p.lineDiscount) ? formatZAR(p.discount + p.lineDiscount) : '—' }}</span></td>
               <td class="fr-r"><span class="sensitive-value">{{ formatZAR(p.costInclVat) }}</span></td>
               <td class="fr-r"><span class="sensitive-value">{{ formatZAR((p.revenue - p.discount) - p.costInclVat) }}</span></td>
             </tr>
@@ -503,7 +507,7 @@ function renderTopProductsChart() {
               <td colspan="2"><strong>All products</strong></td>
               <td class="fr-r"><strong class="sensitive-value">{{ formatNumber(totalQtySold) }}</strong></td>
               <td class="fr-r"><strong class="sensitive-value">{{ formatZAR(totalRevenue) }}</strong></td>
-              <td class="fr-r"><strong class="sensitive-value">{{ formatZAR(totalDiscount) }}</strong></td>
+              <td class="fr-r"><strong class="sensitive-value">{{ formatZAR(totalDiscountsGiven) }}</strong></td>
               <td class="fr-r"><strong class="sensitive-value">{{ formatZAR(totalCostInclVat) }}</strong></td>
               <td class="fr-r"><strong class="sensitive-value">{{ formatZAR(totalGP) }}</strong></td>
             </tr>
@@ -537,7 +541,7 @@ function renderTopProductsChart() {
 
       <!-- Footer -->
       <footer class="fr-footer">
-        <p>GP = (Revenue − Discounts) − Wholesale cost incl. VAT &nbsp;|&nbsp; {{ businessName }}<template v-if="vatRegistered"> — VAT reg.</template> All amounts in ZAR.</p>
+        <p>Revenue is net of discounts · GP = Revenue − Wholesale cost incl. VAT · Discounts given = cart + line discounts &nbsp;|&nbsp; {{ businessName }}<template v-if="vatRegistered"> — VAT reg.</template> All amounts in ZAR.</p>
       </footer>
     </div>
   </div>
