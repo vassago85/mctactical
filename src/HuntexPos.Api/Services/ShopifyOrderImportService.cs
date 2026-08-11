@@ -6,12 +6,17 @@ namespace HuntexPos.Api.Services;
 
 /// <summary>
 /// Imports paid Shopify orders into the POS as invoices tagged <c>Source = "Shopify"</c> so they
-/// appear in Sales History alongside in-store sales. This is visibility-only: it never changes POS
-/// stock. Every Shopify line item is captured: those that match a POS product (by Shopify variant
-/// id, then SKU) link to it; items that have no POS product are still recorded against a single
-/// hidden placeholder product, keeping the real Shopify title/SKU in the line snapshot so receipts
-/// show what was actually sold. Orders already imported (by Shopify order id) are skipped unless the
-/// stored invoice is missing items — those are repaired in place — so re-running is safe.
+/// appear in Sales History alongside in-store sales. Every Shopify line item is captured: those that
+/// match a POS product (by Shopify variant id, then SKU) link to it; items that have no POS product
+/// are still recorded against a single hidden placeholder product, keeping the real Shopify title/SKU
+/// in the line snapshot so receipts show what was actually sold. Orders already imported (by Shopify
+/// order id) are skipped unless the stored invoice is missing items — those are repaired in place — so
+/// re-running is safe.
+///
+/// Stock: when a <em>newly</em> imported order has lines linked to a real POS product, that product's
+/// <see cref="Product.QtyOnHand"/> is decremented by the sold quantity so POS stock reflects online
+/// sales. Repairs/back-fills of already-imported orders never adjust stock (avoids double-counting),
+/// and unlinked/shipping lines never affect stock.
 /// </summary>
 public class ShopifyOrderImportService
 {
@@ -55,6 +60,8 @@ public class ShopifyOrderImportService
 
         var summary = new ShopifyImportSummary { FetchedCount = orders.Count };
         var newInvoices = new List<Invoice>();
+        // Stock to deduct for lines linked to a real POS product, accumulated across NEW orders only.
+        var stockDeductions = new Dictionary<Guid, int>();
 
         foreach (var order in orders)
         {
@@ -114,6 +121,7 @@ public class ShopifyOrderImportService
                 CustomerEmail = order.Email,
                 ShopifyOrderId = order.Id,
                 ShopifyOrderName = order.Name,
+                StockDeducted = true,
                 SubTotal = Math.Round(order.TotalPrice + order.TotalDiscounts, 2),
                 TaxRate = TaxRate,
                 TaxAmount = Math.Round(order.TotalTax, 2),
@@ -125,6 +133,15 @@ public class ShopifyOrderImportService
 
             newInvoices.Add(invoice);
             summary.ImportedCount++;
+
+            // Forward-only stock: deduct for lines linked to a real POS product (not the placeholder,
+            // not the shipping line). Repairs above never reach here, so stock is only touched once.
+            foreach (var line in lines.Where(l => l.ProductId != placeholder.Id))
+            {
+                stockDeductions.TryGetValue(line.ProductId, out var running);
+                stockDeductions[line.ProductId] = running + line.Quantity;
+            }
+
             if (summary.SampleImported.Count < 25)
                 summary.SampleImported.Add($"{order.Name} \u2192 {invoice.InvoiceNumber} (R{invoice.GrandTotal:0.00})");
         }
@@ -133,7 +150,26 @@ public class ShopifyOrderImportService
         {
             if (newInvoices.Count > 0)
                 _db.Invoices.AddRange(newInvoices);
+
+            if (stockDeductions.Count > 0)
+            {
+                var ids = stockDeductions.Keys.ToList();
+                var tracked = await _db.Products.Where(p => ids.Contains(p.Id)).ToListAsync(ct);
+                foreach (var p in tracked)
+                {
+                    p.QtyOnHand -= stockDeductions[p.Id];
+                    p.UpdatedAt = DateTimeOffset.UtcNow;
+                    summary.StockAdjustedProducts++;
+                    summary.StockAdjustedUnits += stockDeductions[p.Id];
+                }
+            }
+
             await _db.SaveChangesAsync(ct);
+        }
+        else
+        {
+            summary.StockAdjustedProducts = stockDeductions.Count;
+            summary.StockAdjustedUnits = stockDeductions.Values.Sum();
         }
 
         summary.Applied = apply;
@@ -287,5 +323,7 @@ public class ShopifyImportSummary
     public int MatchedLineCount { get; set; }
     public int UnmatchedLineCount { get; set; }
     public int OrdersWithUnmatchedLines { get; set; }
+    public int StockAdjustedProducts { get; set; }
+    public int StockAdjustedUnits { get; set; }
     public List<string> SampleImported { get; set; } = new();
 }

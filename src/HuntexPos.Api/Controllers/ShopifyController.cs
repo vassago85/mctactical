@@ -956,6 +956,140 @@ public class ShopifyController : ControllerBase
         });
     }
 
+    // --- Stock sync (POS → Shopify) ---------------------------------------
+
+    /// <summary>
+    /// Compare every linked product's POS on-hand quantity against its current Shopify available
+    /// quantity so staff can review and push changes. Calls Shopify, so the UI loads it on demand.
+    /// Owner/Dev only.
+    /// </summary>
+    [HttpGet("stock-review")]
+    public async Task<IActionResult> StockReview(CancellationToken ct = default)
+    {
+        List<ShopifyVariantDetail> variants;
+        try { variants = await _shopify.GetAllVariantDetailsAsync(ct); }
+        catch (ShopifyNotConfiguredException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (ShopifyApiException ex) { return StatusCode(502, new { error = "Shopify rejected the request.", status = ex.StatusCode, detail = ex.Message }); }
+
+        var shopifyByVariant = variants
+            .GroupBy(v => v.VariantId)
+            .ToDictionary(g => g.Key, g => g.First());
+
+        var linked = await _db.Products
+            .Where(p => p.ShopifyVariantId != null && p.ShopifyInventoryItemId != null
+                && p.Sku != ShopifyOrderImportService.UnlinkedPlaceholderSku)
+            .ToListAsync(ct);
+
+        var rows = linked
+            .Select(p =>
+            {
+                var variantId = p.ShopifyVariantId!.Value;
+                var hasShopify = shopifyByVariant.TryGetValue(variantId, out var sv);
+                var shopifyAvailable = hasShopify ? sv!.InventoryQuantity : null;
+                var differs = shopifyAvailable.HasValue && shopifyAvailable.Value != p.QtyOnHand;
+                return new
+                {
+                    productId = p.Id,
+                    p.Sku,
+                    name = p.Name,
+                    posQtyOnHand = p.QtyOnHand,
+                    shopifyAvailable,
+                    differs
+                };
+            })
+            .OrderByDescending(r => r.differs)
+            .ThenBy(r => r.name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return Ok(new
+        {
+            total = rows.Count,
+            changed = rows.Count(r => r.differs),
+            items = rows
+        });
+    }
+
+    /// <summary>
+    /// Push POS on-hand quantities up to Shopify as the "available" level at the configured location.
+    /// Preview (<c>apply=false</c>) reports how many linked products would be pushed. Owner/Dev only.
+    /// </summary>
+    [HttpPost("push-stock")]
+    public async Task<IActionResult> PushStock([FromQuery] bool apply = false, CancellationToken ct = default)
+    {
+        var linked = await _db.Products
+            .Where(p => p.ShopifyInventoryItemId != null
+                && p.Sku != ShopifyOrderImportService.UnlinkedPlaceholderSku)
+            .ToListAsync(ct);
+
+        if (!apply)
+        {
+            return Ok(new
+            {
+                applied = false,
+                linkedProductCount = linked.Count,
+                note = "Preview only — no stock was pushed. Re-run with ?apply=true to push POS on-hand quantities to Shopify."
+            });
+        }
+
+        int updated = 0, failed = 0;
+        var failures = new List<object>();
+        foreach (var p in linked)
+        {
+            try
+            {
+                await _shopify.SetInventoryAsync(p.ShopifyInventoryItemId!.Value, p.QtyOnHand, ct);
+                p.ShopifySyncedAt = DateTimeOffset.UtcNow;
+                updated++;
+            }
+            catch (ShopifyNotConfiguredException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+            catch (ShopifyApiException ex)
+            {
+                failed++;
+                if (failures.Count < 20) failures.Add(new { p.Sku, status = ex.StatusCode, detail = ex.Message });
+            }
+        }
+
+        await _db.SaveChangesAsync(ct);
+
+        return Ok(new
+        {
+            applied = true,
+            linkedProductCount = linked.Count,
+            updatedCount = updated,
+            failedCount = failed,
+            failures,
+            note = "Pushed POS on-hand quantities to Shopify as available stock at the configured location."
+        });
+    }
+
+    /// <summary>
+    /// Push a single linked product's POS on-hand quantity to its Shopify variant's available level.
+    /// Owner/Dev only.
+    /// </summary>
+    [HttpPost("push-stock/{productId:guid}")]
+    public async Task<IActionResult> PushStockOne(Guid productId, CancellationToken ct = default)
+    {
+        var p = await _db.Products.FirstOrDefaultAsync(x => x.Id == productId, ct);
+        if (p == null) return NotFound(new { error = "POS product not found." });
+        if (p.ShopifyInventoryItemId is null)
+            return BadRequest(new { error = "This product has no Shopify inventory item. Push it to Shopify first." });
+
+        try
+        {
+            await _shopify.SetInventoryAsync(p.ShopifyInventoryItemId.Value, p.QtyOnHand, ct);
+        }
+        catch (ShopifyNotConfiguredException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (ShopifyApiException ex) { return StatusCode(502, new { error = "Shopify rejected the request.", status = ex.StatusCode, detail = ex.Message }); }
+
+        p.ShopifySyncedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+
+        return Ok(new { posProductId = p.Id, p.Sku, pushedQty = p.QtyOnHand, note = "Stock pushed to Shopify." });
+    }
+
     private static decimal RoundUpR10(decimal v) => Math.Ceiling(v / 10m) * 10m;
 
     private async Task<Promotion?> FindActivePromoAsync(CancellationToken ct)

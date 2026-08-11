@@ -205,6 +205,7 @@ public class InvoiceService
             GrandTotal = grandTotal,
             PromotionName = req.PromotionName,
             CreatedByUserId = userId,
+            StockDeducted = true,
             IsSpecialOrder = isSpecialOrder,
             Lines = lines
         };
@@ -392,14 +393,15 @@ public class InvoiceService
         inv.VoidedAt = DateTimeOffset.UtcNow;
         inv.VoidedByUserId = userId;
 
-        // Imported Shopify sales never decremented POS stock, so voiding them must not add it back.
-        var restoresStock = !string.Equals(inv.Source, "Shopify", StringComparison.OrdinalIgnoreCase);
-        if (restoresStock)
+        // Restore stock only when this sale actually deducted it. All in-store sales do; Shopify sales
+        // only when imported after stock-sync was enabled (StockDeducted). Placeholder lines (unlinked
+        // Shopify items and shipping) never reduced stock, so they are skipped.
+        if (inv.StockDeducted)
         {
             foreach (var line in inv.Lines)
             {
                 var p = await _db.Products.FirstOrDefaultAsync(x => x.Id == line.ProductId, ct);
-                if (p != null)
+                if (p != null && p.Sku != ShopifyOrderImportService.UnlinkedPlaceholderSku)
                 {
                     p.QtyOnHand += line.Quantity;
                     p.UpdatedAt = DateTimeOffset.UtcNow;

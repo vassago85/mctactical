@@ -481,6 +481,10 @@ public static class DbSeeder
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "Source" TEXT NULL;""", ct); } catch { }
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "ShopifyOrderId" INTEGER NULL;""", ct); } catch { }
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "ShopifyOrderName" TEXT NULL;""", ct); } catch { }
+        // Existing in-store invoices already reduced stock; backfill them to 1 so voiding still restores.
+        // The default 0 (false) correctly covers historical Shopify imports that never touched stock.
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "StockDeducted" INTEGER NOT NULL DEFAULT 0;""", ct);
+              await db.Database.ExecuteSqlRawAsync("""UPDATE "Invoices" SET "StockDeducted" = 1 WHERE "Source" IS NULL OR "Source" <> 'Shopify';""", ct); } catch { }
     }
 
     /// <summary>Add the Shopify variant id column to InvoiceLines if missing (older DBs).</summary>

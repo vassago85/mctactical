@@ -233,6 +233,7 @@ public class ShopifyClient
                     title
                     price
                     compareAtPrice
+                    inventoryQuantity
                     inventoryItem { id unitCost { amount } }
                     product { id title vendor productType }
                   }
@@ -261,6 +262,10 @@ public class ShopifyClient
                     var c = ParseMoney(cap.GetString());
                     if (c > 0) compareAt = c;
                 }
+
+                var inventoryQuantity = node.TryGetProperty("inventoryQuantity", out var iq) && iq.ValueKind == JsonValueKind.Number
+                    ? iq.GetInt32()
+                    : (int?)null;
 
                 var variantId = ParseGidNumber(node.GetProperty("id").GetString());
                 long productId = 0;
@@ -296,7 +301,8 @@ public class ShopifyClient
                     string.IsNullOrWhiteSpace(vendor) ? null : vendor!.Trim(),
                     string.IsNullOrWhiteSpace(productType) ? null : productType!.Trim(),
                     string.IsNullOrWhiteSpace(variantTitle) ? null : variantTitle!.Trim(),
-                    compareAt));
+                    compareAt,
+                    inventoryQuantity));
             }
 
             var pageInfo = conn.GetProperty("pageInfo");
@@ -672,7 +678,8 @@ public record ShopifyVariantDetail(
     string? Vendor = null,
     string? ProductType = null,
     string? VariantTitle = null,
-    decimal? CompareAtPrice = null);
+    decimal? CompareAtPrice = null,
+    int? InventoryQuantity = null);
 
 public record ShopifyPingResult(
     string ShopName,

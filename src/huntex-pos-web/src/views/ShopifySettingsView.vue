@@ -293,6 +293,105 @@ async function pullAllChanged() {
   await loadDashboard()
 }
 
+// ── Stock sync (POS → Shopify) ───────────────────────────────────────────────
+type StockRow = {
+  productId: string
+  sku: string
+  name: string
+  posQtyOnHand: number
+  shopifyAvailable: number | null
+  differs: boolean
+}
+const stockRows = ref<StockRow[]>([])
+const stockLoaded = ref(false)
+const stockBusy = ref(false)
+const stockErr = ref<string | null>(null)
+const stockOnlyChanged = ref(true)
+const stockPushingId = ref<string | null>(null)
+const stockPushAllBusy = ref(false)
+const syncStockBusy = ref(false)
+
+const visibleStockRows = computed(() =>
+  stockOnlyChanged.value ? stockRows.value.filter(r => r.differs) : stockRows.value)
+const stockChangedCount = computed(() => stockRows.value.filter(r => r.differs).length)
+
+async function loadStockReview() {
+  stockBusy.value = true
+  stockErr.value = null
+  try {
+    const { data } = await http.get<{ items: StockRow[] }>('/api/shopify/stock-review')
+    stockRows.value = data.items
+    stockLoaded.value = true
+  } catch (e) {
+    stockErr.value = handleErr(e, 'Could not load stock comparison')
+  } finally {
+    stockBusy.value = false
+  }
+}
+
+async function pushOneStock(row: StockRow) {
+  if (stockPushingId.value) return
+  stockPushingId.value = row.productId
+  try {
+    await http.post(`/api/shopify/push-stock/${row.productId}`)
+    row.shopifyAvailable = row.posQtyOnHand
+    row.differs = false
+    toast.success(`Pushed ${row.sku} stock to Shopify.`)
+  } catch (e) {
+    toast.error(handleErr(e, 'Push failed'))
+  } finally {
+    stockPushingId.value = null
+  }
+}
+
+async function pushAllStock() {
+  const changed = stockRows.value.filter(r => r.differs)
+  if (!changed.length) {
+    toast.info('No changed stock to push.')
+    return
+  }
+  if (!confirm(`Push ${changed.length} changed stock level${changed.length === 1 ? '' : 's'} to Shopify?`)) return
+  stockPushAllBusy.value = true
+  let ok = 0
+  let fail = 0
+  for (const row of changed) {
+    try {
+      await http.post(`/api/shopify/push-stock/${row.productId}`)
+      row.shopifyAvailable = row.posQtyOnHand
+      row.differs = false
+      ok++
+    } catch {
+      fail++
+    }
+  }
+  stockPushAllBusy.value = false
+  if (fail) toast.error(`Pushed ${ok}, ${fail} failed.`)
+  else toast.success(`Pushed ${ok} stock level${ok === 1 ? '' : 's'}.`)
+}
+
+async function syncStock() {
+  if (syncStockBusy.value) return
+  syncStockBusy.value = true
+  try {
+    const { data: preview } = await http.post('/api/shopify/push-stock')
+    const n = preview.linkedProductCount ?? 0
+    if (n === 0) {
+      toast.info('No linked products with a Shopify inventory item to push.')
+      return
+    }
+    if (!confirm(`Push POS on-hand quantities to ${n} linked Shopify product${n === 1 ? '' : 's'}?`)) return
+    const { data } = await http.post('/api/shopify/push-stock?apply=true')
+    const failed = data.failedCount ?? 0
+    if (failed) toast.error(`Pushed ${data.updatedCount}, ${failed} failed.`)
+    else toast.success(`Pushed stock for ${data.updatedCount} product${data.updatedCount === 1 ? '' : 's'}.`)
+    if (stockLoaded.value) await loadStockReview()
+  } catch (e) {
+    toast.error(handleErr(e, 'Stock push failed'))
+  } finally {
+    syncStockBusy.value = false
+  }
+}
+
 const creatingVariantId = ref<number | null>(null)
 
 async function createInPos(v: Variant) {
@@ -597,6 +696,10 @@ onMounted(() => {
           <McSpinner v-if="pushPricesBusy" />
           <span v-else>Push prices to Shopify</span>
         </McButton>
+        <McButton variant="primary" type="button" :disabled="syncStockBusy" @click="syncStock">
+          <McSpinner v-if="syncStockBusy" />
+          <span v-else>Sync stock to Shopify</span>
+        </McButton>
       </div>
     </McCard>
 
@@ -795,6 +898,75 @@ onMounted(() => {
                     </McButton>
                     <span v-else-if="row.priceLocked" class="shp-lock">Locked</span>
                   </template>
+                  <McBadge v-else variant="success">Synced</McBadge>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </template>
+    </McCard>
+
+    <!-- Stock sync (POS -> Shopify) -->
+    <McCard title="Stock sync (POS &rarr; Shopify)">
+      <p class="shp-hint">
+        Compare each linked product's POS on-hand quantity with its current Shopify available stock and
+        push changes — one at a time or all at once. Only sends the "available" level at your configured
+        location; prices are never changed.
+      </p>
+      <McAlert v-if="stockErr" variant="error">{{ stockErr }}</McAlert>
+
+      <div v-if="!stockLoaded" class="shp-actions">
+        <McButton variant="secondary" type="button" :disabled="stockBusy" @click="loadStockReview">
+          <McSpinner v-if="stockBusy" />
+          <span v-else>Load stock comparison</span>
+        </McButton>
+      </div>
+
+      <template v-else>
+        <div class="shp-var-controls">
+          <label class="shp-check"><input type="checkbox" v-model="stockOnlyChanged" /> Only changed</label>
+          <span class="shp-hint shp-hint--inline">
+            {{ formatNumber(stockChangedCount) }} changed of {{ formatNumber(stockRows.length) }}
+          </span>
+          <McButton variant="primary" dense type="button" :disabled="stockPushAllBusy || stockChangedCount === 0" @click="pushAllStock">
+            <McSpinner v-if="stockPushAllBusy" />
+            <span v-else>Push all changed</span>
+          </McButton>
+          <McButton variant="ghost" dense type="button" :disabled="stockBusy" @click="loadStockReview">Reload</McButton>
+        </div>
+
+        <McEmptyState
+          v-if="!visibleStockRows.length"
+          title="Nothing to show"
+          hint="No products match the current filter."
+        />
+        <table v-else class="shp-table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th class="shp-r">POS on hand</th>
+              <th class="shp-r">Shopify available</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in visibleStockRows" :key="row.productId">
+              <td>
+                <div class="shp-item-title">{{ row.name }}</div>
+                <div class="shp-item-sku">{{ row.sku }}</div>
+              </td>
+              <td class="shp-r">{{ formatNumber(row.posQtyOnHand) }}</td>
+              <td class="shp-r" :class="{ 'shp-diff': row.differs }">
+                {{ row.shopifyAvailable === null ? '—' : formatNumber(row.shopifyAvailable) }}
+              </td>
+              <td class="shp-r">
+                <div class="shp-row-actions">
+                  <McButton v-if="row.differs" variant="secondary" dense type="button"
+                    :disabled="stockPushingId === row.productId" @click="pushOneStock(row)">
+                    <McSpinner v-if="stockPushingId === row.productId" />
+                    <span v-else>Push</span>
+                  </McButton>
                   <McBadge v-else variant="success">Synced</McBadge>
                 </div>
               </td>

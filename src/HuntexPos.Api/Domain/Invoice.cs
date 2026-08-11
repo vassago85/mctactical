@@ -51,5 +51,12 @@ public class Invoice
     /// <summary>Human-facing Shopify order name, e.g. "#1001".</summary>
     public string? ShopifyOrderName { get; set; }
 
+    /// <summary>
+    /// True when this sale reduced POS <see cref="Product.QtyOnHand"/> (all in-store sales, plus
+    /// Shopify orders imported after stock-sync was enabled). Voiding restores stock only when true,
+    /// so historical Shopify imports that never touched stock are not incorrectly credited back.
+    /// </summary>
+    public bool StockDeducted { get; set; }
+
     public ICollection<InvoiceLine> Lines { get; set; } = new List<InvoiceLine>();
 }
