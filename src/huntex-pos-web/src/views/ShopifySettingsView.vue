@@ -96,6 +96,83 @@ async function autoLink() {
   }
 }
 
+const importBusy = ref(false)
+
+async function importAll() {
+  if (importBusy.value) return
+  importBusy.value = true
+  try {
+    const { data: preview } = await http.post('/api/shopify/import-products')
+    const n = preview.creatableCount ?? 0
+    if (n === 0) {
+      toast.info('No new Shopify items to import — everything is already linked.')
+      return
+    }
+    const skipped = preview.skuCollisionCount ?? 0
+    const ok = confirm(
+      `Create ${n} new POS product${n === 1 ? '' : 's'} from Shopify?` +
+        (skipped ? ` (${skipped} skipped — SKU already in POS)` : '') +
+        '\nStock starts at 0. Set prices afterwards, then push.'
+    )
+    if (!ok) return
+    const { data } = await http.post('/api/shopify/import-products?apply=true')
+    toast.success(
+      `Created ${data.createdCount} product${data.createdCount === 1 ? '' : 's'}. ` +
+        `${data.reclassifiedLineCount} past sale line${data.reclassifiedLineCount === 1 ? '' : 's'} reclassified.`
+    )
+    await Promise.all([loadDashboard(), loadUnlinked()])
+    if (variantsLoaded.value) await loadVariants()
+  } catch (e) {
+    toast.error(handleErr(e, 'Import failed'))
+  } finally {
+    importBusy.value = false
+  }
+}
+
+const pushPricesBusy = ref(false)
+
+async function pushPrices() {
+  if (pushPricesBusy.value) return
+  pushPricesBusy.value = true
+  try {
+    const { data: preview } = await http.post('/api/shopify/push-prices')
+    const n = preview.linkedProductCount ?? 0
+    if (n === 0) {
+      toast.info('No linked products to push prices for.')
+      return
+    }
+    if (!confirm(`Push POS prices to ${n} linked Shopify product${n === 1 ? '' : 's'}? Stock is not changed.`)) return
+    const { data } = await http.post('/api/shopify/push-prices?apply=true')
+    const failed = data.failedCount ?? 0
+    if (failed) toast.error(`Pushed ${data.updatedCount}, ${failed} failed.`)
+    else toast.success(`Pushed prices to ${data.updatedCount} product${data.updatedCount === 1 ? '' : 's'}.`)
+  } catch (e) {
+    toast.error(handleErr(e, 'Push failed'))
+  } finally {
+    pushPricesBusy.value = false
+  }
+}
+
+const creatingVariantId = ref<number | null>(null)
+
+async function createInPos(v: Variant) {
+  if (creatingVariantId.value !== null) return
+  creatingVariantId.value = v.shopifyVariantId
+  try {
+    const { data } = await http.post<{ sku: string }>('/api/shopify/import-product', {
+      shopifyVariantId: v.shopifyVariantId
+    })
+    v.linked = true
+    v.posSku = data.sku
+    toast.success(`Created ${data.sku} in the POS.`)
+    await loadDashboard()
+  } catch (e) {
+    toast.error(handleErr(e, 'Create failed'))
+  } finally {
+    creatingVariantId.value = null
+  }
+}
+
 // ── Shared link modal (used by the Match tool and the variants table) ─────────
 type LinkTarget = { kind: 'match' | 'variant'; shopifyVariantId: number | null; shopifySku: string | null; title: string }
 type ProductHit = { id: string; sku: string; name: string; sellPrice: number }
@@ -372,6 +449,14 @@ onMounted(() => {
           <McSpinner v-if="reconcileBusy" />
           <span v-else>Auto-link products</span>
         </McButton>
+        <McButton variant="secondary" type="button" :disabled="importBusy" @click="importAll">
+          <McSpinner v-if="importBusy" />
+          <span v-else>Import all missing to POS</span>
+        </McButton>
+        <McButton variant="primary" type="button" :disabled="pushPricesBusy" @click="pushPrices">
+          <McSpinner v-if="pushPricesBusy" />
+          <span v-else>Push prices to Shopify</span>
+        </McButton>
       </div>
     </McCard>
 
@@ -458,10 +543,18 @@ onMounted(() => {
                 <McBadge v-else variant="neutral">Unlinked</McBadge>
               </td>
               <td class="shp-r">
-                <McButton v-if="!v.linked" variant="ghost" dense type="button"
-                  @click="openLink({ kind: 'variant', shopifyVariantId: v.shopifyVariantId, shopifySku: v.sku, title: v.title })">
-                  Link
-                </McButton>
+                <div v-if="!v.linked" class="shp-row-actions">
+                  <McButton variant="ghost" dense type="button"
+                    @click="openLink({ kind: 'variant', shopifyVariantId: v.shopifyVariantId, shopifySku: v.sku, title: v.title })">
+                    Link
+                  </McButton>
+                  <McButton variant="secondary" dense type="button"
+                    :disabled="creatingVariantId === v.shopifyVariantId"
+                    @click="createInPos(v)">
+                    <McSpinner v-if="creatingVariantId === v.shopifyVariantId" />
+                    <span v-else>Create in POS</span>
+                  </McButton>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -551,6 +644,7 @@ onMounted(() => {
 .shp-table th { text-align: left; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--mc-app-text-muted, #666); padding: 0.4rem 0.5rem; border-bottom: 1.5px solid var(--mc-app-border-subtle, #c8c5bd); }
 .shp-table td { padding: 0.5rem 0.5rem; border-bottom: 1px solid var(--mc-app-border-faint, #eceae5); vertical-align: top; }
 .shp-r { text-align: right; font-variant-numeric: tabular-nums; }
+.shp-row-actions { display: flex; gap: 0.4rem; justify-content: flex-end; }
 .shp-item-title { font-weight: 600; color: var(--mc-app-text, #1a1a1c); }
 .shp-item-sku { font-size: 0.78rem; color: var(--mc-app-text-muted, #8a8780); font-variant-numeric: tabular-nums; }
 

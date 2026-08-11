@@ -101,6 +101,10 @@ public class ShopifyClient
     private static string InventoryItemGid(long id) => $"gid://shopify/InventoryItem/{id}";
     private static string LocationGid(long id) => $"gid://shopify/Location/{id}";
 
+    /// <summary>Parse a plain Shopify money string (e.g. variant price or unit cost amount).</summary>
+    private static decimal ParseMoney(string? amount) =>
+        decimal.TryParse(amount, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : 0m;
+
     private static decimal ParseMoney(JsonElement parent, string setProp)
     {
         if (!parent.TryGetProperty(setProp, out var set)) return 0m;
@@ -227,8 +231,9 @@ public class ShopifyClient
                     sku
                     barcode
                     title
-                    inventoryItem { id }
-                    product { id title }
+                    price
+                    inventoryItem { id unitCost { amount } }
+                    product { id title vendor productType }
                   }
                 }
                 pageInfo { hasNextPage endCursor }
@@ -247,18 +252,30 @@ public class ShopifyClient
                 var node = edge.GetProperty("node");
                 var sku = node.TryGetProperty("sku", out var s) ? s.GetString() : null;
                 var barcode = node.TryGetProperty("barcode", out var b) ? b.GetString() : null;
+                var variantTitle = node.TryGetProperty("title", out var vt) ? vt.GetString() : null;
+                var price = node.TryGetProperty("price", out var pr) ? ParseMoney(pr.GetString()) : 0m;
 
                 var variantId = ParseGidNumber(node.GetProperty("id").GetString());
                 long productId = 0;
                 var productTitle = "";
+                string? vendor = null;
+                string? productType = null;
                 if (node.TryGetProperty("product", out var prod))
                 {
                     productId = ParseGidNumber(prod.GetProperty("id").GetString());
                     productTitle = prod.TryGetProperty("title", out var pt) ? pt.GetString() ?? "" : "";
+                    vendor = prod.TryGetProperty("vendor", out var vn) ? vn.GetString() : null;
+                    productType = prod.TryGetProperty("productType", out var ptype) ? ptype.GetString() : null;
                 }
-                var inventoryItemId = node.TryGetProperty("inventoryItem", out var inv)
-                    ? ParseGidNumber(inv.GetProperty("id").GetString())
-                    : 0;
+
+                long inventoryItemId = 0;
+                decimal cost = 0m;
+                if (node.TryGetProperty("inventoryItem", out var inv))
+                {
+                    inventoryItemId = ParseGidNumber(inv.GetProperty("id").GetString());
+                    if (inv.TryGetProperty("unitCost", out var uc) && uc.ValueKind == JsonValueKind.Object)
+                        cost = ParseMoney(uc.TryGetProperty("amount", out var amt) ? amt.GetString() : null);
+                }
 
                 result.Add(new ShopifyVariantDetail(
                     string.IsNullOrWhiteSpace(sku) ? null : sku.Trim(),
@@ -266,7 +283,12 @@ public class ShopifyClient
                     productTitle,
                     productId,
                     variantId,
-                    inventoryItemId));
+                    inventoryItemId,
+                    price,
+                    cost,
+                    string.IsNullOrWhiteSpace(vendor) ? null : vendor!.Trim(),
+                    string.IsNullOrWhiteSpace(productType) ? null : productType!.Trim(),
+                    string.IsNullOrWhiteSpace(variantTitle) ? null : variantTitle!.Trim()));
             }
 
             var pageInfo = conn.GetProperty("pageInfo");
@@ -414,6 +436,34 @@ public class ShopifyClient
             ? ParseGidNumber(inv.GetProperty("id").GetString())
             : 0;
         return new ShopifyPushResult(productId, variantId, inventoryItemId);
+    }
+
+    /// <summary>
+    /// Update only the sell price of an already-linked Shopify variant. Deliberately touches nothing
+    /// else — no SKU, barcode, inventory tracking or quantity — so pushing POS prices can never alter
+    /// online stock or availability. Used by the bulk "push prices" action.
+    /// </summary>
+    public async Task UpdateVariantPriceAsync(long productId, long variantId, decimal price, CancellationToken ct)
+    {
+        const string mutation = """
+            mutation priceUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+              productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+                userErrors { field message }
+              }
+            }
+            """;
+
+        var variables = new
+        {
+            productId = ProductGid(productId),
+            variants = new[]
+            {
+                new { id = VariantGid(variantId), price = price.ToString(CultureInfo.InvariantCulture) }
+            }
+        };
+
+        var data = await GraphQlAsync(mutation, variables, ct);
+        ThrowOnUserErrors(data.GetProperty("productVariantsBulkUpdate"));
     }
 
     /// <summary>Set the absolute available quantity for an inventory item at the configured location.</summary>
@@ -608,7 +658,12 @@ public record ShopifyVariantDetail(
     string Title,
     long ProductId,
     long VariantId,
-    long InventoryItemId);
+    long InventoryItemId,
+    decimal Price = 0m,
+    decimal Cost = 0m,
+    string? Vendor = null,
+    string? ProductType = null,
+    string? VariantTitle = null);
 
 public record ShopifyPingResult(
     string ShopName,

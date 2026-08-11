@@ -580,23 +580,9 @@ public class ShopifyController : ControllerBase
         var placeholder = await _db.Products
             .FirstOrDefaultAsync(p => p.Sku == ShopifyOrderImportService.UnlinkedPlaceholderSku, ct);
 
-        var sku = req.ShopifySku?.Trim();
-        var candidates = placeholder == null
-            ? new List<InvoiceLine>()
-            : await _db.InvoiceLines
-                .Where(l => l.ProductId == placeholder.Id
-                    && l.Invoice!.Source == "Shopify"
-                    && ((req.ShopifyVariantId > 0 && l.ShopifyVariantId == req.ShopifyVariantId)
-                        || (l.ShopifyVariantId == null && sku != null && l.SkuAtSale == sku)))
-                .ToListAsync(ct);
-
-        var costAtSale = Math.Round(product.Cost * (1 - product.SupplierDiscountPercent / 100m), 2);
-        foreach (var line in candidates)
-        {
-            line.ProductId = product.Id;
-            line.CostAtSale = costAtSale;
-            if (req.ShopifyVariantId > 0) line.ShopifyVariantId = req.ShopifyVariantId;
-        }
+        var reclassified = placeholder == null
+            ? 0
+            : await ReclassifyUnlinkedSalesAsync(placeholder.Id, product, req.ShopifyVariantId, req.ShopifySku, ct);
 
         if (req.ShopifyVariantId > 0)
         {
@@ -611,9 +597,282 @@ public class ShopifyController : ControllerBase
             posProductId = product.Id,
             product.Sku,
             linkedShopifyVariantId = req.ShopifyVariantId,
-            reclassifiedLineCount = candidates.Count,
+            reclassifiedLineCount = reclassified,
             note = "Linked. Past Shopify sales of this item now attribute to the POS product; future imports match it automatically."
         });
+    }
+
+    /// <summary>
+    /// Move a linked target product's past Shopify sales off the "unlinked" placeholder onto that
+    /// product, recomputing cost for GP. Matches by variant id first, else by the Shopify SKU snapshot.
+    /// Does not save — the caller persists. Returns how many invoice lines were reclassified.
+    /// </summary>
+    private async Task<int> ReclassifyUnlinkedSalesAsync(
+        Guid placeholderId, Product target, long? variantId, string? sku, CancellationToken ct)
+    {
+        var s = string.IsNullOrWhiteSpace(sku) ? null : sku!.Trim();
+        var vId = variantId is > 0 ? variantId.Value : (long?)null;
+        if (vId == null && s == null) return 0;
+
+        var candidates = await _db.InvoiceLines
+            .Where(l => l.ProductId == placeholderId
+                && l.Invoice!.Source == "Shopify"
+                && ((vId != null && l.ShopifyVariantId == vId)
+                    || (l.ShopifyVariantId == null && s != null && l.SkuAtSale == s)))
+            .ToListAsync(ct);
+
+        var costAtSale = Math.Round(target.Cost * (1 - target.SupplierDiscountPercent / 100m), 2);
+        foreach (var line in candidates)
+        {
+            line.ProductId = target.Id;
+            line.CostAtSale = costAtSale;
+            if (vId != null) line.ShopifyVariantId = vId;
+        }
+        return candidates.Count;
+    }
+
+    /// <summary>
+    /// Create a brand-new POS product from a single Shopify variant and link it. Seeds name, SKU,
+    /// barcode, sell price, cost, vendor/type from Shopify; stock starts at 0. Past sales of that
+    /// item are reclassified onto the new product. Refuses to duplicate an existing SKU/link. Owner/Dev.
+    /// </summary>
+    [HttpPost("import-product")]
+    public async Task<IActionResult> ImportProduct([FromBody] ImportProductRequest req, CancellationToken ct = default)
+    {
+        if (req.ShopifyVariantId <= 0)
+            return BadRequest(new { error = "A Shopify variant id is required." });
+
+        List<ShopifyVariantDetail> variants;
+        try { variants = await _shopify.GetAllVariantDetailsAsync(ct); }
+        catch (ShopifyNotConfiguredException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (ShopifyApiException ex) { return StatusCode(502, new { error = "Shopify rejected the request.", status = ex.StatusCode, detail = ex.Message }); }
+
+        var v = variants.FirstOrDefault(x => x.VariantId == req.ShopifyVariantId);
+        if (v == null) return NotFound(new { error = "That Shopify variant was not found." });
+
+        var existingLink = await _db.Products.FirstOrDefaultAsync(p => p.ShopifyVariantId == v.VariantId, ct);
+        if (existingLink != null)
+            return Conflict(new { error = $"Already linked to POS product '{existingLink.Sku}'.", posProductId = existingLink.Id });
+
+        var sku = BuildSku(v);
+        var skuOwner = await _db.Products.FirstOrDefaultAsync(p => p.Sku == sku, ct);
+        if (skuOwner != null)
+            return Conflict(new { error = $"A POS product with SKU '{sku}' already exists. Link it instead of creating a duplicate.", posProductId = skuOwner.Id });
+
+        var product = BuildProduct(v, sku);
+        _db.Products.Add(product);
+
+        var placeholder = await _db.Products
+            .FirstOrDefaultAsync(p => p.Sku == ShopifyOrderImportService.UnlinkedPlaceholderSku, ct);
+        var reclassified = placeholder == null
+            ? 0
+            : await ReclassifyUnlinkedSalesAsync(placeholder.Id, product, v.VariantId, v.Sku, ct);
+
+        await _db.SaveChangesAsync(ct);
+
+        return Ok(new
+        {
+            posProductId = product.Id,
+            product.Sku,
+            product.Name,
+            product.SellPrice,
+            linkedShopifyVariantId = v.VariantId,
+            reclassifiedLineCount = reclassified,
+            note = "Created in the POS and linked to Shopify. Set your price, then use 'Push prices to Shopify'."
+        });
+    }
+
+    /// <summary>
+    /// Bulk-create POS products for every Shopify variant not yet linked (including never-sold items).
+    /// Skips variants whose SKU already exists in the POS (link those instead) and blank-SKU variants
+    /// get a generated SKU. Dry-run preview by default; pass <c>apply=true</c> to create. Owner/Dev.
+    /// </summary>
+    [HttpPost("import-products")]
+    public async Task<IActionResult> ImportProducts([FromQuery] bool apply = false, CancellationToken ct = default)
+    {
+        List<ShopifyVariantDetail> variants;
+        try { variants = await _shopify.GetAllVariantDetailsAsync(ct); }
+        catch (ShopifyNotConfiguredException ex) { return BadRequest(new { error = ex.Message }); }
+        catch (ShopifyApiException ex) { return StatusCode(502, new { error = "Shopify rejected the request.", status = ex.StatusCode, detail = ex.Message }); }
+
+        var linkedVariantIds = (await _db.Products
+                .Where(p => p.ShopifyVariantId != null)
+                .Select(p => p.ShopifyVariantId!.Value)
+                .ToListAsync(ct))
+            .ToHashSet();
+
+        var usedSkus = (await _db.Products.Select(p => p.Sku).ToListAsync(ct))
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var toCreate = new List<(ShopifyVariantDetail V, string Sku)>();
+        int alreadyLinked = 0, skuCollision = 0, blankGenerated = 0;
+        foreach (var v in variants)
+        {
+            if (linkedVariantIds.Contains(v.VariantId)) { alreadyLinked++; continue; }
+            var sku = BuildSku(v);
+            if (usedSkus.Contains(sku)) { skuCollision++; continue; }
+            if (string.IsNullOrWhiteSpace(v.Sku)) blankGenerated++;
+            usedSkus.Add(sku);
+            toCreate.Add((v, sku));
+        }
+
+        if (!apply)
+        {
+            return Ok(new
+            {
+                applied = false,
+                creatableCount = toCreate.Count,
+                alreadyLinkedCount = alreadyLinked,
+                skuCollisionCount = skuCollision,
+                blankSkuGeneratedCount = blankGenerated,
+                sample = toCreate.Take(25).Select(x => new { x.Sku, name = ComposePosName(x.V.Title, x.V.VariantTitle), price = x.V.Price }),
+                note = "Preview only — nothing was created. Re-run with ?apply=true to create these as POS products."
+            });
+        }
+
+        // Load placeholder Shopify lines once and match in memory (avoids a query per new product).
+        var placeholder = await _db.Products
+            .FirstOrDefaultAsync(p => p.Sku == ShopifyOrderImportService.UnlinkedPlaceholderSku, ct);
+        var placeholderLines = placeholder == null
+            ? new List<InvoiceLine>()
+            : await _db.InvoiceLines
+                .Where(l => l.ProductId == placeholder.Id && l.Invoice!.Source == "Shopify")
+                .ToListAsync(ct);
+        var linesByVariant = placeholderLines
+            .Where(l => l.ShopifyVariantId != null)
+            .ToLookup(l => l.ShopifyVariantId!.Value);
+        var linesBySku = placeholderLines
+            .Where(l => l.ShopifyVariantId == null && !string.IsNullOrWhiteSpace(l.SkuAtSale))
+            .ToLookup(l => l.SkuAtSale!.Trim(), StringComparer.OrdinalIgnoreCase);
+
+        int created = 0, reclassified = 0;
+        foreach (var (v, sku) in toCreate)
+        {
+            var product = BuildProduct(v, sku);
+            _db.Products.Add(product);
+
+            var costAtSale = Math.Round(product.Cost * (1 - product.SupplierDiscountPercent / 100m), 2);
+            var matches = linesByVariant[v.VariantId]
+                .Concat(v.Sku != null ? linesBySku[v.Sku.Trim()] : Enumerable.Empty<InvoiceLine>());
+            foreach (var line in matches)
+            {
+                line.ProductId = product.Id;
+                line.CostAtSale = costAtSale;
+                line.ShopifyVariantId = v.VariantId;
+                reclassified++;
+            }
+            created++;
+        }
+
+        await _db.SaveChangesAsync(ct);
+
+        return Ok(new
+        {
+            applied = true,
+            createdCount = created,
+            reclassifiedLineCount = reclassified,
+            alreadyLinkedCount = alreadyLinked,
+            skuCollisionCount = skuCollision,
+            blankSkuGeneratedCount = blankGenerated,
+            note = "Created as POS products (stock 0) and linked to Shopify. Set prices in the POS, then use 'Push prices to Shopify'. SKU collisions were skipped — link those instead."
+        });
+    }
+
+    /// <summary>
+    /// Push POS sell prices up to Shopify for every linked product. Price-only: never changes Shopify
+    /// stock or availability. Dry-run preview by default; pass <c>apply=true</c> to push. Owner/Dev.
+    /// </summary>
+    [HttpPost("push-prices")]
+    public async Task<IActionResult> PushPrices([FromQuery] bool apply = false, CancellationToken ct = default)
+    {
+        var linked = await _db.Products
+            .Where(p => p.ShopifyProductId != null && p.ShopifyVariantId != null
+                && p.Sku != ShopifyOrderImportService.UnlinkedPlaceholderSku)
+            .ToListAsync(ct);
+
+        if (!apply)
+        {
+            return Ok(new
+            {
+                applied = false,
+                linkedProductCount = linked.Count,
+                note = "Preview only — no prices were pushed. Re-run with ?apply=true to push POS prices to Shopify. Stock is never changed."
+            });
+        }
+
+        int updated = 0, failed = 0;
+        var failures = new List<object>();
+        foreach (var p in linked)
+        {
+            try
+            {
+                await _shopify.UpdateVariantPriceAsync(p.ShopifyProductId!.Value, p.ShopifyVariantId!.Value, p.SellPrice, ct);
+                p.ShopifySyncedAt = DateTimeOffset.UtcNow;
+                updated++;
+            }
+            catch (ShopifyNotConfiguredException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+            catch (ShopifyApiException ex)
+            {
+                failed++;
+                if (failures.Count < 20) failures.Add(new { p.Sku, status = ex.StatusCode, detail = ex.Message });
+            }
+        }
+
+        await _db.SaveChangesAsync(ct);
+
+        return Ok(new
+        {
+            applied = true,
+            linkedProductCount = linked.Count,
+            updatedCount = updated,
+            failedCount = failed,
+            failures,
+            note = "Pushed POS sell prices to the matching Shopify variants. No stock or availability was changed."
+        });
+    }
+
+    private static string ComposePosName(string title, string? variantTitle)
+    {
+        var t = title?.Trim() ?? string.Empty;
+        var v = variantTitle?.Trim();
+        if (string.IsNullOrWhiteSpace(v) || v.Equals("Default Title", StringComparison.OrdinalIgnoreCase))
+            return t;
+        return string.IsNullOrEmpty(t) ? v! : $"{t} {v}";
+    }
+
+    private static string BuildSku(ShopifyVariantDetail v) =>
+        string.IsNullOrWhiteSpace(v.Sku) ? $"SHOPIFY-{v.VariantId}" : v.Sku!.Trim();
+
+    private static Product BuildProduct(ShopifyVariantDetail v, string sku)
+    {
+        var name = ComposePosName(v.Title, v.VariantTitle);
+        var now = DateTimeOffset.UtcNow;
+        return new Product
+        {
+            Id = Guid.NewGuid(),
+            Sku = sku,
+            Barcode = string.IsNullOrWhiteSpace(v.Barcode) ? null : v.Barcode,
+            Name = string.IsNullOrWhiteSpace(name) ? sku : name,
+            Manufacturer = v.Vendor,
+            ItemType = v.ProductType,
+            Cost = v.Cost,
+            SellPrice = v.Price,
+            QtyOnHand = 0,
+            Active = true,
+            // Hold the imported price as fixed so a rules recalc can't overwrite it before staff set their own.
+            PricingMethod = v.Price > 0 ? "fixed_price" : "default",
+            FixedSellPrice = v.Price > 0 ? v.Price : (decimal?)null,
+            ShopifyProductId = v.ProductId == 0 ? (long?)null : v.ProductId,
+            ShopifyVariantId = v.VariantId == 0 ? (long?)null : v.VariantId,
+            ShopifyInventoryItemId = v.InventoryItemId == 0 ? (long?)null : v.InventoryItemId,
+            ShopifySyncedAt = now,
+            CreatedAt = now
+        };
     }
 
     /// <summary>
@@ -761,3 +1020,5 @@ public class ShopifyController : ControllerBase
 
 /// <summary>Request body for linking a Shopify sale item to a POS product.</summary>
 public record LinkVariantRequest(long? ShopifyVariantId, string? ShopifySku, Guid PosProductId);
+
+public record ImportProductRequest(long ShopifyVariantId);
