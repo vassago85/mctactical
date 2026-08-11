@@ -903,9 +903,9 @@ public class ShopifyController : ControllerBase
         catch (ShopifyNotConfiguredException ex) { return BadRequest(new { error = ex.Message }); }
         catch (ShopifyApiException ex) { return StatusCode(502, new { error = "Shopify rejected the request.", status = ex.StatusCode, detail = ex.Message }); }
 
-        var shopifyPriceByVariant = variants
+        var shopifyByVariant = variants
             .GroupBy(v => v.VariantId)
-            .ToDictionary(g => g.Key, g => g.First().Price);
+            .ToDictionary(g => g.Key, g => g.First());
 
         var linked = await _db.Products
             .Where(p => p.ShopifyVariantId != null && p.Sku != ShopifyOrderImportService.UnlinkedPlaceholderSku)
@@ -917,11 +917,15 @@ public class ShopifyController : ControllerBase
             .Select(p =>
             {
                 var variantId = p.ShopifyVariantId!.Value;
-                var hasShopify = shopifyPriceByVariant.TryGetValue(variantId, out var sp);
+                var hasShopify = shopifyByVariant.TryGetValue(variantId, out var sv);
+                var shopifyPrice = hasShopify ? sv!.Price : (decimal?)null;
+                // Shopify shows an item "on special" when compare-at is set and higher than the price.
+                var shopifyCompareAt = hasShopify ? sv!.CompareAtPrice : null;
+                var shopifyOnSpecial = shopifyCompareAt.HasValue && hasShopify && shopifyCompareAt.Value > sv!.Price;
                 var hasSpecial = specials.TryGetValue(p.Id, out var special);
                 // The price a push would send: the special price when one is active, else the base.
                 var effective = hasSpecial ? special.Price : p.SellPrice;
-                var differs = hasShopify && Math.Round(effective, 2) != Math.Round(sp, 2);
+                var differs = hasShopify && Math.Round(effective, 2) != Math.Round(sv!.Price, 2);
                 return new
                 {
                     productId = p.Id,
@@ -931,12 +935,15 @@ public class ShopifyController : ControllerBase
                     specialPrice = hasSpecial ? special.Price : (decimal?)null,
                     specialLabel = hasSpecial ? special.Label : null,
                     effectivePrice = effective,
-                    shopifyPrice = hasShopify ? sp : (decimal?)null,
+                    shopifyPrice,
+                    shopifyCompareAt,
+                    shopifyOnSpecial,
                     priceLocked = p.PriceLocked,
                     differs
                 };
             })
-            .OrderByDescending(r => r.differs)
+            .OrderByDescending(r => r.shopifyOnSpecial)
+            .ThenByDescending(r => r.differs)
             .ThenBy(r => r.name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -944,6 +951,7 @@ public class ShopifyController : ControllerBase
         {
             total = rows.Count,
             changed = rows.Count(r => r.differs),
+            onShopifySpecial = rows.Count(r => r.shopifyOnSpecial),
             items = rows
         });
     }

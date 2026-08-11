@@ -163,6 +163,8 @@ type PriceRow = {
   specialLabel: string | null
   effectivePrice: number
   shopifyPrice: number | null
+  shopifyCompareAt: number | null
+  shopifyOnSpecial: boolean
   priceLocked: boolean
   differs: boolean
 }
@@ -185,6 +187,7 @@ function recomputeDiffers(row: PriceRow) {
 
 const visiblePriceRows = computed(() => (onlyChanged.value ? priceRows.value.filter(r => r.differs) : priceRows.value))
 const changedCount = computed(() => priceRows.value.filter(r => r.differs).length)
+const onShopifySpecialCount = computed(() => priceRows.value.filter(r => r.shopifyOnSpecial).length)
 
 async function loadPriceReview() {
   priceBusy.value = true
@@ -723,7 +726,10 @@ onMounted(() => {
       <template v-else>
         <div class="shp-var-controls">
           <label class="shp-check"><input type="checkbox" v-model="onlyChanged" /> Only changed</label>
-          <span class="shp-hint shp-hint--inline">{{ formatNumber(changedCount) }} changed of {{ formatNumber(priceRows.length) }}</span>
+          <span class="shp-hint shp-hint--inline">
+            {{ formatNumber(changedCount) }} changed of {{ formatNumber(priceRows.length) }}
+            <template v-if="onShopifySpecialCount"> · {{ formatNumber(onShopifySpecialCount) }} on Shopify special</template>
+          </span>
           <McButton variant="primary" dense type="button" :disabled="pushAllBusy || changedCount === 0" @click="pushAllChanged">
             <McSpinner v-if="pushAllBusy" />
             <span v-else>Push all changed</span>
@@ -765,7 +771,14 @@ onMounted(() => {
                 <template v-else>—</template>
               </td>
               <td class="shp-r" :class="{ 'shp-diff': row.differs }">
-                {{ row.shopifyPrice === null ? '—' : formatZAR(row.shopifyPrice) }}
+                <template v-if="row.shopifyPrice === null">—</template>
+                <template v-else>
+                  <div>{{ formatZAR(row.shopifyPrice) }}</div>
+                  <div v-if="row.shopifyOnSpecial" class="shp-onsale">
+                    <span class="shp-was">{{ formatZAR(row.shopifyCompareAt as number) }}</span>
+                    <McBadge variant="warning">On sale</McBadge>
+                  </div>
+                </template>
               </td>
               <td class="shp-r">
                 <div class="shp-row-actions">
@@ -872,6 +885,8 @@ onMounted(() => {
 .shp-check { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; font-weight: 600; color: var(--mc-app-text-secondary, #333); cursor: pointer; }
 .shp-diff { color: #b45309; font-weight: 700; }
 .shp-special { color: #065f46; font-weight: 600; }
+.shp-onsale { display: flex; align-items: center; gap: 0.4rem; justify-content: flex-end; margin-top: 0.15rem; }
+.shp-was { font-size: 0.78rem; color: var(--mc-app-text-muted, #8a8780); text-decoration: line-through; }
 .shp-lock { font-size: 0.72rem; color: var(--mc-app-text-muted, #8a8780); text-transform: uppercase; letter-spacing: 0.04em; }
 .shp-item-title { font-weight: 600; color: var(--mc-app-text, #1a1a1c); }
 .shp-item-sku { font-size: 0.78rem; color: var(--mc-app-text-muted, #8a8780); font-variant-numeric: tabular-nums; }

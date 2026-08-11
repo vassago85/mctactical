@@ -232,6 +232,7 @@ public class ShopifyClient
                     barcode
                     title
                     price
+                    compareAtPrice
                     inventoryItem { id unitCost { amount } }
                     product { id title vendor productType }
                   }
@@ -254,6 +255,12 @@ public class ShopifyClient
                 var barcode = node.TryGetProperty("barcode", out var b) ? b.GetString() : null;
                 var variantTitle = node.TryGetProperty("title", out var vt) ? vt.GetString() : null;
                 var price = node.TryGetProperty("price", out var pr) ? ParseMoney(pr.GetString()) : 0m;
+                decimal? compareAt = null;
+                if (node.TryGetProperty("compareAtPrice", out var cap) && cap.ValueKind == JsonValueKind.String)
+                {
+                    var c = ParseMoney(cap.GetString());
+                    if (c > 0) compareAt = c;
+                }
 
                 var variantId = ParseGidNumber(node.GetProperty("id").GetString());
                 long productId = 0;
@@ -288,7 +295,8 @@ public class ShopifyClient
                     cost,
                     string.IsNullOrWhiteSpace(vendor) ? null : vendor!.Trim(),
                     string.IsNullOrWhiteSpace(productType) ? null : productType!.Trim(),
-                    string.IsNullOrWhiteSpace(variantTitle) ? null : variantTitle!.Trim()));
+                    string.IsNullOrWhiteSpace(variantTitle) ? null : variantTitle!.Trim(),
+                    compareAt));
             }
 
             var pageInfo = conn.GetProperty("pageInfo");
@@ -663,7 +671,8 @@ public record ShopifyVariantDetail(
     decimal Cost = 0m,
     string? Vendor = null,
     string? ProductType = null,
-    string? VariantTitle = null);
+    string? VariantTitle = null,
+    decimal? CompareAtPrice = null);
 
 public record ShopifyPingResult(
     string ShopName,
