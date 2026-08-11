@@ -38,6 +38,14 @@ function defaultTo() { return toDateStr(new Date()) }
 const fromDate = ref(defaultFrom())
 const toDate = ref(defaultTo())
 
+type Channel = 'all' | 'instore' | 'shopify'
+const channelOptions: { value: Channel; label: string }[] = [
+  { value: 'all', label: 'Combined' },
+  { value: 'instore', label: 'In-shop' },
+  { value: 'shopify', label: 'Shopify' }
+]
+const channel = ref<Channel>('all')
+
 function buildDateParams() {
   const params: Record<string, string> = {}
   if (fromDate.value) params.from = new Date(fromDate.value).toISOString()
@@ -46,7 +54,14 @@ function buildDateParams() {
     end.setHours(23, 59, 59, 999)
     params.to = end.toISOString()
   }
+  if (channel.value !== 'all') params.channel = channel.value
   return params
+}
+
+function setChannel(next: Channel) {
+  if (channel.value === next) return
+  channel.value = next
+  void loadReport()
 }
 
 async function loadReport() {
@@ -88,6 +103,8 @@ const totalQtySold = computed(() => sold.value.reduce((s, p) => s + p.qtySold, 0
 const totalInvoices = computed(() => daily.value.reduce((s, d) => s + d.invoiceCount, 0))
 const totalSalesGrand = computed(() => daily.value.reduce((s, d) => s + d.grandTotal, 0))
 const avgOrderValue = computed(() => totalInvoices.value > 0 ? totalSalesGrand.value / totalInvoices.value : 0)
+
+const channelLabel = computed(() => channelOptions.find(o => o.value === channel.value)?.label ?? 'Combined')
 
 function formatPeriod() {
   const f = new Date(fromDate.value).toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -314,6 +331,20 @@ function renderTopProductsChart() {
       <McField label="To" for-id="fr-to">
         <input id="fr-to" v-model="toDate" type="date" />
       </McField>
+      <div class="fr-channel" role="group" aria-label="Sales channel">
+        <button
+          v-for="opt in channelOptions"
+          :key="opt.value"
+          type="button"
+          class="fr-channel__btn"
+          :class="{ 'fr-channel__btn--active': channel === opt.value }"
+          :aria-pressed="channel === opt.value"
+          :disabled="busy"
+          @click="setChannel(opt.value)"
+        >
+          {{ opt.label }}
+        </button>
+      </div>
       <McButton variant="primary" type="button" :disabled="busy" @click="loadReport">
         <McSpinner v-if="busy" />
         <span v-else>Generate</span>
@@ -347,6 +378,7 @@ function renderTopProductsChart() {
         <div class="fr-header__meta">
           <h2 class="fr-header__title">Financial Overview</h2>
           <p class="fr-header__period">{{ formatPeriod() }}</p>
+          <p class="fr-header__channel">{{ channelLabel }} sales</p>
           <p class="fr-header__gen">Generated {{ new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }}</p>
         </div>
       </header>
@@ -547,6 +579,43 @@ function renderTopProductsChart() {
   background: var(--mc-accent, #f47a20);
   border-color: var(--mc-accent, #f47a20);
   color: #fff;
+}
+
+/* Channel segmented toggle */
+.fr-channel {
+  display: inline-flex;
+  padding: 0.2rem;
+  gap: 0.2rem;
+  background: var(--mc-app-bg-subtle, #f0ede8);
+  border: 1px solid var(--mc-app-border-subtle, #c8c5bd);
+  border-radius: 10px;
+}
+.fr-channel__btn {
+  border: 0;
+  background: transparent;
+  padding: 0.45rem 0.85rem;
+  border-radius: 8px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--mc-app-text-secondary, #555);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.fr-channel__btn:hover:not(:disabled) { color: var(--mc-app-text, #1a1a1c); }
+.fr-channel__btn--active {
+  background: var(--mc-app-surface, #fff);
+  color: var(--mc-accent, #f47a20);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+.fr-channel__btn:disabled { cursor: default; opacity: 0.7; }
+
+.fr-header__channel {
+  margin: 0.1rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--mc-accent, #f47a20);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .fr-err { padding: 0.75rem 1rem; background: #fdecea; color: #b71c1c; border-radius: 8px; margin-bottom: 1rem; }

@@ -174,6 +174,19 @@ const stockTo = ref(defaultTo())
 const salesFrom = ref(defaultFrom())
 const salesTo = ref(defaultTo())
 
+type SalesChannel = 'all' | 'instore' | 'shopify'
+const salesChannelOptions: { value: SalesChannel; label: string }[] = [
+  { value: 'all', label: 'Combined' },
+  { value: 'instore', label: 'In-shop' },
+  { value: 'shopify', label: 'Shopify' }
+]
+const salesChannel = ref<SalesChannel>('all')
+function setSalesChannel(next: SalesChannel) {
+  if (salesChannel.value === next) return
+  salesChannel.value = next
+  void loadSales()
+}
+
 type DatePreset = { label: string; from: string; to: string }
 function getPresets(): DatePreset[] {
   const now = new Date()
@@ -253,10 +266,11 @@ async function loadSales() {
   salesBusy.value = true
   try {
     const params = buildDateParams(salesFrom.value, salesTo.value)
+    const channelParams = salesChannel.value === 'all' ? params : { ...params, channel: salesChannel.value }
     const [inv, d, pay] = await Promise.all([
       http.get<Row[]>('/api/reports/invoices', { params }),
-      http.get<Daily[]>('/api/reports/daily', { params }),
-      http.get<PaymentsSummary>('/api/reports/payments', { params })
+      http.get<Daily[]>('/api/reports/daily', { params: channelParams }),
+      http.get<PaymentsSummary>('/api/reports/payments', { params: channelParams })
     ])
     invoices.value = inv.data
     daily.value = d.data
@@ -941,6 +955,20 @@ async function purgeData() {
             <span v-else>Run report</span>
           </McButton>
         </div>
+        <div class="rep-channel" role="group" aria-label="Sales channel">
+          <button
+            v-for="opt in salesChannelOptions"
+            :key="opt.value"
+            type="button"
+            class="rep-channel__btn"
+            :class="{ 'rep-channel__btn--active': salesChannel === opt.value }"
+            :aria-pressed="salesChannel === opt.value"
+            :disabled="salesBusy"
+            @click="setSalesChannel(opt.value)"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
       </McCard>
 
       <McAlert v-if="err" variant="error">{{ err }}</McAlert>
@@ -1127,6 +1155,34 @@ async function purgeData() {
 .rep-date-row :deep(.mc-field) {
   margin-bottom: 0;
 }
+
+.rep-channel {
+  display: inline-flex;
+  margin-top: 0.85rem;
+  padding: 0.2rem;
+  gap: 0.2rem;
+  background: var(--mc-app-bg-subtle, #f0ede8);
+  border: 1px solid var(--mc-app-border-subtle, #c8c5bd);
+  border-radius: 10px;
+}
+.rep-channel__btn {
+  border: 0;
+  background: transparent;
+  padding: 0.45rem 0.85rem;
+  border-radius: 8px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--mc-app-text-secondary, #555);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.rep-channel__btn:hover:not(:disabled) { color: var(--mc-app-text, #1a1a1c); }
+.rep-channel__btn--active {
+  background: var(--mc-app-surface, #fff);
+  color: var(--mc-accent, #f47a20);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+.rep-channel__btn:disabled { cursor: default; opacity: 0.7; }
 
 .rep-kpi-row {
   display: flex;

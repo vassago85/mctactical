@@ -70,17 +70,34 @@ public class ReportsController : ControllerBase
         }).ToList();
     }
 
+    /// <summary>
+    /// Restrict invoices to a sales channel. <c>instore</c> = in-store POS sales (Source null or "POS");
+    /// <c>shopify</c> = imported online orders (Source "Shopify"); anything else = all channels combined.
+    /// Lets reports show accurate in-store GP separately from imported Shopify sales, whose unmatched
+    /// placeholder lines carry no cost and would otherwise inflate combined gross profit.
+    /// </summary>
+    private static IEnumerable<Invoice> FilterByChannel(IEnumerable<Invoice> rows, string? channel) =>
+        channel?.Trim().ToLowerInvariant() switch
+        {
+            "instore" => rows.Where(i => string.IsNullOrEmpty(i.Source)
+                || i.Source.Equals("POS", StringComparison.OrdinalIgnoreCase)),
+            "shopify" => rows.Where(i => i.Source != null
+                && i.Source.Equals("Shopify", StringComparison.OrdinalIgnoreCase)),
+            _ => rows
+        };
+
     [HttpGet("daily")]
     public async Task<List<DailySummaryDto>> Daily(
         CancellationToken ct,
         [FromQuery] int days = 14,
         [FromQuery] DateTimeOffset? from = null,
-        [FromQuery] DateTimeOffset? to = null)
+        [FromQuery] DateTimeOffset? to = null,
+        [FromQuery] string? channel = null)
     {
         var all = await _db.Invoices.AsNoTracking()
             .Include(i => i.Lines)
             .ToListAsync(ct);
-        IEnumerable<Invoice> rows = all.Where(i => i.Status == InvoiceStatus.Final);
+        IEnumerable<Invoice> rows = FilterByChannel(all.Where(i => i.Status == InvoiceStatus.Final), channel);
 
         if (from.HasValue || to.HasValue)
         {
@@ -120,10 +137,11 @@ public class ReportsController : ControllerBase
     public async Task<PaymentsSummaryDto> Payments(
         CancellationToken ct,
         [FromQuery] DateTimeOffset? from = null,
-        [FromQuery] DateTimeOffset? to = null)
+        [FromQuery] DateTimeOffset? to = null,
+        [FromQuery] string? channel = null)
     {
         var all = await _db.Invoices.AsNoTracking().ToListAsync(ct);
-        IEnumerable<Invoice> rows = all.Where(i => i.Status == InvoiceStatus.Final);
+        IEnumerable<Invoice> rows = FilterByChannel(all.Where(i => i.Status == InvoiceStatus.Final), channel);
         if (from.HasValue) rows = rows.Where(i => i.CreatedAt >= from.Value);
         if (to.HasValue) rows = rows.Where(i => i.CreatedAt <= to.Value);
 
@@ -267,7 +285,8 @@ public class ReportsController : ControllerBase
     public async Task<ActionResult<StockReportDto>> StockReport(
         [FromQuery] DateTimeOffset? from,
         [FromQuery] DateTimeOffset? to,
-        CancellationToken ct)
+        CancellationToken ct,
+        [FromQuery] string? channel = null)
     {
       try
       {
@@ -380,7 +399,8 @@ public class ReportsController : ControllerBase
         var allInvoices = await _db.Invoices.AsNoTracking()
             .Include(i => i.Lines).ThenInclude(l => l.Product)
             .ToListAsync(ct);
-        IEnumerable<Invoice> filteredInvoices = allInvoices.Where(i => i.Status == InvoiceStatus.Final);
+        IEnumerable<Invoice> filteredInvoices = FilterByChannel(
+            allInvoices.Where(i => i.Status == InvoiceStatus.Final), channel);
         if (from.HasValue) filteredInvoices = filteredInvoices.Where(i => i.CreatedAt >= from.Value);
         if (to.HasValue) filteredInvoices = filteredInvoices.Where(i => i.CreatedAt <= to.Value);
 
