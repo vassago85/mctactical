@@ -47,6 +47,8 @@ public class PublicBrandingDto
     public string PrimaryColor { get; set; } = string.Empty;
     public string SecondaryColor { get; set; } = string.Empty;
     public string AccentColor { get; set; } = string.Empty;
+    /// <summary>True when the business has a VAT number configured; drives VAT wording across the UI.</summary>
+    public bool VatRegistered { get; set; }
     public BrandingTerminologyDto Terminology { get; set; } = new();
     public BrandingFeaturesDto Features { get; set; } = new();
 }

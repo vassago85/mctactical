@@ -13,7 +13,7 @@ import { Chart, registerables } from 'chart.js'
 
 Chart.register(...registerables)
 
-const { businessName, logoUrl } = useBranding()
+const { businessName, logoUrl, vatRegistered } = useBranding()
 const { privacyActive, toggle: togglePrivacy } = usePrivacyMode()
 
 type ProductSoldLine = {
@@ -537,7 +537,7 @@ function renderTopProductsChart() {
 
       <!-- Footer -->
       <footer class="fr-footer">
-        <p>GP = (Revenue − Discounts) − Wholesale cost incl. VAT &nbsp;|&nbsp; {{ businessName }} — VAT reg. All amounts in ZAR.</p>
+        <p>GP = (Revenue − Discounts) − Wholesale cost incl. VAT &nbsp;|&nbsp; {{ businessName }}<template v-if="vatRegistered"> — VAT reg.</template> All amounts in ZAR.</p>
       </footer>
     </div>
   </div>

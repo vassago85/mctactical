@@ -20,6 +20,7 @@ export interface Branding {
   primaryColor: string
   secondaryColor: string
   accentColor: string
+  vatRegistered: boolean
   terminology: BrandingTerminology
   features: BrandingFeatures
 }
@@ -31,6 +32,7 @@ const DEFAULTS: Branding = {
   primaryColor: '',
   secondaryColor: '',
   accentColor: '',
+  vatRegistered: false,
   terminology: { quote: 'Quote', invoice: 'Invoice', customer: 'Customer' },
   features: { quotes: true, discounts: true, brandPricingRules: true },
 }
@@ -56,6 +58,7 @@ function toPayload(raw: unknown): Branding {
     primaryColor: stringOr(r.primaryColor, ''),
     secondaryColor: stringOr(r.secondaryColor, ''),
     accentColor: stringOr(r.accentColor, ''),
+    vatRegistered: boolOr(r.vatRegistered, false),
     terminology: {
       quote: stringOr(term.quote, DEFAULTS.terminology.quote),
       invoice: stringOr(term.invoice, DEFAULTS.terminology.invoice),
@@ -180,6 +183,7 @@ export function useBranding() {
     terminology: computed(() => state.value.terminology),
     features: computed(() => state.value.features),
     accentColor: computed(() => state.value.accentColor),
+    vatRegistered: computed(() => state.value.vatRegistered),
     isLoaded: () => loaded,
     refresh: refreshBranding,
   }

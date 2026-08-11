@@ -490,7 +490,7 @@ function money(n: number | null | undefined): string {
 </script>
 
 <template>
-  <McPageHeader title="Stock Batches" subtitle="Receive, return, and process owned stock from wholesalers" />
+  <McPageHeader title="Stock Batches" description="Receive, return, and process owned stock from wholesalers." />
 
   <McAlert v-if="err" variant="error" style="margin-bottom: 1rem">{{ err }}</McAlert>
 

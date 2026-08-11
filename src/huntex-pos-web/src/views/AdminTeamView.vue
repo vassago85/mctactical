@@ -200,6 +200,11 @@ async function confirmDelete() {
   }
 }
 
+function closeMenu(e: Event) {
+  const details = (e.target as HTMLElement).closest('details')
+  if (details) details.removeAttribute('open')
+}
+
 function openEdit(u: UserRow) {
   editTarget.value = u
   editDisplayName.value = u.displayName ?? ''
@@ -326,15 +331,19 @@ async function saveEdit() {
                   <McButton variant="secondary" dense type="button" @click="toggleLock(u)">
                     {{ u.lockedOut ? 'Unlock' : 'Lock' }}
                   </McButton>
-                  <McButton variant="secondary" dense type="button" @click="resendInvite(u)">Resend invite</McButton>
-                  <McButton variant="ghost" dense type="button" @click="openReset(u)">Set password</McButton>
-                  <McButton
-                    v-if="canDelete && u.email !== auth.email && (!u.roles.includes('Owner') || auth.hasRole('Dev'))"
-                    variant="danger"
-                    dense
-                    type="button"
-                    @click="openDelete(u)"
-                  >Delete</McButton>
+                  <details class="team-more">
+                    <summary class="team-more__trigger" aria-label="More actions">More ▾</summary>
+                    <div class="team-more__menu">
+                      <button type="button" class="team-more__item" @click="closeMenu($event); resendInvite(u)">Resend invite</button>
+                      <button type="button" class="team-more__item" @click="closeMenu($event); openReset(u)">Set password</button>
+                      <button
+                        v-if="canDelete && u.email !== auth.email && (!u.roles.includes('Owner') || auth.hasRole('Dev'))"
+                        type="button"
+                        class="team-more__item team-more__item--danger"
+                        @click="closeMenu($event); openDelete(u)"
+                      >Delete</button>
+                    </div>
+                  </details>
                 </div>
               </td>
             </tr>
@@ -493,10 +502,57 @@ async function saveEdit() {
 
 .team-actions__inner {
   display: inline-flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  align-items: center;
   justify-content: flex-end;
   gap: 0.35rem;
-  max-width: 22rem;
+}
+
+.team-more {
+  position: relative;
+}
+.team-more__trigger {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--mc-app-border, #d9d6cf);
+  border-radius: 0.4rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--mc-app-surface, #fff);
+}
+.team-more__trigger::-webkit-details-marker { display: none; }
+.team-more__menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  z-index: 20;
+  min-width: 11rem;
+  display: flex;
+  flex-direction: column;
+  padding: 0.25rem;
+  background: var(--mc-app-surface, #fff);
+  border: 1px solid var(--mc-app-border, #d9d6cf);
+  border-radius: 0.5rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+.team-more__item {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border: none;
+  background: transparent;
+  border-radius: 0.35rem;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.team-more__item:hover {
+  background: var(--mc-app-hover, #f2f0eb);
+}
+.team-more__item--danger {
+  color: var(--mc-danger, #b42318);
 }
 
 .team-modal-hint {

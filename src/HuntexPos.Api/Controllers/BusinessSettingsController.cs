@@ -157,6 +157,7 @@ public class BusinessSettingsController : ControllerBase
             PrimaryColor = eff.PrimaryColor,
             SecondaryColor = eff.SecondaryColor,
             AccentColor = eff.AccentColor,
+            VatRegistered = !string.IsNullOrWhiteSpace(eff.VatNumber),
             Terminology = new BrandingTerminologyDto
             {
                 Quote = eff.QuoteLabel,

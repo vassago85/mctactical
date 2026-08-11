@@ -18,7 +18,7 @@ import McSpinner from '@/components/ui/McSpinner.vue'
 import { Plus, Pencil, Trash2, X } from 'lucide-vue-next'
 
 const toast = useToast()
-const { businessName } = useBranding()
+const { businessName, vatRegistered } = useBranding()
 
 // ── Legacy PricingSettings (kept under the hood for import fallbacks) ────────
 // The UI no longer exposes the old "default markup %" card — the Global
@@ -527,7 +527,10 @@ onMounted(() => {
 
     <!-- POS display -->
     <McCard title="POS display">
-      <p class="set-hint" style="margin-top: 0">{{ businessName }} is not VAT registered — customer invoices do not add VAT.</p>
+      <p class="set-hint" style="margin-top: 0">
+        <template v-if="vatRegistered">{{ businessName }} is VAT registered — customer invoices show a VAT breakdown.</template>
+        <template v-else>{{ businessName }} is not VAT registered — customer invoices do not add VAT.</template>
+      </p>
       <McCheckbox v-model="dto.hideCostForSalesRole" label="Hide product cost for Sales role" hint="Sales staff won't see cost or margin values" />
       <McActionBar>
         <McButton variant="primary" type="button" @click="savePosDisplay">Save POS display</McButton>

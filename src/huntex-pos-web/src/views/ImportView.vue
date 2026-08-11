@@ -249,8 +249,8 @@ async function commitWholesaler() {
         @change="huntexFile = ($event.target as HTMLInputElement).files?.[0] ?? null"
       />
       <div class="imp-actions">
-        <McButton variant="secondary" type="button" :disabled="busy" @click="previewHuntex">Preview</McButton>
-        <McButton variant="primary" type="button" :disabled="busy" @click="commitHuntex">Commit import</McButton>
+        <McButton variant="secondary" type="button" :disabled="busy || !huntexFile" @click="previewHuntex">Preview</McButton>
+        <McButton variant="primary" type="button" :disabled="busy || !huntexFile" @click="commitHuntex">Commit import</McButton>
       </div>
       <McAlert v-for="w in huntexWarnings" :key="w" variant="warning">{{ w }}</McAlert>
       <div v-if="huntexPreview.length" class="imp-table-wrap">
@@ -301,8 +301,8 @@ async function commitWholesaler() {
         @change="wholesalerFile = ($event.target as HTMLInputElement).files?.[0] ?? null"
       />
       <div class="imp-actions">
-        <McButton variant="secondary" type="button" :disabled="busy" @click="previewWholesaler">Preview</McButton>
-        <McButton variant="primary" type="button" :disabled="busy" @click="commitWholesaler">Commit import</McButton>
+        <McButton variant="secondary" type="button" :disabled="busy || !wholesalerFile" @click="previewWholesaler">Preview</McButton>
+        <McButton variant="primary" type="button" :disabled="busy || !wholesalerFile" @click="commitWholesaler">Commit import</McButton>
       </div>
       <div v-if="wholesalerPreview.length" class="imp-table-wrap">
         <table class="mc-table">
@@ -393,9 +393,28 @@ async function commitWholesaler() {
 .imp-file {
   display: block;
   margin: 0.75rem 0;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   max-width: 100%;
   overflow: hidden;
+  color: var(--mc-app-text-muted, #5c5a56);
+}
+
+.imp-file::file-selector-button {
+  margin-right: 0.75rem;
+  padding: 0.45rem 0.85rem;
+  border: 1px solid var(--mc-app-border, #d9d6cf);
+  border-radius: 0.45rem;
+  background: var(--mc-app-surface, #fff);
+  color: var(--mc-app-text, #1a1917);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.imp-file::file-selector-button:hover {
+  background: var(--mc-app-hover, #f2f0eb);
+  border-color: var(--mc-app-border-strong, #b9b4a9);
 }
 
 .imp-actions {
