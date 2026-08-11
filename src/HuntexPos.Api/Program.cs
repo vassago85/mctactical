@@ -108,6 +108,7 @@ builder.Services.AddScoped<QuoteService>();
 builder.Services.AddScoped<ImportService>();
 builder.Services.AddScoped<StocktakeService>();
 builder.Services.AddScoped<IPricingService, PricingService>();
+builder.Services.AddSingleton<ShopifyTokenProvider>();
 builder.Services.AddHttpClient<ShopifyClient>();
 builder.Services.AddScoped<ShopifyOrderImportService>();
 

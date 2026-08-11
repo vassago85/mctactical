@@ -25,17 +25,19 @@ public class ShopifyClient
 
     private readonly HttpClient _http;
     private readonly ShopifyOptions _opt;
+    private readonly ShopifyTokenProvider _tokens;
 
-    public ShopifyClient(HttpClient http, IOptions<ShopifyOptions> opt)
+    public ShopifyClient(HttpClient http, IOptions<ShopifyOptions> opt, ShopifyTokenProvider tokens)
     {
         _http = http;
         _opt = opt.Value;
+        _tokens = tokens;
     }
 
     public bool IsConfigured =>
         _opt.Enabled
         && !string.IsNullOrWhiteSpace(_opt.ShopDomain)
-        && !string.IsNullOrWhiteSpace(_opt.AdminAccessToken);
+        && _tokens.HasCredentials;
 
     private string GraphQlUrl =>
         $"https://{_opt.ShopDomain.Trim().TrimEnd('/')}/admin/api/{_opt.ApiVersion}/graphql.json";
@@ -54,8 +56,9 @@ public class ShopifyClient
     {
         EnsureConfigured();
 
+        var token = await _tokens.GetTokenAsync(ct);
         var req = new HttpRequestMessage(HttpMethod.Post, GraphQlUrl);
-        req.Headers.Add("X-Shopify-Access-Token", _opt.AdminAccessToken.Trim());
+        req.Headers.Add("X-Shopify-Access-Token", token);
         req.Content = new StringContent(
             JsonSerializer.Serialize(new { query, variables }, Json), Encoding.UTF8, "application/json");
 
