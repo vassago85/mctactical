@@ -95,18 +95,20 @@ public class ShopifyController : ControllerBase
     }
 
     /// <summary>
-    /// Initial two-way reconcile (link-only). Matches POS products to Shopify variants by SKU and
-    /// stores the Shopify ids on the POS product WITHOUT overwriting any field values. Defaults to a
-    /// dry-run preview; pass <c>apply=true</c> to persist the links. Shopify-only items are reported,
-    /// not imported. SKUs that appear on more than one Shopify variant are skipped as ambiguous.
+    /// Initial two-way reconcile (link-only). Links POS products to Shopify variants and stores the
+    /// Shopify ids on the POS product WITHOUT overwriting any field values. Matching is attempted in
+    /// order of confidence: exact SKU, then real barcode, then normalized SKU (case/punctuation/
+    /// leading-zero-insensitive). A POS product is only linked when exactly one *unclaimed* Shopify
+    /// variant matches, and each variant is claimed once so nothing is double-linked. Defaults to a
+    /// dry-run preview; pass <c>apply=true</c> to persist. Shopify-only items are reported, not imported.
     /// </summary>
     [HttpPost("reconcile")]
     public async Task<IActionResult> Reconcile([FromQuery] bool apply = false, CancellationToken ct = default)
     {
-        List<ShopifyVariantRef> shopifyVariants;
+        List<ShopifyVariantDetail> variants;
         try
         {
-            shopifyVariants = await _shopify.GetAllVariantsAsync(ct);
+            variants = await _shopify.GetAllVariantDetailsAsync(ct);
         }
         catch (ShopifyNotConfiguredException ex)
         {
@@ -117,44 +119,44 @@ public class ShopifyController : ControllerBase
             return StatusCode(502, new { error = "Shopify rejected the request.", status = ex.StatusCode, detail = ex.Message });
         }
 
-        // Group Shopify variants by SKU so we can detect (and skip) ambiguous duplicates.
-        var shopifyBySku = shopifyVariants
-            .GroupBy(v => v.Sku, StringComparer.OrdinalIgnoreCase)
+        var byExactSku = variants
+            .Where(v => !string.IsNullOrWhiteSpace(v.Sku))
+            .GroupBy(v => v.Sku!.Trim(), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+        var byBarcode = variants
+            .Where(v => IsRealBarcode(v.Barcode))
+            .GroupBy(v => v.Barcode!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+        var byNormSku = variants
+            .Where(v => !string.IsNullOrWhiteSpace(v.Sku) && NormalizeSku(v.Sku).Length > 0)
+            .GroupBy(v => NormalizeSku(v.Sku!), StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
 
-        var ambiguousSkus = shopifyBySku.Where(kv => kv.Value.Count > 1).Select(kv => kv.Key).ToList();
+        var ambiguousSkus = byExactSku.Where(kv => kv.Value.Count > 1).Select(kv => kv.Key).ToList();
 
         var products = await _db.Products
             .Where(p => p.Active && p.Sku != null && p.Sku != "")
             .ToListAsync(ct);
 
-        var linked = new List<string>();
+        var linkedExact = new List<string>();
+        var linkedBarcode = new List<string>();
+        var linkedNorm = new List<string>();
         var alreadyLinked = new List<string>();
         var ambiguousMatched = new List<string>();
-        var posOnly = new List<string>();
 
-        foreach (var p in products)
+        // Variants already spoken for, so a later/looser rule never steals one.
+        var claimedVariantIds = new HashSet<long>();
+        var resolved = new HashSet<Guid>();
+
+        foreach (var p in products.Where(p => p.ShopifyVariantId.HasValue))
         {
-            var sku = p.Sku.Trim();
-            if (!shopifyBySku.TryGetValue(sku, out var variants))
-            {
-                posOnly.Add(sku);
-                continue;
-            }
+            alreadyLinked.Add(p.Sku.Trim());
+            claimedVariantIds.Add(p.ShopifyVariantId!.Value);
+            resolved.Add(p.Id);
+        }
 
-            if (variants.Count > 1)
-            {
-                ambiguousMatched.Add(sku);
-                continue;
-            }
-
-            if (p.ShopifyVariantId.HasValue)
-            {
-                alreadyLinked.Add(sku);
-                continue;
-            }
-
-            var v = variants[0];
+        void Link(Product p, ShopifyVariantDetail v, List<string> bucket)
+        {
             if (apply)
             {
                 p.ShopifyProductId = v.ProductId;
@@ -162,32 +164,79 @@ public class ShopifyController : ControllerBase
                 p.ShopifyInventoryItemId = v.InventoryItemId == 0 ? null : v.InventoryItemId;
                 p.ShopifySyncedAt = DateTimeOffset.UtcNow;
             }
-            linked.Add(sku);
+            claimedVariantIds.Add(v.VariantId);
+            resolved.Add(p.Id);
+            bucket.Add(p.Sku.Trim());
         }
 
-        if (apply && linked.Count > 0)
+        // Pass 1: exact SKU (strongest — claims variants first).
+        foreach (var p in products.Where(p => !resolved.Contains(p.Id)))
+        {
+            if (!byExactSku.TryGetValue(p.Sku.Trim(), out var vs)) continue;
+            if (vs.Count > 1) { ambiguousMatched.Add(p.Sku.Trim()); resolved.Add(p.Id); continue; }
+            if (!claimedVariantIds.Contains(vs[0].VariantId)) Link(p, vs[0], linkedExact);
+        }
+
+        // Pass 2: real barcode.
+        foreach (var p in products.Where(p => !resolved.Contains(p.Id)))
+        {
+            if (!IsRealBarcode(p.Barcode) || !byBarcode.TryGetValue(p.Barcode!.Trim(), out var vs)) continue;
+            var avail = vs.Where(v => !claimedVariantIds.Contains(v.VariantId)).ToList();
+            if (avail.Count == 1) Link(p, avail[0], linkedBarcode);
+        }
+
+        // Pass 3: normalized SKU.
+        foreach (var p in products.Where(p => !resolved.Contains(p.Id)))
+        {
+            var norm = NormalizeSku(p.Sku);
+            if (norm.Length == 0 || !byNormSku.TryGetValue(norm, out var vs)) continue;
+            var avail = vs.Where(v => !claimedVariantIds.Contains(v.VariantId)).ToList();
+            if (avail.Count == 1) Link(p, avail[0], linkedNorm);
+        }
+
+        var posOnly = products.Where(p => !resolved.Contains(p.Id)).Select(p => p.Sku.Trim()).ToList();
+        var totalLinked = linkedExact.Count + linkedBarcode.Count + linkedNorm.Count;
+
+        if (apply && totalLinked > 0)
             await _db.SaveChangesAsync(ct);
 
         var posSkuSet = new HashSet<string>(products.Select(p => p.Sku.Trim()), StringComparer.OrdinalIgnoreCase);
-        var shopifyOnly = shopifyBySku.Keys.Where(s => !posSkuSet.Contains(s)).ToList();
+        var shopifyOnly = byExactSku.Keys.Where(s => !posSkuSet.Contains(s)).ToList();
 
         return Ok(new
         {
             applied = apply,
-            linkedCount = linked.Count,
+            linkedCount = totalLinked,
+            linkedByExactSku = linkedExact.Count,
+            linkedByBarcode = linkedBarcode.Count,
+            linkedByNormalizedSku = linkedNorm.Count,
             alreadyLinkedCount = alreadyLinked.Count,
             posOnlyCount = posOnly.Count,
             shopifyOnlyCount = shopifyOnly.Count,
             ambiguousSkuCount = ambiguousSkus.Count,
             ambiguousMatchedCount = ambiguousMatched.Count,
-            sampleLinked = linked.Take(25).ToList(),
+            sampleLinkedByBarcode = linkedBarcode.Take(25).ToList(),
+            sampleLinkedByNormalizedSku = linkedNorm.Take(25).ToList(),
             samplePosOnly = posOnly.Take(25).ToList(),
             sampleShopifyOnly = shopifyOnly.Take(25).ToList(),
             sampleAmbiguous = ambiguousMatched.Take(25).ToList(),
             note = apply
-                ? "Links saved. No product fields were overwritten. Shopify-only items were not imported."
+                ? "Links saved. No product fields were overwritten. Matched by exact SKU, then real barcode, then normalized SKU. Shopify-only items were not imported."
                 : "Preview only \u2014 nothing was saved. Re-run with ?apply=true to persist the links."
         });
+    }
+
+    /// <summary>
+    /// A barcode is trustworthy for matching only when it looks like a real EAN/UPC: 8+ characters,
+    /// all digits, and not a placeholder of a single repeated digit (e.g. "0000000000277").
+    /// </summary>
+    private static bool IsRealBarcode(string? barcode)
+    {
+        if (string.IsNullOrWhiteSpace(barcode)) return false;
+        var b = barcode.Trim();
+        if (b.Length < 8) return false;
+        if (!b.All(char.IsDigit)) return false;
+        return b.Distinct().Count() > 1;
     }
 
     /// <summary>
