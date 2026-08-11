@@ -7,6 +7,10 @@ services:
     volumes:
       # Default ./data (next to compose file) for local dev. Production: MCTACTICAL_DATA_DIR=/opt/mctactical in .env
       - ${MCTACTICAL_DATA_DIR:-./data}:/app/data
+    # Load .env into the container so keys like Shopify__* are picked up directly by .NET
+    # config (double underscore = section:key). Values in `environment:` below take precedence.
+    env_file:
+      - .env
     environment:
       TZ: Africa/Johannesburg
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
