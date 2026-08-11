@@ -19,7 +19,7 @@ public class ShopifyOrderImportService
     private const decimal TaxRate = 15m;
 
     /// <summary>SKU of the hidden catalog row unmatched Shopify line items are attached to.</summary>
-    private const string UnlinkedPlaceholderSku = "SHOPIFY-UNLINKED";
+    public const string UnlinkedPlaceholderSku = "SHOPIFY-UNLINKED";
 
     private readonly HuntexDbContext _db;
     private readonly ShopifyClient _shopify;
@@ -186,7 +186,8 @@ public class ShopifyOrderImportService
                 LineTotal = lineTotal,
                 CostAtSale = isMatch
                     ? Math.Round(product!.Cost * (1 - product.SupplierDiscountPercent / 100m), 2)
-                    : 0m
+                    : 0m,
+                ShopifyVariantId = item.VariantId
             });
         }
 

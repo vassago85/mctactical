@@ -44,6 +44,7 @@ public static class DbSeeder
         await EnsureProductSupplierDiscountColumnAsync(db, ct);
         await EnsureProductShopifyColumnsAsync(db, ct);
         await EnsureInvoiceShopifyColumnsAsync(db, ct);
+        await EnsureInvoiceLineShopifyColumnsAsync(db, ct);
         await MergeDuplicateSkusAsync(db, log, ct);
         await VenaticsGearSeeder.SeedAsync(db, log, ct);
 
@@ -480,6 +481,13 @@ public static class DbSeeder
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "Source" TEXT NULL;""", ct); } catch { }
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "ShopifyOrderId" INTEGER NULL;""", ct); } catch { }
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "ShopifyOrderName" TEXT NULL;""", ct); } catch { }
+    }
+
+    /// <summary>Add the Shopify variant id column to InvoiceLines if missing (older DBs).</summary>
+    private static async Task EnsureInvoiceLineShopifyColumnsAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "InvoiceLines" ADD COLUMN "ShopifyVariantId" INTEGER NULL;""", ct); } catch { }
     }
 
     /// <summary>

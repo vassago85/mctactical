@@ -25,4 +25,11 @@ public class InvoiceLine
 
     /// <summary>Wholesale cost (excl VAT) snapshotted at time of sale for GP reporting.</summary>
     public decimal CostAtSale { get; set; }
+
+    /// <summary>
+    /// For Shopify-imported lines, the Shopify variant id sold. Populated for every imported line
+    /// (matched and unmatched) so unlinked online sales can be aggregated and later linked to a POS
+    /// product. Null for in-store sales and for shipping lines.
+    /// </summary>
+    public long? ShopifyVariantId { get; set; }
 }

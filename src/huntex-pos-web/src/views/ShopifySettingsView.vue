@@ -3,14 +3,17 @@
  * Shopify integration tools (Owner/Dev). Currently hosts category/tag sync; the
  * "Match Shopify sales" tool is added here in a later phase.
  */
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { http } from '@/api/http'
 import { useToast } from '@/composables/useToast'
+import { formatZAR, formatNumber } from '@/utils/format'
 import McPageHeader from '@/components/ui/McPageHeader.vue'
 import McCard from '@/components/ui/McCard.vue'
 import McButton from '@/components/ui/McButton.vue'
+import McField from '@/components/ui/McField.vue'
 import McAlert from '@/components/ui/McAlert.vue'
 import McSpinner from '@/components/ui/McSpinner.vue'
+import McEmptyState from '@/components/ui/McEmptyState.vue'
 
 const toast = useToast()
 
@@ -46,6 +49,93 @@ async function previewTags() {
   }
 }
 
+// ── Match Shopify sales (link unlinked online items to POS products) ────────
+type UnlinkedSale = {
+  shopifyVariantId: number | null
+  shopifySku: string | null
+  title: string
+  qtySold: number
+  revenue: number
+  orderCount: number
+}
+type ProductHit = { id: string; sku: string; name: string; sellPrice: number }
+
+const unlinked = ref<UnlinkedSale[]>([])
+const unlinkedBusy = ref(false)
+const unlinkedErr = ref<string | null>(null)
+const activeKey = ref<string | null>(null)
+const productQuery = ref('')
+const productResults = ref<ProductHit[]>([])
+const searchingProducts = ref(false)
+const linkBusy = ref(false)
+let productSearchTimer: ReturnType<typeof setTimeout> | null = null
+
+function rowKey(r: UnlinkedSale): string {
+  return r.shopifyVariantId != null ? `v:${r.shopifyVariantId}` : `s:${(r.shopifySku ?? '').toLowerCase()}`
+}
+
+async function loadUnlinked() {
+  unlinkedBusy.value = true
+  unlinkedErr.value = null
+  try {
+    const { data } = await http.get<UnlinkedSale[]>('/api/shopify/unlinked-sales')
+    unlinked.value = data
+  } catch (e) {
+    unlinkedErr.value = handleErr(e, 'Could not load unlinked sales')
+  } finally {
+    unlinkedBusy.value = false
+  }
+}
+
+function openLink(r: UnlinkedSale) {
+  const key = rowKey(r)
+  activeKey.value = activeKey.value === key ? null : key
+  productQuery.value = ''
+  productResults.value = []
+}
+
+function searchProducts() {
+  if (productSearchTimer) clearTimeout(productSearchTimer)
+  productSearchTimer = setTimeout(async () => {
+    const q = productQuery.value.trim()
+    if (!q) { productResults.value = []; return }
+    searchingProducts.value = true
+    try {
+      const { data } = await http.get<ProductHit[]>('/api/products', { params: { q, take: 10 } })
+      productResults.value = data
+    } catch {
+      productResults.value = []
+    } finally {
+      searchingProducts.value = false
+    }
+  }, 250)
+}
+
+async function linkTo(r: UnlinkedSale, product: ProductHit) {
+  if (linkBusy.value) return
+  if (!confirm(`Link "${r.title}" to ${product.sku} — ${product.name}? This also reclassifies its past Shopify sales.`)) return
+  linkBusy.value = true
+  try {
+    const { data } = await http.post<{ reclassifiedLineCount: number }>('/api/shopify/link-variant', {
+      shopifyVariantId: r.shopifyVariantId,
+      shopifySku: r.shopifySku,
+      posProductId: product.id
+    })
+    const n = data.reclassifiedLineCount ?? 0
+    toast.success(`Linked. ${n} past sale line${n === 1 ? '' : 's'} reclassified.`)
+    unlinked.value = unlinked.value.filter(x => rowKey(x) !== rowKey(r))
+    activeKey.value = null
+    productQuery.value = ''
+    productResults.value = []
+  } catch (e) {
+    toast.error(handleErr(e, 'Link failed'))
+  } finally {
+    linkBusy.value = false
+  }
+}
+
+onMounted(loadUnlinked)
+
 async function syncTags() {
   const count = tagPreview.value?.linkedProductCount
   const confirmMsg = count
@@ -78,6 +168,81 @@ async function syncTags() {
         Tools for keeping the POS and your Shopify store aligned. The POS is the source of truth.
       </template>
     </McPageHeader>
+
+    <McCard title="Match Shopify sales">
+      <p class="shp-hint">
+        Shopify items that sold online but aren't linked to a POS product, highest revenue first.
+        Link each to its POS product to attribute past and future sales correctly (this also fixes the
+        Shopify gross-profit figure as items are matched).
+      </p>
+
+      <McAlert v-if="unlinkedErr" variant="error">{{ unlinkedErr }}</McAlert>
+
+      <div class="shp-actions">
+        <McButton variant="secondary" type="button" :disabled="unlinkedBusy" @click="loadUnlinked">
+          <McSpinner v-if="unlinkedBusy" />
+          <span v-else>Refresh</span>
+        </McButton>
+      </div>
+
+      <div v-if="unlinkedBusy && !unlinked.length" class="shp-loading"><McSpinner /> Loading…</div>
+
+      <McEmptyState
+        v-else-if="!unlinked.length"
+        title="Nothing to link"
+        description="Every Shopify item that has sold is linked to a POS product."
+      />
+
+      <table v-else class="shp-table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th class="shp-r">Qty</th>
+            <th class="shp-r">Revenue</th>
+            <th class="shp-r">Orders</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template v-for="r in unlinked" :key="rowKey(r)">
+            <tr>
+              <td>
+                <div class="shp-item-title">{{ r.title }}</div>
+                <div v-if="r.shopifySku" class="shp-item-sku">{{ r.shopifySku }}</div>
+              </td>
+              <td class="shp-r">{{ formatNumber(r.qtySold) }}</td>
+              <td class="shp-r">{{ formatZAR(r.revenue) }}</td>
+              <td class="shp-r">{{ formatNumber(r.orderCount) }}</td>
+              <td class="shp-r">
+                <McButton variant="ghost" dense type="button" @click="openLink(r)">
+                  {{ activeKey === rowKey(r) ? 'Cancel' : 'Link to POS product' }}
+                </McButton>
+              </td>
+            </tr>
+            <tr v-if="activeKey === rowKey(r)" class="shp-link-row">
+              <td colspan="5">
+                <McField label="Search POS product" :for-id="`lk-${rowKey(r)}`">
+                  <input
+                    :id="`lk-${rowKey(r)}`"
+                    v-model="productQuery"
+                    autocomplete="off"
+                    placeholder="SKU or name…"
+                    @input="searchProducts"
+                  />
+                </McField>
+                <div v-if="searchingProducts" class="shp-hint"><McSpinner /> Searching…</div>
+                <ul v-else-if="productResults.length" class="shp-search-results">
+                  <li v-for="p in productResults" :key="p.id" :class="{ 'shp-disabled': linkBusy }" @click="linkTo(r, p)">
+                    <strong>{{ p.sku }}</strong> — {{ p.name }} ({{ formatZAR(p.sellPrice) }})
+                  </li>
+                </ul>
+                <p v-else-if="productQuery.trim()" class="shp-hint">No products match “{{ productQuery }}”.</p>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </McCard>
 
     <McCard title="Categories &amp; tags">
       <p class="shp-hint">
@@ -188,4 +353,55 @@ async function syncTags() {
   font-size: 0.82rem;
   color: var(--mc-app-danger, #9a1818);
 }
+
+.shp-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.25rem 0;
+  color: var(--mc-app-text-muted, #5c5a56);
+}
+
+.shp-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.75rem;
+  font-size: 0.86rem;
+}
+.shp-table th {
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--mc-app-text-muted, #666);
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1.5px solid var(--mc-app-border-subtle, #c8c5bd);
+}
+.shp-table td {
+  padding: 0.5rem 0.5rem;
+  border-bottom: 1px solid var(--mc-app-border-faint, #eceae5);
+  vertical-align: top;
+}
+.shp-r { text-align: right; font-variant-numeric: tabular-nums; }
+.shp-item-title { font-weight: 600; color: var(--mc-app-text, #1a1a1c); }
+.shp-item-sku { font-size: 0.76rem; color: var(--mc-app-text-muted, #8a8780); font-variant-numeric: tabular-nums; }
+.shp-link-row td { background: var(--mc-app-bg-subtle, #f6f4f1); }
+.shp-search-results {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  border: 1px solid var(--mc-app-border-soft, #ddd9d3);
+  border-radius: 0.35rem;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--mc-app-surface, #fff);
+}
+.shp-search-results li {
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.84rem;
+}
+.shp-search-results li:hover { background: var(--mc-app-hover, #f0ede8); }
+.shp-search-results li.shp-disabled { pointer-events: none; opacity: 0.6; }
 </style>

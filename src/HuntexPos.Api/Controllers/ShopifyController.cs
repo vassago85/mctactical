@@ -510,6 +510,113 @@ public class ShopifyController : ControllerBase
     }
 
     /// <summary>
+    /// List Shopify sale items that are not yet linked to a POS product, aggregated by Shopify variant
+    /// (falling back to the sale SKU when the variant id is missing on older imports) and sorted by
+    /// revenue so the highest-impact items to link surface first. Shipping lines are excluded. Read-only.
+    /// </summary>
+    [HttpGet("unlinked-sales")]
+    public async Task<IActionResult> UnlinkedSales(CancellationToken ct = default)
+    {
+        var placeholder = await _db.Products
+            .FirstOrDefaultAsync(p => p.Sku == ShopifyOrderImportService.UnlinkedPlaceholderSku, ct);
+        if (placeholder == null)
+            return Ok(Array.Empty<object>());
+
+        // Placeholder-attached Shopify lines, minus shipping (which carries neither variant id nor SKU).
+        var lines = await _db.InvoiceLines
+            .Where(l => l.ProductId == placeholder.Id
+                && l.Invoice!.Source == "Shopify"
+                && !(l.ShopifyVariantId == null && l.SkuAtSale == null))
+            .Select(l => new { l.ShopifyVariantId, l.SkuAtSale, l.Description, l.Quantity, l.LineTotal, l.InvoiceId })
+            .ToListAsync(ct);
+
+        var groups = lines
+            .GroupBy(l => l.ShopifyVariantId.HasValue
+                ? $"v:{l.ShopifyVariantId.Value}"
+                : $"s:{(l.SkuAtSale ?? string.Empty).Trim().ToLowerInvariant()}")
+            .Select(g => new
+            {
+                shopifyVariantId = g.Select(x => x.ShopifyVariantId).FirstOrDefault(v => v.HasValue),
+                shopifySku = g.Select(x => x.SkuAtSale).FirstOrDefault(s => !string.IsNullOrWhiteSpace(s)),
+                title = g.GroupBy(x => x.Description)
+                    .OrderByDescending(gg => gg.Count())
+                    .Select(gg => gg.Key)
+                    .FirstOrDefault() ?? "Shopify item",
+                qtySold = g.Sum(x => x.Quantity),
+                revenue = g.Sum(x => x.LineTotal),
+                orderCount = g.Select(x => x.InvoiceId).Distinct().Count()
+            })
+            .OrderByDescending(x => x.revenue)
+            .ToList();
+
+        return Ok(groups);
+    }
+
+    /// <summary>
+    /// Link a Shopify sale item to a POS product and reclassify its past Shopify sales off the
+    /// placeholder onto that product (recomputing cost for GP). Idempotent: re-linking the same
+    /// variant is a no-op; linking a product already tied to a different variant returns 409.
+    /// </summary>
+    [HttpPost("link-variant")]
+    public async Task<IActionResult> LinkVariant([FromBody] LinkVariantRequest req, CancellationToken ct = default)
+    {
+        if (req.ShopifyVariantId is null or 0 && string.IsNullOrWhiteSpace(req.ShopifySku))
+            return BadRequest(new { error = "Provide a Shopify variant id or SKU to link." });
+
+        var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == req.PosProductId, ct);
+        if (product == null)
+            return NotFound(new { error = "POS product not found." });
+
+        if (req.ShopifyVariantId is > 0
+            && product.ShopifyVariantId.HasValue
+            && product.ShopifyVariantId.Value != req.ShopifyVariantId.Value)
+        {
+            return Conflict(new
+            {
+                error = $"'{product.Sku}' is already linked to a different Shopify variant ({product.ShopifyVariantId}). Unlink it first."
+            });
+        }
+
+        var placeholder = await _db.Products
+            .FirstOrDefaultAsync(p => p.Sku == ShopifyOrderImportService.UnlinkedPlaceholderSku, ct);
+
+        var sku = req.ShopifySku?.Trim();
+        var candidates = placeholder == null
+            ? new List<InvoiceLine>()
+            : await _db.InvoiceLines
+                .Where(l => l.ProductId == placeholder.Id
+                    && l.Invoice!.Source == "Shopify"
+                    && ((req.ShopifyVariantId > 0 && l.ShopifyVariantId == req.ShopifyVariantId)
+                        || (l.ShopifyVariantId == null && sku != null && l.SkuAtSale == sku)))
+                .ToListAsync(ct);
+
+        var costAtSale = Math.Round(product.Cost * (1 - product.SupplierDiscountPercent / 100m), 2);
+        foreach (var line in candidates)
+        {
+            line.ProductId = product.Id;
+            line.CostAtSale = costAtSale;
+            if (req.ShopifyVariantId > 0) line.ShopifyVariantId = req.ShopifyVariantId;
+        }
+
+        if (req.ShopifyVariantId > 0)
+        {
+            product.ShopifyVariantId = req.ShopifyVariantId;
+            product.ShopifySyncedAt = DateTimeOffset.UtcNow;
+        }
+
+        await _db.SaveChangesAsync(ct);
+
+        return Ok(new
+        {
+            posProductId = product.Id,
+            product.Sku,
+            linkedShopifyVariantId = req.ShopifyVariantId,
+            reclassifiedLineCount = candidates.Count,
+            note = "Linked. Past Shopify sales of this item now attribute to the POS product; future imports match it automatically."
+        });
+    }
+
+    /// <summary>
     /// Normalize a SKU for loose matching: uppercase, strip everything except letters/digits, then
     /// drop leading zeros. Turns "for-004351", "FOR004351" and "FOR4351" into the same key.
     /// </summary>
@@ -521,3 +628,6 @@ public class ShopifyController : ControllerBase
         return cleaned;
     }
 }
+
+/// <summary>Request body for linking a Shopify sale item to a POS product.</summary>
+public record LinkVariantRequest(long? ShopifyVariantId, string? ShopifySku, Guid PosProductId);
