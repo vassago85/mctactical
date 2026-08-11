@@ -39,6 +39,8 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
             e.HasIndex(p => p.Name);
             e.HasIndex(p => p.Manufacturer);
             e.HasIndex(p => p.ItemType);
+            e.HasIndex(p => p.ShopifyProductId);
+            e.HasIndex(p => p.ShopifyVariantId);
             e.Property(p => p.Cost).HasPrecision(18, 2);
             e.Property(p => p.SupplierDiscountPercent).HasPrecision(18, 4);
             e.Property(p => p.SellPrice).HasPrecision(18, 2);
@@ -63,6 +65,7 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
         {
             e.HasIndex(i => i.InvoiceNumber).IsUnique();
             e.HasIndex(i => i.PublicToken).IsUnique();
+            e.HasIndex(i => i.ShopifyOrderId);
             e.Property(i => i.SubTotal).HasPrecision(18, 2);
             e.Property(i => i.TaxRate).HasPrecision(18, 2);
             e.Property(i => i.TaxAmount).HasPrecision(18, 2);

@@ -392,13 +392,18 @@ public class InvoiceService
         inv.VoidedAt = DateTimeOffset.UtcNow;
         inv.VoidedByUserId = userId;
 
-        foreach (var line in inv.Lines)
+        // Imported Shopify sales never decremented POS stock, so voiding them must not add it back.
+        var restoresStock = !string.Equals(inv.Source, "Shopify", StringComparison.OrdinalIgnoreCase);
+        if (restoresStock)
         {
-            var p = await _db.Products.FirstOrDefaultAsync(x => x.Id == line.ProductId, ct);
-            if (p != null)
+            foreach (var line in inv.Lines)
             {
-                p.QtyOnHand += line.Quantity;
-                p.UpdatedAt = DateTimeOffset.UtcNow;
+                var p = await _db.Products.FirstOrDefaultAsync(x => x.Id == line.ProductId, ct);
+                if (p != null)
+                {
+                    p.QtyOnHand += line.Quantity;
+                    p.UpdatedAt = DateTimeOffset.UtcNow;
+                }
             }
         }
         await _db.SaveChangesAsync(ct);

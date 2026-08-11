@@ -40,5 +40,16 @@ public class Invoice
     public DateTimeOffset? DeliveredAt { get; set; }
     public string? DeliveryNotes { get; set; }
 
+    // --- Sales channel / Shopify import ---
+
+    /// <summary>Where this sale originated: null/"POS" for in-store, "Shopify" for imported online orders.</summary>
+    public string? Source { get; set; }
+
+    /// <summary>Shopify order id for imported online sales (used to prevent duplicate imports).</summary>
+    public long? ShopifyOrderId { get; set; }
+
+    /// <summary>Human-facing Shopify order name, e.g. "#1001".</summary>
+    public string? ShopifyOrderName { get; set; }
+
     public ICollection<InvoiceLine> Lines { get; set; } = new List<InvoiceLine>();
 }

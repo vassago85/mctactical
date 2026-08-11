@@ -44,4 +44,20 @@ public class Product
     public bool Active { get; set; } = true;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }
+
+    // --- Shopify sync mapping (POS is source of truth) ---
+    // Populated the first time a product is pushed to (or matched against) Shopify.
+    // Null means "not yet linked to any Shopify product".
+
+    /// <summary>Shopify Admin product id (int64) once this POS product is linked.</summary>
+    public long? ShopifyProductId { get; set; }
+
+    /// <summary>Shopify variant id — the level that actually carries SKU, price and barcode.</summary>
+    public long? ShopifyVariantId { get; set; }
+
+    /// <summary>Shopify inventory item id — the level inventory quantities are set against.</summary>
+    public long? ShopifyInventoryItemId { get; set; }
+
+    /// <summary>Last time this product was successfully pushed to Shopify.</summary>
+    public DateTimeOffset? ShopifySyncedAt { get; set; }
 }

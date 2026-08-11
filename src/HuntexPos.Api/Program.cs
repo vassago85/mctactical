@@ -19,6 +19,7 @@ builder.Services.Configure<AppOptions>(builder.Configuration.GetSection(AppOptio
 builder.Services.Configure<MailgunOptions>(builder.Configuration.GetSection(MailgunOptions.SectionName));
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
 builder.Services.Configure<PosRulesOptions>(builder.Configuration.GetSection(PosRulesOptions.SectionName));
+builder.Services.Configure<ShopifyOptions>(builder.Configuration.GetSection(ShopifyOptions.SectionName));
 
 var conn = builder.Configuration.GetConnectionString("Default")
            ?? "Data Source=huntex.db";
@@ -107,6 +108,8 @@ builder.Services.AddScoped<QuoteService>();
 builder.Services.AddScoped<ImportService>();
 builder.Services.AddScoped<StocktakeService>();
 builder.Services.AddScoped<IPricingService, PricingService>();
+builder.Services.AddHttpClient<ShopifyClient>();
+builder.Services.AddScoped<ShopifyOrderImportService>();
 
 builder.Services.AddCors(o =>
 {

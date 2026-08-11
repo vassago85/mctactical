@@ -42,6 +42,8 @@ public static class DbSeeder
         await EnsureQuotesTablesAsync(db, ct);
         await EnsureAspNetUsersSupplierColumnAsync(db, ct);
         await EnsureProductSupplierDiscountColumnAsync(db, ct);
+        await EnsureProductShopifyColumnsAsync(db, ct);
+        await EnsureInvoiceShopifyColumnsAsync(db, ct);
         await MergeDuplicateSkusAsync(db, log, ct);
         await VenaticsGearSeeder.SeedAsync(db, log, ct);
 
@@ -459,6 +461,25 @@ public static class DbSeeder
     {
         if (!db.Database.IsSqlite()) return;
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "SupplierDiscountPercent" TEXT NOT NULL DEFAULT '0';""", ct); } catch { }
+    }
+
+    /// <summary>Add Shopify mapping columns to Products if missing (older DBs).</summary>
+    private static async Task EnsureProductShopifyColumnsAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "ShopifyProductId" INTEGER NULL;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "ShopifyVariantId" INTEGER NULL;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "ShopifyInventoryItemId" INTEGER NULL;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Products" ADD COLUMN "ShopifySyncedAt" TEXT NULL;""", ct); } catch { }
+    }
+
+    /// <summary>Add Shopify order-import columns to Invoices if missing (older DBs).</summary>
+    private static async Task EnsureInvoiceShopifyColumnsAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "Source" TEXT NULL;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "ShopifyOrderId" INTEGER NULL;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "ShopifyOrderName" TEXT NULL;""", ct); } catch { }
     }
 
     /// <summary>
