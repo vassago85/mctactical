@@ -103,6 +103,7 @@ function logout() {
           <p class="mc-nav-group__label">Settings</p>
           <RouterLink class="mc-nav-link" to="/settings" @click="sidebarOpen = false"><DollarSign :size="16" />Pricing</RouterLink>
           <RouterLink class="mc-nav-link" to="/settings/business" @click="sidebarOpen = false"><SettingsIcon :size="16" />Business</RouterLink>
+          <RouterLink v-if="auth.hasRole('Owner', 'Dev')" class="mc-nav-link" to="/settings/shopify" @click="sidebarOpen = false"><Store :size="16" />Shopify</RouterLink>
           <RouterLink class="mc-nav-link" to="/setup" @click="sidebarOpen = false"><Mail :size="16" />Email</RouterLink>
           <RouterLink class="mc-nav-link" to="/admin/team" @click="sidebarOpen = false"><Users :size="16" />Team</RouterLink>
         </div>

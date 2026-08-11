@@ -312,6 +312,7 @@ public class ShopifyClient
             descriptionHtml = p.Description,
             vendor = string.IsNullOrWhiteSpace(p.Manufacturer) ? null : p.Manufacturer,
             productType = string.IsNullOrWhiteSpace(p.ItemType) ? null : p.ItemType,
+            tags = BuildTags(p),
             status = p.Active ? "ACTIVE" : "DRAFT"
         };
 
@@ -334,12 +335,49 @@ public class ShopifyClient
 
     private async Task<ShopifyPushResult> UpdateExistingAsync(Product p, CancellationToken ct)
     {
+        await UpdateProductCategoryAsync(p.ShopifyProductId!.Value, p, ct);
         var result = await BulkUpdateVariantAsync(p.ShopifyProductId!.Value, p.ShopifyVariantId!.Value, p, ct);
         return new ShopifyPushResult(
             p.ShopifyProductId!.Value,
             p.ShopifyVariantId!.Value,
             result.InventoryItemId != 0 ? result.InventoryItemId : (p.ShopifyInventoryItemId ?? 0));
     }
+
+    /// <summary>
+    /// Sync a linked product's categorization to Shopify (product-level fields only): tags built from
+    /// the POS Category/Manufacturer/ItemType, plus productType and vendor. Keeps Shopify grouping and
+    /// filtering aligned with the POS. Used both when pushing a product and by the bulk tag sync.
+    /// </summary>
+    public async Task UpdateProductCategoryAsync(long shopifyProductId, Product p, CancellationToken ct)
+    {
+        const string mutation = """
+            mutation productUpdate($input: ProductInput!) {
+              productUpdate(input: $input) {
+                product { id }
+                userErrors { field message }
+              }
+            }
+            """;
+
+        var input = new
+        {
+            id = ProductGid(shopifyProductId),
+            tags = BuildTags(p),
+            productType = string.IsNullOrWhiteSpace(p.ItemType) ? null : p.ItemType,
+            vendor = string.IsNullOrWhiteSpace(p.Manufacturer) ? null : p.Manufacturer
+        };
+
+        var data = await GraphQlAsync(mutation, new { input }, ct);
+        ThrowOnUserErrors(data.GetProperty("productUpdate"));
+    }
+
+    /// <summary>Distinct, non-empty tags for a product: its Category, Manufacturer and ItemType.</summary>
+    private static string[] BuildTags(Product p) =>
+        new[] { p.Category, p.Manufacturer, p.ItemType }
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
     private async Task<ShopifyPushResult> BulkUpdateVariantAsync(long productId, long variantId, Product p, CancellationToken ct)
     {

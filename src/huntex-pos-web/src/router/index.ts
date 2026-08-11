@@ -33,6 +33,7 @@ const router = createRouter({
     { path: '/vendor-report', component: () => import('@/views/VendorReportView.vue'), meta: { layout: 'app', vendorScope: true } },
     { path: '/settings', component: () => import('@/views/SettingsView.vue'), meta: { layout: 'app', roles: MANAGER_ROLES } },
     { path: '/settings/business', component: () => import('@/views/BusinessSettingsView.vue'), meta: { layout: 'app', roles: MANAGER_ROLES } },
+    { path: '/settings/shopify', component: () => import('@/views/ShopifySettingsView.vue'), meta: { layout: 'app', roles: ['Owner', 'Dev'] } },
     { path: '/settings/pricing-rules', redirect: '/settings' },
     { path: '/settings/email', redirect: '/setup' },
     { path: '/setup', component: () => import('@/views/SetupView.vue'), meta: { layout: 'app', roles: MANAGER_ROLES } },

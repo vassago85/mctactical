@@ -297,6 +297,69 @@ public class ShopifyController : ControllerBase
     }
 
     /// <summary>
+    /// Push POS categorization (Category/Manufacturer/ItemType as Shopify tags, plus productType and
+    /// vendor) to every already-linked Shopify product so both systems filter the same. One-way; no
+    /// other product fields change. Defaults to a dry-run preview; pass <c>apply=true</c> to push.
+    /// </summary>
+    [HttpPost("sync-tags")]
+    public async Task<IActionResult> SyncTags([FromQuery] bool apply = false, CancellationToken ct = default)
+    {
+        var linked = await _db.Products
+            .Where(p => p.Active && p.ShopifyProductId != null)
+            .ToListAsync(ct);
+
+        var sample = linked.Take(25).Select(p => new
+        {
+            p.Sku,
+            tags = new[] { p.Category, p.Manufacturer, p.ItemType }
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => s!.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray()
+        }).ToList();
+
+        if (!apply)
+        {
+            return Ok(new
+            {
+                applied = false,
+                linkedProductCount = linked.Count,
+                sample,
+                note = "Preview only \u2014 nothing was pushed. Re-run with ?apply=true to sync tags/type/vendor to Shopify."
+            });
+        }
+
+        var updated = 0;
+        var failures = new List<object>();
+        foreach (var p in linked)
+        {
+            try
+            {
+                await _shopify.UpdateProductCategoryAsync(p.ShopifyProductId!.Value, p, ct);
+                updated++;
+            }
+            catch (ShopifyNotConfiguredException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+            catch (ShopifyApiException ex)
+            {
+                if (failures.Count < 25) failures.Add(new { p.Sku, status = ex.StatusCode, detail = ex.Message });
+            }
+        }
+
+        return Ok(new
+        {
+            applied = true,
+            linkedProductCount = linked.Count,
+            updatedCount = updated,
+            failedCount = failures.Count,
+            failures,
+            note = "Synced POS Category/Manufacturer/ItemType to Shopify as tags (plus productType and vendor) on linked products."
+        });
+    }
+
+    /// <summary>
     /// Pull recent paid Shopify orders into the POS as invoices tagged "Shopify" so they show in
     /// Sales History. Visibility-only: POS stock is never changed. Already-imported orders are
     /// skipped. Defaults to a dry-run preview; pass <c>apply=true</c> to actually save the invoices.
