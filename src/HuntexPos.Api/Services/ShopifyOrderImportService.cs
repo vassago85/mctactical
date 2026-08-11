@@ -7,14 +7,19 @@ namespace HuntexPos.Api.Services;
 /// <summary>
 /// Imports paid Shopify orders into the POS as invoices tagged <c>Source = "Shopify"</c> so they
 /// appear in Sales History alongside in-store sales. This is visibility-only: it never changes POS
-/// stock. Line items are attached for products that can be matched (by Shopify variant id, then
-/// SKU); unmatched items are counted and reported but not fabricated as catalog products. Orders
-/// already imported (by Shopify order id) are skipped, so re-running is safe.
+/// stock. Every Shopify line item is captured: those that match a POS product (by Shopify variant
+/// id, then SKU) link to it; items that have no POS product are still recorded against a single
+/// hidden placeholder product, keeping the real Shopify title/SKU in the line snapshot so receipts
+/// show what was actually sold. Orders already imported (by Shopify order id) are skipped unless the
+/// stored invoice is missing items — those are repaired in place — so re-running is safe.
 /// </summary>
 public class ShopifyOrderImportService
 {
     private const string ShopifySource = "Shopify";
     private const decimal TaxRate = 15m;
+
+    /// <summary>SKU of the hidden catalog row unmatched Shopify line items are attached to.</summary>
+    private const string UnlinkedPlaceholderSku = "SHOPIFY-UNLINKED";
 
     private readonly HuntexDbContext _db;
     private readonly ShopifyClient _shopify;
@@ -29,11 +34,12 @@ public class ShopifyOrderImportService
     {
         var orders = await _shopify.GetPaidOrdersAsync(maxOrders, ct);
 
-        var existingOrderIds = await _db.Invoices
+        // Existing Shopify invoices keyed by order id (with lines) so we can repair any that were
+        // imported before unmatched items were captured — those show a total but no line items.
+        var existingInvoices = await _db.Invoices
+            .Include(i => i.Lines)
             .Where(i => i.ShopifyOrderId != null)
-            .Select(i => i.ShopifyOrderId!.Value)
-            .ToListAsync(ct);
-        var alreadyImported = new HashSet<long>(existingOrderIds);
+            .ToDictionaryAsync(i => i.ShopifyOrderId!.Value, ct);
 
         var products = await _db.Products.AsNoTracking().ToListAsync(ct);
         var byVariant = products
@@ -45,54 +51,53 @@ public class ShopifyOrderImportService
             .GroupBy(p => p.Sku.Trim(), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
+        var placeholder = await GetOrCreateUnlinkedPlaceholderAsync(apply, ct);
+
         var summary = new ShopifyImportSummary { FetchedCount = orders.Count };
         var newInvoices = new List<Invoice>();
 
         foreach (var order in orders)
         {
-            if (alreadyImported.Contains(order.Id))
+            var (lines, matched, unmatched) = BuildLines(order, byVariant, bySku, placeholder);
+
+            if (existingInvoices.TryGetValue(order.Id, out var existing))
             {
-                summary.SkippedExistingCount++;
-                continue;
-            }
-
-            var lines = new List<InvoiceLine>();
-            var unmatchedInThisOrder = 0;
-
-            foreach (var item in order.Lines)
-            {
-                Product? product = null;
-                if (item.VariantId.HasValue && byVariant.TryGetValue(item.VariantId.Value, out var pv))
-                    product = pv;
-                else if (!string.IsNullOrWhiteSpace(item.Sku) && bySku.TryGetValue(item.Sku.Trim(), out var ps))
-                    product = ps;
-
-                if (product == null)
+                // Only touch orders whose stored invoice is missing items; leave complete ones alone.
+                if (existing.Lines.Count >= order.Lines.Count)
                 {
-                    unmatchedInThisOrder++;
+                    summary.SkippedExistingCount++;
                     continue;
                 }
 
-                var lineTotal = Math.Round(item.Price * item.Quantity, 2);
-                lines.Add(new InvoiceLine
+                summary.MatchedLineCount += matched;
+                summary.UnmatchedLineCount += unmatched;
+                if (unmatched > 0) summary.OrdersWithUnmatchedLines++;
+                summary.RepairedCount++;
+
+                if (apply)
                 {
-                    Id = Guid.NewGuid(),
-                    ProductId = product.Id,
-                    Description = string.IsNullOrWhiteSpace(item.Title) ? product.Name : item.Title,
-                    SkuAtSale = product.Sku,
-                    Quantity = item.Quantity,
-                    UnitPrice = item.Price,
-                    OriginalUnitPrice = item.Price,
-                    LineDiscount = 0,
-                    LineTotal = lineTotal,
-                    CostAtSale = Math.Round(product.Cost * (1 - product.SupplierDiscountPercent / 100m), 2)
-                });
+                    _db.InvoiceLines.RemoveRange(existing.Lines);
+                    existing.Lines.Clear();
+                    foreach (var line in lines)
+                    {
+                        line.InvoiceId = existing.Id;
+                        existing.Lines.Add(line);
+                    }
+                    existing.SubTotal = Math.Round(order.TotalPrice + order.TotalDiscounts, 2);
+                    existing.TaxRate = TaxRate;
+                    existing.TaxAmount = Math.Round(order.TotalTax, 2);
+                    existing.DiscountTotal = Math.Round(order.TotalDiscounts, 2);
+                    existing.GrandTotal = Math.Round(order.TotalPrice, 2);
+                }
+
+                if (summary.SampleImported.Count < 25)
+                    summary.SampleImported.Add($"{order.Name} \u2192 repaired ({lines.Count} item{(lines.Count == 1 ? "" : "s")})");
+                continue;
             }
 
-            summary.MatchedLineCount += lines.Count;
-            summary.UnmatchedLineCount += unmatchedInThisOrder;
-            if (unmatchedInThisOrder > 0)
-                summary.OrdersWithUnmatchedLines++;
+            summary.MatchedLineCount += matched;
+            summary.UnmatchedLineCount += unmatched;
+            if (unmatched > 0) summary.OrdersWithUnmatchedLines++;
 
             var invoice = new Invoice
             {
@@ -120,14 +125,95 @@ public class ShopifyOrderImportService
                 summary.SampleImported.Add($"{order.Name} \u2192 {invoice.InvoiceNumber} (R{invoice.GrandTotal:0.00})");
         }
 
-        if (apply && newInvoices.Count > 0)
+        if (apply)
         {
-            _db.Invoices.AddRange(newInvoices);
+            if (newInvoices.Count > 0)
+                _db.Invoices.AddRange(newInvoices);
             await _db.SaveChangesAsync(ct);
         }
 
         summary.Applied = apply;
         return summary;
+    }
+
+    /// <summary>
+    /// Turn a Shopify order's line items into invoice lines. Matched items link to their POS product;
+    /// unmatched items link to <paramref name="placeholder"/> but keep the real Shopify title/SKU so
+    /// the receipt still shows what was sold. Returns the lines plus matched/unmatched counts.
+    /// </summary>
+    private static (List<InvoiceLine> Lines, int Matched, int Unmatched) BuildLines(
+        ShopifyOrder order,
+        Dictionary<long, Product> byVariant,
+        Dictionary<string, Product> bySku,
+        Product placeholder)
+    {
+        var lines = new List<InvoiceLine>();
+        var matched = 0;
+        var unmatched = 0;
+
+        foreach (var item in order.Lines)
+        {
+            Product? product = null;
+            if (item.VariantId.HasValue && byVariant.TryGetValue(item.VariantId.Value, out var pv))
+                product = pv;
+            else if (!string.IsNullOrWhiteSpace(item.Sku) && bySku.TryGetValue(item.Sku.Trim(), out var ps))
+                product = ps;
+
+            var isMatch = product != null;
+            if (isMatch) matched++; else unmatched++;
+
+            var target = product ?? placeholder;
+            var lineTotal = Math.Round(item.Price * item.Quantity, 2);
+
+            lines.Add(new InvoiceLine
+            {
+                Id = Guid.NewGuid(),
+                ProductId = target.Id,
+                Description = string.IsNullOrWhiteSpace(item.Title)
+                    ? (isMatch ? product!.Name : "Shopify item")
+                    : item.Title,
+                SkuAtSale = string.IsNullOrWhiteSpace(item.Sku)
+                    ? (isMatch ? product!.Sku : null)
+                    : item.Sku.Trim(),
+                Quantity = item.Quantity,
+                UnitPrice = item.Price,
+                OriginalUnitPrice = item.Price,
+                LineDiscount = 0,
+                LineTotal = lineTotal,
+                CostAtSale = isMatch
+                    ? Math.Round(product!.Cost * (1 - product.SupplierDiscountPercent / 100m), 2)
+                    : 0m
+            });
+        }
+
+        return (lines, matched, unmatched);
+    }
+
+    /// <summary>
+    /// Find (or, when <paramref name="apply"/>, create) the single hidden product that unmatched
+    /// Shopify line items are attached to. It is inactive so it stays out of POS search and stock
+    /// lists; import never changes its stock. In preview mode a transient instance is returned so
+    /// counts can be produced without writing anything.
+    /// </summary>
+    private async Task<Product> GetOrCreateUnlinkedPlaceholderAsync(bool apply, CancellationToken ct)
+    {
+        var existing = await _db.Products.FirstOrDefaultAsync(p => p.Sku == UnlinkedPlaceholderSku, ct);
+        if (existing != null) return existing;
+
+        var placeholder = new Product
+        {
+            Id = Guid.NewGuid(),
+            Sku = UnlinkedPlaceholderSku,
+            Name = "Shopify online item (not in POS)",
+            ItemType = "Shopify",
+            Active = false,
+            Cost = 0,
+            SellPrice = 0,
+            QtyOnHand = 0,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        if (apply) _db.Products.Add(placeholder);
+        return placeholder;
     }
 
     /// <summary>
@@ -154,6 +240,7 @@ public class ShopifyImportSummary
     public bool Applied { get; set; }
     public int FetchedCount { get; set; }
     public int ImportedCount { get; set; }
+    public int RepairedCount { get; set; }
     public int SkippedExistingCount { get; set; }
     public int MatchedLineCount { get; set; }
     public int UnmatchedLineCount { get; set; }

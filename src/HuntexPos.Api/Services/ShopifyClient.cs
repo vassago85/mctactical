@@ -212,6 +212,73 @@ public class ShopifyClient
         return result;
     }
 
+    /// <summary>
+    /// Fetch every Shopify variant with barcode and product title for match analysis. Blank-SKU
+    /// variants are kept (they may still carry a barcode). Read-only; used by diagnostics only.
+    /// </summary>
+    public async Task<List<ShopifyVariantDetail>> GetAllVariantDetailsAsync(CancellationToken ct)
+    {
+        const string query = """
+            query($cursor: String) {
+              productVariants(first: 250, after: $cursor) {
+                edges {
+                  node {
+                    id
+                    sku
+                    barcode
+                    title
+                    inventoryItem { id }
+                    product { id title }
+                  }
+                }
+                pageInfo { hasNextPage endCursor }
+              }
+            }
+            """;
+
+        var result = new List<ShopifyVariantDetail>();
+        string? cursor = null;
+        do
+        {
+            var data = await GraphQlAsync(query, new { cursor }, ct);
+            var conn = data.GetProperty("productVariants");
+            foreach (var edge in conn.GetProperty("edges").EnumerateArray())
+            {
+                var node = edge.GetProperty("node");
+                var sku = node.TryGetProperty("sku", out var s) ? s.GetString() : null;
+                var barcode = node.TryGetProperty("barcode", out var b) ? b.GetString() : null;
+
+                var variantId = ParseGidNumber(node.GetProperty("id").GetString());
+                long productId = 0;
+                var productTitle = "";
+                if (node.TryGetProperty("product", out var prod))
+                {
+                    productId = ParseGidNumber(prod.GetProperty("id").GetString());
+                    productTitle = prod.TryGetProperty("title", out var pt) ? pt.GetString() ?? "" : "";
+                }
+                var inventoryItemId = node.TryGetProperty("inventoryItem", out var inv)
+                    ? ParseGidNumber(inv.GetProperty("id").GetString())
+                    : 0;
+
+                result.Add(new ShopifyVariantDetail(
+                    string.IsNullOrWhiteSpace(sku) ? null : sku.Trim(),
+                    string.IsNullOrWhiteSpace(barcode) ? null : barcode.Trim(),
+                    productTitle,
+                    productId,
+                    variantId,
+                    inventoryItemId));
+            }
+
+            var pageInfo = conn.GetProperty("pageInfo");
+            cursor = pageInfo.GetProperty("hasNextPage").GetBoolean()
+                ? pageInfo.GetProperty("endCursor").GetString()
+                : null;
+        }
+        while (cursor != null);
+
+        return result;
+    }
+
     // --- Product push -----------------------------------------------------
 
     /// <summary>
@@ -460,6 +527,19 @@ public class ShopifyClient
 public record ShopifyLocation(long Id, string Name, bool Active);
 
 public record ShopifyVariantRef(string Sku, long ProductId, long VariantId, long InventoryItemId);
+
+/// <summary>
+/// A Shopify variant with the extra fields needed to reason about matching quality: barcode and the
+/// parent product title. Unlike <see cref="ShopifyVariantRef"/>, blank-SKU variants are included so
+/// barcode-only matches can be discovered. Used by the read-only match-analysis diagnostic.
+/// </summary>
+public record ShopifyVariantDetail(
+    string? Sku,
+    string? Barcode,
+    string Title,
+    long ProductId,
+    long VariantId,
+    long InventoryItemId);
 
 public record ShopifyPingResult(
     string ShopName,

@@ -186,12 +186,14 @@ async function syncShopify() {
   try {
     const { data } = await http.post('/api/shopify/orders/sync?apply=true')
     const imported = data.importedCount ?? 0
+    const repaired = data.repairedCount ?? 0
     const skipped = data.skippedExistingCount ?? 0
-    if (imported > 0) {
-      const skippedNote = skipped ? ` (${skipped} already imported)` : ''
-      toast.success(`Imported ${imported} Shopify sale${imported === 1 ? '' : 's'}${skippedNote}.`)
+    const skippedNote = skipped ? ` (${skipped} already up to date)` : ''
+    const repairedNote = repaired ? `, fixed ${repaired} with missing items` : ''
+    if (imported > 0 || repaired > 0) {
+      const importedNote = imported > 0 ? `Imported ${imported} Shopify sale${imported === 1 ? '' : 's'}` : 'No new sales'
+      toast.success(`${importedNote}${repairedNote}${skippedNote}.`)
     } else {
-      const skippedNote = skipped ? ` (${skipped} already imported)` : ''
       toast.info(`No new Shopify sales to import${skippedNote}.`)
     }
     if (canSearch.value) await search()

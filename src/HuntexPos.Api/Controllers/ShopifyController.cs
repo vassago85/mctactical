@@ -267,14 +267,15 @@ public class ShopifyController : ControllerBase
                 summary.Applied,
                 summary.FetchedCount,
                 summary.ImportedCount,
+                summary.RepairedCount,
                 summary.SkippedExistingCount,
                 summary.MatchedLineCount,
                 summary.UnmatchedLineCount,
                 summary.OrdersWithUnmatchedLines,
                 summary.SampleImported,
                 note = summary.Applied
-                    ? "Imported as invoices tagged 'Shopify'. POS stock was not changed. Unmatched line items were skipped \u2014 run reconcile/link first to improve coverage."
-                    : "Preview only \u2014 nothing was saved. Re-run with ?apply=true to import these orders."
+                    ? "Imported as invoices tagged 'Shopify'. POS stock was not changed. Every line item is captured \u2014 items with no matching POS product are recorded against a hidden 'Shopify online item (not in POS)' placeholder so receipts stay complete. Orders imported earlier that were missing items were repaired."
+                    : "Preview only \u2014 nothing was saved. Re-run with ?apply=true to import these orders (and repair any earlier imports missing items)."
             });
         }
         catch (ShopifyNotConfiguredException ex)
@@ -285,5 +286,126 @@ public class ShopifyController : ControllerBase
         {
             return StatusCode(502, new { error = "Shopify rejected the request.", status = ex.StatusCode, detail = ex.Message });
         }
+    }
+
+    /// <summary>
+    /// Read-only diagnostic: measure how well POS products and Shopify variants can be matched under
+    /// different strategies (exact SKU, normalized SKU, barcode) so we can choose a linking approach.
+    /// Nothing is saved and no product fields change. Owner/Dev only.
+    /// </summary>
+    [HttpGet("match-analysis")]
+    public async Task<IActionResult> MatchAnalysis(CancellationToken ct = default)
+    {
+        List<ShopifyVariantDetail> variants;
+        try
+        {
+            variants = await _shopify.GetAllVariantDetailsAsync(ct);
+        }
+        catch (ShopifyNotConfiguredException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (ShopifyApiException ex)
+        {
+            return StatusCode(502, new { error = "Shopify rejected the request.", status = ex.StatusCode, detail = ex.Message });
+        }
+
+        var products = await _db.Products
+            .Where(p => p.Active && p.Sku != null && p.Sku != "")
+            .Select(p => new { p.Sku, p.Barcode, p.Name })
+            .ToListAsync(ct);
+
+        // Shopify-side lookups. A key mapping to more than one variant is "ambiguous" and cannot be
+        // used for a confident automatic link.
+        var byExactSku = variants
+            .Where(v => !string.IsNullOrWhiteSpace(v.Sku))
+            .GroupBy(v => v.Sku!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+
+        var byNormSku = variants
+            .Where(v => !string.IsNullOrWhiteSpace(v.Sku) && NormalizeSku(v.Sku) is { Length: > 0 })
+            .GroupBy(v => NormalizeSku(v.Sku!), StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
+
+        var byBarcode = variants
+            .Where(v => !string.IsNullOrWhiteSpace(v.Barcode))
+            .GroupBy(v => v.Barcode!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+
+        var barcodeRecovered = new List<object>();
+        var normSkuRecovered = new List<object>();
+        var barcodeRecoveredCount = 0;
+        var barcodeAmbiguousCount = 0;
+        var normSkuRecoveredCount = 0;
+        var normSkuAmbiguousCount = 0;
+        var exactMatchedCount = 0;
+        var newlyMatchable = 0; // union across barcode + normSku for POS rows exact-SKU missed
+
+        foreach (var p in products)
+        {
+            var sku = p.Sku!.Trim();
+            var exact = byExactSku.ContainsKey(sku);
+            if (exact) { exactMatchedCount++; continue; }
+
+            var recovered = false;
+
+            if (!string.IsNullOrWhiteSpace(p.Barcode) && byBarcode.TryGetValue(p.Barcode.Trim(), out var bc))
+            {
+                if (bc.Count == 1)
+                {
+                    barcodeRecoveredCount++;
+                    recovered = true;
+                    if (barcodeRecovered.Count < 25)
+                        barcodeRecovered.Add(new { posSku = sku, posName = p.Name, posBarcode = p.Barcode, shopifySku = bc[0].Sku, shopifyTitle = bc[0].Title });
+                }
+                else barcodeAmbiguousCount++;
+            }
+
+            var norm = NormalizeSku(sku);
+            if (norm.Length > 0 && byNormSku.TryGetValue(norm, out var ns))
+            {
+                if (ns.Count == 1)
+                {
+                    normSkuRecoveredCount++;
+                    recovered = true;
+                    if (normSkuRecovered.Count < 25)
+                        normSkuRecovered.Add(new { posSku = sku, posName = p.Name, shopifySku = ns[0].Sku, shopifyTitle = ns[0].Title });
+                }
+                else normSkuAmbiguousCount++;
+            }
+
+            if (recovered) newlyMatchable++;
+        }
+
+        return Ok(new
+        {
+            dataQuality = new
+            {
+                posActiveWithSku = products.Count,
+                posWithBarcode = products.Count(p => !string.IsNullOrWhiteSpace(p.Barcode)),
+                shopifyVariants = variants.Count,
+                shopifyWithSku = variants.Count(v => !string.IsNullOrWhiteSpace(v.Sku)),
+                shopifyWithBarcode = variants.Count(v => !string.IsNullOrWhiteSpace(v.Barcode))
+            },
+            currentExactSkuMatched = exactMatchedCount,
+            recoverableByBarcode = new { confident = barcodeRecoveredCount, ambiguous = barcodeAmbiguousCount },
+            recoverableByNormalizedSku = new { confident = normSkuRecoveredCount, ambiguous = normSkuAmbiguousCount },
+            newlyMatchableTotal = newlyMatchable,
+            sampleBarcodeMatches = barcodeRecovered,
+            sampleNormalizedSkuMatches = normSkuRecovered,
+            note = "Read-only. No links were created and no products were changed. 'confident' = exactly one Shopify variant matched; 'ambiguous' = more than one, so it needs a human decision."
+        });
+    }
+
+    /// <summary>
+    /// Normalize a SKU for loose matching: uppercase, strip everything except letters/digits, then
+    /// drop leading zeros. Turns "for-004351", "FOR004351" and "FOR4351" into the same key.
+    /// </summary>
+    private static string NormalizeSku(string? sku)
+    {
+        if (string.IsNullOrWhiteSpace(sku)) return string.Empty;
+        var chars = sku.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray();
+        var cleaned = new string(chars).TrimStart('0');
+        return cleaned;
     }
 }
