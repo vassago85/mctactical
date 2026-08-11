@@ -76,13 +76,15 @@ public class ShopifyOrderImportService
 
                 if (apply)
                 {
-                    _db.InvoiceLines.RemoveRange(existing.Lines);
-                    existing.Lines.Clear();
+                    // Delete the old lines exactly once. Do NOT also Clear() the nav collection:
+                    // on a required relationship Clear() orphans the children and triggers a second
+                    // cascade delete of the same rows, which surfaces as a DbUpdateConcurrencyException
+                    // ("expected 1 row, affected 0"). Add the rebuilt lines straight to the context.
+                    _db.InvoiceLines.RemoveRange(existing.Lines.ToList());
                     foreach (var line in lines)
-                    {
                         line.InvoiceId = existing.Id;
-                        existing.Lines.Add(line);
-                    }
+                    _db.InvoiceLines.AddRange(lines);
+
                     existing.SubTotal = Math.Round(order.TotalPrice + order.TotalDiscounts, 2);
                     existing.TaxRate = TaxRate;
                     existing.TaxAmount = Math.Round(order.TotalTax, 2);
