@@ -617,6 +617,136 @@ public class ShopifyController : ControllerBase
     }
 
     /// <summary>
+    /// Dashboard KPIs, computed from the DB only (no Shopify call). Period figures (revenue, orders,
+    /// units, average order value) respect the optional date range; the linked/unlinked backlog figures
+    /// are all-time. Shipping lines are excluded from unit and unlinked counts. Owner/Dev only.
+    /// </summary>
+    [HttpGet("dashboard")]
+    public async Task<IActionResult> Dashboard(
+        [FromQuery] DateTimeOffset? from = null,
+        [FromQuery] DateTimeOffset? to = null,
+        CancellationToken ct = default)
+    {
+        var invoices = await _db.Invoices.AsNoTracking()
+            .Include(i => i.Lines)
+            .Where(i => i.Source == "Shopify" && i.Status == InvoiceStatus.Final)
+            .ToListAsync(ct);
+
+        IEnumerable<Invoice> period = invoices;
+        if (from.HasValue) period = period.Where(i => i.CreatedAt >= from.Value);
+        if (to.HasValue) period = period.Where(i => i.CreatedAt <= to.Value);
+        var periodList = period.ToList();
+
+        // A real product line (not a shipping/fee line, which carries neither variant id nor SKU).
+        static bool IsProductLine(InvoiceLine l) => !(l.ShopifyVariantId == null && string.IsNullOrEmpty(l.SkuAtSale));
+
+        var revenue = periodList.Sum(i => i.GrandTotal);
+        var orders = periodList.Count;
+        var units = periodList.Sum(i => i.Lines.Where(IsProductLine).Sum(l => l.Quantity));
+        var aov = orders > 0 ? Math.Round(revenue / orders, 2) : 0m;
+
+        var linkedProducts = await _db.Products.CountAsync(p => p.ShopifyVariantId != null, ct);
+
+        var placeholder = await _db.Products
+            .FirstOrDefaultAsync(p => p.Sku == ShopifyOrderImportService.UnlinkedPlaceholderSku, ct);
+
+        var unlinkedItems = 0;
+        decimal unlinkedRevenue = 0m;
+        object? topUnlinked = null;
+        if (placeholder != null)
+        {
+            var plines = await _db.InvoiceLines
+                .Where(l => l.ProductId == placeholder.Id
+                    && l.Invoice!.Source == "Shopify"
+                    && !(l.ShopifyVariantId == null && l.SkuAtSale == null))
+                .Select(l => new { l.ShopifyVariantId, l.SkuAtSale, l.Description, l.LineTotal })
+                .ToListAsync(ct);
+
+            var groups = plines
+                .GroupBy(l => l.ShopifyVariantId.HasValue
+                    ? $"v:{l.ShopifyVariantId.Value}"
+                    : $"s:{(l.SkuAtSale ?? string.Empty).Trim().ToLowerInvariant()}")
+                .Select(g => new
+                {
+                    title = g.GroupBy(x => x.Description).OrderByDescending(gg => gg.Count())
+                        .Select(gg => gg.Key).FirstOrDefault() ?? "Shopify item",
+                    revenue = g.Sum(x => x.LineTotal)
+                })
+                .ToList();
+
+            unlinkedItems = groups.Count;
+            unlinkedRevenue = groups.Sum(g => g.revenue);
+            var top = groups.OrderByDescending(g => g.revenue).FirstOrDefault();
+            if (top != null) topUnlinked = new { top.title, top.revenue };
+        }
+
+        return Ok(new
+        {
+            from,
+            to,
+            revenue,
+            orders,
+            units,
+            avgOrderValue = aov,
+            linkedProducts,
+            unlinkedItems,
+            unlinkedRevenue,
+            topUnlinked
+        });
+    }
+
+    /// <summary>
+    /// Every Shopify variant with its link status against the POS (linked = a POS product carries this
+    /// variant id). Includes SKU and title for browsing/searching and to drive the link action. Calls
+    /// Shopify, so the UI loads it on demand. Owner/Dev only.
+    /// </summary>
+    [HttpGet("variants")]
+    public async Task<IActionResult> Variants(CancellationToken ct = default)
+    {
+        List<ShopifyVariantDetail> variants;
+        try
+        {
+            variants = await _shopify.GetAllVariantDetailsAsync(ct);
+        }
+        catch (ShopifyNotConfiguredException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (ShopifyApiException ex)
+        {
+            return StatusCode(502, new { error = "Shopify rejected the request.", status = ex.StatusCode, detail = ex.Message });
+        }
+
+        var linkedByVariant = (await _db.Products
+                .Where(p => p.ShopifyVariantId != null)
+                .Select(p => new { VariantId = p.ShopifyVariantId!.Value, p.Sku })
+                .ToListAsync(ct))
+            .GroupBy(x => x.VariantId)
+            .ToDictionary(g => g.Key, g => g.First().Sku);
+
+        var rows = variants
+            .Select(v => new
+            {
+                shopifyVariantId = v.VariantId,
+                sku = v.Sku,
+                title = v.Title,
+                linked = linkedByVariant.ContainsKey(v.VariantId),
+                posSku = linkedByVariant.TryGetValue(v.VariantId, out var s) ? s : null
+            })
+            .OrderBy(r => r.linked)
+            .ThenBy(r => r.title, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return Ok(new
+        {
+            total = rows.Count,
+            linked = rows.Count(r => r.linked),
+            unlinked = rows.Count(r => !r.linked),
+            items = rows
+        });
+    }
+
+    /// <summary>
     /// Normalize a SKU for loose matching: uppercase, strip everything except letters/digits, then
     /// drop leading zeros. Turns "for-004351", "FOR004351" and "FOR4351" into the same key.
     /// </summary>
