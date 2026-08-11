@@ -477,6 +477,8 @@ public class ShopifyClient
                     totalTaxSet { shopMoney { amount } }
                     totalDiscountsSet { shopMoney { amount } }
                     totalPriceSet { shopMoney { amount } }
+                    totalShippingPriceSet { shopMoney { amount } }
+                    shippingLines(first: 1) { edges { node { title } } }
                     lineItems(first: 100) {
                       edges {
                         node {
@@ -562,6 +564,17 @@ public class ShopifyClient
             if (string.IsNullOrWhiteSpace(customerName)) customerName = null;
         }
 
+        string? shippingTitle = null;
+        if (o.TryGetProperty("shippingLines", out var sl) && sl.TryGetProperty("edges", out var slEdges))
+        {
+            foreach (var edge in slEdges.EnumerateArray())
+            {
+                var node = edge.GetProperty("node");
+                shippingTitle = node.TryGetProperty("title", out var st) ? st.GetString() : null;
+                break;
+            }
+        }
+
         return new ShopifyOrder(
             Id: ParseGidNumber(o.GetProperty("id").GetString()),
             Name: o.TryGetProperty("name", out var nm) ? nm.GetString() ?? "" : "",
@@ -574,6 +587,8 @@ public class ShopifyClient
             TotalTax: ParseMoney(o, "totalTaxSet"),
             TotalDiscounts: ParseMoney(o, "totalDiscountsSet"),
             TotalPrice: ParseMoney(o, "totalPriceSet"),
+            TotalShipping: ParseMoney(o, "totalShippingPriceSet"),
+            ShippingTitle: string.IsNullOrWhiteSpace(shippingTitle) ? null : shippingTitle.Trim(),
             Lines: lineItems);
     }
 }
@@ -615,6 +630,8 @@ public record ShopifyOrder(
     decimal TotalTax,
     decimal TotalDiscounts,
     decimal TotalPrice,
+    decimal TotalShipping,
+    string? ShippingTitle,
     IReadOnlyList<ShopifyOrderLine> Lines);
 
 public class ShopifyNotConfiguredException(string message) : Exception(message);

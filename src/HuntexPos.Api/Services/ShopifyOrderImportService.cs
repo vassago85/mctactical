@@ -190,6 +190,28 @@ public class ShopifyOrderImportService
             });
         }
 
+        // Shipping/courier is charged on the order, not on a product, so it never matched above and the
+        // item lines alone won't sum to the order total. Add it as its own line (on the placeholder) so
+        // the receipt balances and the fee is visible. Zero cost — it is revenue, not a purchased good.
+        if (order.TotalShipping != 0m)
+        {
+            lines.Add(new InvoiceLine
+            {
+                Id = Guid.NewGuid(),
+                ProductId = placeholder.Id,
+                Description = string.IsNullOrWhiteSpace(order.ShippingTitle)
+                    ? "Shipping"
+                    : $"Shipping \u2013 {order.ShippingTitle}",
+                SkuAtSale = null,
+                Quantity = 1,
+                UnitPrice = order.TotalShipping,
+                OriginalUnitPrice = order.TotalShipping,
+                LineDiscount = 0,
+                LineTotal = order.TotalShipping,
+                CostAtSale = 0m
+            });
+        }
+
         return (lines, matched, unmatched);
     }
 
