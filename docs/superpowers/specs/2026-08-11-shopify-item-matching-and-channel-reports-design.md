@@ -42,6 +42,7 @@ Conclusions:
 2. Give staff a fast, prioritized way to manually link the Shopify sale items
    that actually generate revenue, and fix historical reports when they do.
 3. Report in-store vs Shopify vs combined sales accurately.
+4. Keep product grouping/filtering consistent across the POS and Shopify.
 
 ## Non-goals
 
@@ -117,6 +118,33 @@ A new "Match Shopify sales" section under Settings (Owner/Dev only):
 - On success the row disappears and a toast reports how many past sales were
   reclassified. Empty state when nothing is unlinked.
 
+## Part D — Category/tag sync (POS → Shopify)
+
+Goal: products group/filter the same way in the POS and Shopify. POS is the
+source of truth, so this is one-way (POS → Shopify).
+
+The POS already categorizes products with `Category`, `Manufacturer`, and
+`ItemType`. Product push already sends `vendor = Manufacturer` and
+`productType = ItemType` but sends no Shopify **tags** and never updates these on
+already-linked products.
+
+Changes:
+- **On push (create and update)**, set Shopify `tags` to the distinct, non-empty
+  set of `{ Category, Manufacturer, ItemType }`, and keep `vendor = Manufacturer`
+  and `productType = ItemType` in sync. No new POS fields (reuse the existing
+  three — no data re-entry).
+- **`UpdateExistingAsync`** must also issue a `productUpdate` for
+  `tags`/`productType`/`vendor` (today it only updates the variant), so
+  re-pushing refreshes categorization.
+- **Bulk action** `POST /api/shopify/sync-tags?apply=` (Owner/Dev): iterate
+  linked products (`ShopifyProductId != null`) and `productUpdate` their
+  tags/type/vendor. `apply=false` is a dry-run returning a count + samples.
+- **UI:** a "Sync categories/tags to Shopify" button in the Settings integration
+  area (alongside the Match tool), with a confirmation and result toast.
+
+Non-goal: pulling Shopify tags back into the POS, and tagging Shopify-only
+products (they have no POS record).
+
 ## Part C — Channel-split reports
 
 Sales carry `Source` (null/"POS" = in-store, "Shopify" = online).
@@ -172,6 +200,8 @@ Shopify figures as top sellers are matched.
   invoice line reclassifies and `unlinked-sales` total drops.
 - Manual: toggle report channels; confirm In-shop/Shopify/Combined totals add up
   and that In-shop excludes Shopify-sourced invoices.
+- Manual: run "Sync categories/tags"; confirm linked Shopify products show the
+  POS Category/Manufacturer/ItemType as tags and that re-pushing updates them.
 - Build gates: `npm run build` (web) and `dotnet build` (API via SDK container).
 
 ## Rollout
