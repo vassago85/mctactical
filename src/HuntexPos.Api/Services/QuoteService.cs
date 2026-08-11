@@ -60,8 +60,9 @@ public class QuoteService
             CreatedAt = DateTimeOffset.UtcNow
         };
 
-        await ApplyLinesAsync(quote, req.Lines, ct);
-        RecomputeTotals(quote);
+        var lines = await BuildLinesAsync(quote.Id, taxRate, req.Lines, ct);
+        quote.Lines = lines;
+        RecomputeTotals(quote, lines);
 
         _db.Quotes.Add(quote);
         await _db.SaveChangesAsync(ct);
@@ -98,13 +99,23 @@ public class QuoteService
         quote.DiscountTotal = req.DiscountTotal;
         if (req.TaxRate.HasValue) quote.TaxRate = req.TaxRate.Value;
 
-        _db.QuoteLines.RemoveRange(quote.Lines);
-        quote.Lines.Clear();
-        await ApplyLinesAsync(quote, req.Lines, ct);
-        RecomputeTotals(quote);
+        // Delete the existing lines exactly once. Do NOT also Clear() the nav collection:
+        // on the required Quote->Line relationship, Clear() orphans the same children and
+        // triggers a second cascade delete of the identical rows, so EF issues two DELETEs
+        // per line and the second affects 0 rows — surfacing as a DbUpdateConcurrencyException
+        // ("expected 1 row, affected 0") that aborts the whole save. Add the rebuilt lines
+        // straight to the context instead.
+        _db.QuoteLines.RemoveRange(quote.Lines.ToList());
+        var lines = await BuildLinesAsync(quote.Id, quote.TaxRate, req.Lines, ct);
+        _db.QuoteLines.AddRange(lines);
+        RecomputeTotals(quote, lines);
         quote.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _db.SaveChangesAsync(ct);
+
+        // The old lines are now deleted + detached, so pointing the nav collection at the
+        // rebuilt set is safe and keeps the PDF and returned DTO in sync with the edit.
+        quote.Lines = lines;
 
         // regenerate PDF so stored copy stays in sync
         var pdfBytes = _pdf.BuildPdf(quote);
@@ -280,7 +291,8 @@ public class QuoteService
                 : null);
     }
 
-    private async Task ApplyLinesAsync(Quote quote, List<CreateQuoteLineRequest> lines, CancellationToken ct)
+    private async Task<List<QuoteLine>> BuildLinesAsync(
+        Guid quoteId, decimal taxRate, List<CreateQuoteLineRequest> lines, CancellationToken ct)
     {
         var productIds = lines.Where(l => l.ProductId.HasValue).Select(l => l.ProductId!.Value).Distinct().ToList();
         var products = productIds.Count == 0
@@ -289,6 +301,7 @@ public class QuoteService
                 .Where(p => productIds.Contains(p.Id))
                 .ToDictionaryAsync(p => p.Id, ct);
 
+        var result = new List<QuoteLine>(lines.Count);
         var sort = 0;
         foreach (var l in lines)
         {
@@ -305,10 +318,10 @@ public class QuoteService
             var lineTotal = PricingCalculator.Round2(gross - discAmt);
             if (lineTotal < 0) lineTotal = 0;
 
-            quote.Lines.Add(new QuoteLine
+            result.Add(new QuoteLine
             {
                 Id = Guid.NewGuid(),
-                QuoteId = quote.Id,
+                QuoteId = quoteId,
                 ProductId = l.ProductId,
                 Sku = l.Sku ?? prod?.Sku,
                 ItemName = string.IsNullOrWhiteSpace(l.ItemName) ? (prod?.Name ?? "") : l.ItemName,
@@ -318,17 +331,19 @@ public class QuoteService
                 UnitPrice = unit,
                 DiscountPercent = l.DiscountPercent,
                 DiscountAmount = discAmt == 0 ? (decimal?)null : discAmt,
-                TaxRate = quote.TaxRate,
+                TaxRate = taxRate,
                 LineTotal = lineTotal,
                 SortOrder = l.SortOrder == 0 ? sort : l.SortOrder
             });
             sort++;
         }
+
+        return result;
     }
 
-    private static void RecomputeTotals(Quote quote)
+    private static void RecomputeTotals(Quote quote, IReadOnlyCollection<QuoteLine> lines)
     {
-        var sub = quote.Lines.Sum(l => l.LineTotal);
+        var sub = lines.Sum(l => l.LineTotal);
         var afterDisc = Math.Max(0, sub - quote.DiscountTotal);
         var taxAmount = quote.TaxRate > 0
             ? PricingCalculator.Round2(afterDisc - afterDisc / (1 + quote.TaxRate / 100m))

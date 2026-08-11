@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { http } from '@/api/http'
 import { useToast } from '@/composables/useToast'
 import { formatZAR } from '@/utils/format'
+import { extractApiError } from '@/utils/errors'
 import McPageHeader from '@/components/ui/McPageHeader.vue'
 import McCard from '@/components/ui/McCard.vue'
 import McButton from '@/components/ui/McButton.vue'
@@ -256,8 +257,7 @@ async function save() {
     toast.success(isEdit.value ? 'Quote updated' : `Quote ${data.quoteNumber} created`)
     router.push(`/quotes/${data.id}`)
   } catch (e: unknown) {
-    const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error
-    err.value = msg || 'Could not save quote'
+    err.value = extractApiError(e) || 'Could not save quote'
   } finally {
     busy.value = false
   }
