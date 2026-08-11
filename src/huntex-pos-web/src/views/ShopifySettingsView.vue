@@ -154,14 +154,34 @@ async function pushPrices() {
 }
 
 // ── Price review (POS vs Shopify) ────────────────────────────────────────────
-type PriceRow = { productId: string; sku: string; name: string; posPrice: number; shopifyPrice: number | null; differs: boolean }
+type PriceRow = {
+  productId: string
+  sku: string
+  name: string
+  posPrice: number
+  specialPrice: number | null
+  specialLabel: string | null
+  effectivePrice: number
+  shopifyPrice: number | null
+  priceLocked: boolean
+  differs: boolean
+}
 const priceRows = ref<PriceRow[]>([])
 const priceLoaded = ref(false)
 const priceBusy = ref(false)
 const priceErr = ref<string | null>(null)
 const onlyChanged = ref(true)
 const pushingId = ref<string | null>(null)
+const pullingId = ref<string | null>(null)
 const pushAllBusy = ref(false)
+const pullAllBusy = ref(false)
+
+const round2 = (n: number) => Math.round(n * 100) / 100
+
+function recomputeDiffers(row: PriceRow) {
+  row.effectivePrice = row.specialPrice ?? row.posPrice
+  row.differs = row.shopifyPrice !== null && round2(row.effectivePrice) !== round2(row.shopifyPrice)
+}
 
 const visiblePriceRows = computed(() => (onlyChanged.value ? priceRows.value.filter(r => r.differs) : priceRows.value))
 const changedCount = computed(() => priceRows.value.filter(r => r.differs).length)
@@ -181,11 +201,11 @@ async function loadPriceReview() {
 }
 
 async function pushOnePrice(row: PriceRow) {
-  if (pushingId.value) return
+  if (pushingId.value || pullingId.value) return
   pushingId.value = row.productId
   try {
     await http.post(`/api/shopify/push-price/${row.productId}`)
-    row.shopifyPrice = row.posPrice
+    row.shopifyPrice = row.effectivePrice
     row.differs = false
     toast.success(`Pushed ${row.sku} price to Shopify.`)
     await loadDashboard()
@@ -209,7 +229,7 @@ async function pushAllChanged() {
   for (const row of changed) {
     try {
       await http.post(`/api/shopify/push-price/${row.productId}`)
-      row.shopifyPrice = row.posPrice
+      row.shopifyPrice = row.effectivePrice
       row.differs = false
       ok++
     } catch {
@@ -219,6 +239,54 @@ async function pushAllChanged() {
   pushAllBusy.value = false
   if (fail) toast.error(`Pushed ${ok}, ${fail} failed.`)
   else toast.success(`Pushed ${ok} price${ok === 1 ? '' : 's'}.`)
+  await loadDashboard()
+}
+
+async function pullOnePrice(row: PriceRow) {
+  if (pushingId.value || pullingId.value || row.shopifyPrice === null || row.priceLocked) return
+  pullingId.value = row.productId
+  try {
+    const { data } = await http.post<{ skipped: boolean }>(`/api/shopify/pull-price/${row.productId}`, {
+      price: row.shopifyPrice
+    })
+    if (data.skipped) {
+      toast.info(`${row.sku} is price-locked — not changed.`)
+      return
+    }
+    row.posPrice = row.shopifyPrice
+    recomputeDiffers(row)
+    toast.success(`Pulled Shopify price into ${row.sku}.`)
+    await loadDashboard()
+  } catch (e) {
+    toast.error(handleErr(e, 'Pull failed'))
+  } finally {
+    pullingId.value = null
+  }
+}
+
+async function pullAllChanged() {
+  const changed = priceRows.value.filter(r => r.differs && !r.priceLocked && r.shopifyPrice !== null)
+  if (!changed.length) {
+    toast.info('No changed prices to pull.')
+    return
+  }
+  if (!confirm(`Pull ${changed.length} Shopify price${changed.length === 1 ? '' : 's'} into the POS? Price-locked items are skipped.`)) return
+  pullAllBusy.value = true
+  let ok = 0
+  let fail = 0
+  for (const row of changed) {
+    try {
+      await http.post(`/api/shopify/pull-price/${row.productId}`, { price: row.shopifyPrice })
+      row.posPrice = row.shopifyPrice as number
+      recomputeDiffers(row)
+      ok++
+    } catch {
+      fail++
+    }
+  }
+  pullAllBusy.value = false
+  if (fail) toast.error(`Pulled ${ok}, ${fail} failed.`)
+  else toast.success(`Pulled ${ok} price${ok === 1 ? '' : 's'}.`)
   await loadDashboard()
 }
 
@@ -660,6 +728,10 @@ onMounted(() => {
             <McSpinner v-if="pushAllBusy" />
             <span v-else>Push all changed</span>
           </McButton>
+          <McButton variant="secondary" dense type="button" :disabled="pullAllBusy || changedCount === 0" @click="pullAllChanged">
+            <McSpinner v-if="pullAllBusy" />
+            <span v-else>Pull all changed</span>
+          </McButton>
           <McButton variant="ghost" dense type="button" :disabled="priceBusy" @click="loadPriceReview">Reload</McButton>
         </div>
 
@@ -670,7 +742,13 @@ onMounted(() => {
         />
         <table v-else class="shp-table">
           <thead>
-            <tr><th>Item</th><th class="shp-r">POS price</th><th class="shp-r">Shopify price</th><th></th></tr>
+            <tr>
+              <th>Item</th>
+              <th class="shp-r">POS price</th>
+              <th class="shp-r">Special</th>
+              <th class="shp-r">Shopify price</th>
+              <th></th>
+            </tr>
           </thead>
           <tbody>
             <tr v-for="row in visiblePriceRows" :key="row.productId">
@@ -679,16 +757,33 @@ onMounted(() => {
                 <div class="shp-item-sku">{{ row.sku }}</div>
               </td>
               <td class="shp-r">{{ formatZAR(row.posPrice) }}</td>
+              <td class="shp-r">
+                <template v-if="row.specialPrice !== null">
+                  <div class="shp-special">{{ formatZAR(row.specialPrice) }}</div>
+                  <div class="shp-item-sku">{{ row.specialLabel }}</div>
+                </template>
+                <template v-else>—</template>
+              </td>
               <td class="shp-r" :class="{ 'shp-diff': row.differs }">
                 {{ row.shopifyPrice === null ? '—' : formatZAR(row.shopifyPrice) }}
               </td>
               <td class="shp-r">
-                <McButton v-if="row.differs" variant="secondary" dense type="button"
-                  :disabled="pushingId === row.productId" @click="pushOnePrice(row)">
-                  <McSpinner v-if="pushingId === row.productId" />
-                  <span v-else>Push</span>
-                </McButton>
-                <McBadge v-else variant="success">Synced</McBadge>
+                <div class="shp-row-actions">
+                  <template v-if="row.differs">
+                    <McButton variant="secondary" dense type="button"
+                      :disabled="pushingId === row.productId || pullingId === row.productId" @click="pushOnePrice(row)">
+                      <McSpinner v-if="pushingId === row.productId" />
+                      <span v-else>Push</span>
+                    </McButton>
+                    <McButton v-if="!row.priceLocked && row.shopifyPrice !== null" variant="ghost" dense type="button"
+                      :disabled="pushingId === row.productId || pullingId === row.productId" @click="pullOnePrice(row)">
+                      <McSpinner v-if="pullingId === row.productId" />
+                      <span v-else>Pull</span>
+                    </McButton>
+                    <span v-else-if="row.priceLocked" class="shp-lock">Locked</span>
+                  </template>
+                  <McBadge v-else variant="success">Synced</McBadge>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -776,6 +871,8 @@ onMounted(() => {
 .shp-hint--inline { margin: 0; }
 .shp-check { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; font-weight: 600; color: var(--mc-app-text-secondary, #333); cursor: pointer; }
 .shp-diff { color: #b45309; font-weight: 700; }
+.shp-special { color: #065f46; font-weight: 600; }
+.shp-lock { font-size: 0.72rem; color: var(--mc-app-text-muted, #8a8780); text-transform: uppercase; letter-spacing: 0.04em; }
 .shp-item-title { font-weight: 600; color: var(--mc-app-text, #1a1a1c); }
 .shp-item-sku { font-size: 0.78rem; color: var(--mc-app-text-muted, #8a8780); font-variant-numeric: tabular-nums; }
 

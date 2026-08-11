@@ -802,13 +802,16 @@ public class ShopifyController : ControllerBase
             });
         }
 
+        var specials = await LoadActiveSpecialsAsync(linked, ct);
+
         int updated = 0, failed = 0;
         var failures = new List<object>();
         foreach (var p in linked)
         {
+            var price = specials.TryGetValue(p.Id, out var sp) ? sp.Price : p.SellPrice;
             try
             {
-                await _shopify.UpdateVariantPriceAsync(p.ShopifyProductId!.Value, p.ShopifyVariantId!.Value, p.SellPrice, ct);
+                await _shopify.UpdateVariantPriceAsync(p.ShopifyProductId!.Value, p.ShopifyVariantId!.Value, price, ct);
                 p.ShopifySyncedAt = DateTimeOffset.UtcNow;
                 updated++;
             }
@@ -848,9 +851,12 @@ public class ShopifyController : ControllerBase
         if (p.ShopifyProductId is null || p.ShopifyVariantId is null)
             return BadRequest(new { error = "This product is not linked to Shopify." });
 
+        var specials = await LoadActiveSpecialsAsync(new List<Product> { p }, ct);
+        var price = specials.TryGetValue(p.Id, out var sp) ? sp.Price : p.SellPrice;
+
         try
         {
-            await _shopify.UpdateVariantPriceAsync(p.ShopifyProductId.Value, p.ShopifyVariantId.Value, p.SellPrice, ct);
+            await _shopify.UpdateVariantPriceAsync(p.ShopifyProductId.Value, p.ShopifyVariantId.Value, price, ct);
         }
         catch (ShopifyNotConfiguredException ex) { return BadRequest(new { error = ex.Message }); }
         catch (ShopifyApiException ex) { return StatusCode(502, new { error = "Shopify rejected the request.", status = ex.StatusCode, detail = ex.Message }); }
@@ -858,7 +864,31 @@ public class ShopifyController : ControllerBase
         p.ShopifySyncedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
 
-        return Ok(new { posProductId = p.Id, p.Sku, pushedPrice = p.SellPrice, note = "Price pushed to Shopify. Stock unchanged." });
+        return Ok(new { posProductId = p.Id, p.Sku, pushedPrice = price, note = "Price pushed to Shopify. Stock unchanged." });
+    }
+
+    /// <summary>
+    /// Pull a Shopify variant's current price down into the POS as the product's base sell price.
+    /// Skips price-locked products. Price-only — nothing is sent to Shopify. Owner/Dev only.
+    /// </summary>
+    [HttpPost("pull-price/{productId:guid}")]
+    public async Task<IActionResult> PullPrice(Guid productId, [FromBody] PullPriceRequest req, CancellationToken ct = default)
+    {
+        if (req.Price < 0)
+            return BadRequest(new { error = "Price must be zero or greater." });
+
+        var p = await _db.Products.FirstOrDefaultAsync(x => x.Id == productId, ct);
+        if (p == null) return NotFound(new { error = "POS product not found." });
+
+        if (p.PriceLocked)
+            return Ok(new { posProductId = p.Id, p.Sku, skipped = true, note = "Product is price-locked — not changed." });
+
+        p.SellPrice = req.Price;
+        if (p.PricingMethod == "fixed_price") p.FixedSellPrice = req.Price;
+        p.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+
+        return Ok(new { posProductId = p.Id, p.Sku, skipped = false, newPosPrice = p.SellPrice, note = "POS base price updated from Shopify." });
     }
 
     /// <summary>
@@ -879,21 +909,30 @@ public class ShopifyController : ControllerBase
 
         var linked = await _db.Products
             .Where(p => p.ShopifyVariantId != null && p.Sku != ShopifyOrderImportService.UnlinkedPlaceholderSku)
-            .Select(p => new { p.Id, p.Sku, p.Name, p.SellPrice, VariantId = p.ShopifyVariantId!.Value })
             .ToListAsync(ct);
+
+        var specials = await LoadActiveSpecialsAsync(linked, ct);
 
         var rows = linked
             .Select(p =>
             {
-                var hasShopify = shopifyPriceByVariant.TryGetValue(p.VariantId, out var sp);
-                var differs = hasShopify && Math.Round(p.SellPrice, 2) != Math.Round(sp, 2);
+                var variantId = p.ShopifyVariantId!.Value;
+                var hasShopify = shopifyPriceByVariant.TryGetValue(variantId, out var sp);
+                var hasSpecial = specials.TryGetValue(p.Id, out var special);
+                // The price a push would send: the special price when one is active, else the base.
+                var effective = hasSpecial ? special.Price : p.SellPrice;
+                var differs = hasShopify && Math.Round(effective, 2) != Math.Round(sp, 2);
                 return new
                 {
                     productId = p.Id,
                     p.Sku,
                     name = p.Name,
                     posPrice = p.SellPrice,
+                    specialPrice = hasSpecial ? special.Price : (decimal?)null,
+                    specialLabel = hasSpecial ? special.Label : null,
+                    effectivePrice = effective,
                     shopifyPrice = hasShopify ? sp : (decimal?)null,
+                    priceLocked = p.PriceLocked,
                     differs
                 };
             })
@@ -907,6 +946,64 @@ public class ShopifyController : ControllerBase
             changed = rows.Count(r => r.differs),
             items = rows
         });
+    }
+
+    private static decimal RoundUpR10(decimal v) => Math.Ceiling(v / 10m) * 10m;
+
+    private async Task<Promotion?> FindActivePromoAsync(CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var active = await _db.Promotions.AsNoTracking().Where(p => p.IsActive).ToListAsync(ct);
+        return active
+            .Where(p => !p.StartsAt.HasValue || p.StartsAt <= now)
+            .Where(p => !p.EndsAt.HasValue || p.EndsAt >= now)
+            .FirstOrDefault();
+    }
+
+    /// <summary>
+    /// The special/promo price currently in effect for each given product (if any), with its label.
+    /// Mirrors the POS specials logic: a per-product <see cref="ProductSpecial"/> (fixed price or % off)
+    /// wins, otherwise a store-wide active promotion percentage applies. Only products with a special
+    /// appear in the result.
+    /// </summary>
+    private async Task<Dictionary<Guid, (decimal Price, string Label)>> LoadActiveSpecialsAsync(
+        List<Product> products, CancellationToken ct)
+    {
+        var result = new Dictionary<Guid, (decimal Price, string Label)>();
+        if (products.Count == 0) return result;
+
+        var ids = products.Select(p => p.Id).ToHashSet();
+        var promo = await FindActivePromoAsync(ct);
+
+        var specialsQuery = _db.ProductSpecials.AsNoTracking()
+            .Include(s => s.Promotion)
+            .Where(s => s.IsActive && ids.Contains(s.ProductId));
+        specialsQuery = promo != null
+            ? specialsQuery.Where(s => s.PromotionId == null || s.PromotionId == promo.Id)
+            : specialsQuery.Where(s => s.PromotionId == null);
+        var specials = await specialsQuery.ToListAsync(ct);
+
+        var byId = products.ToDictionary(p => p.Id);
+        foreach (var s in specials)
+        {
+            if (!byId.TryGetValue(s.ProductId, out var prod)) continue;
+            decimal effective;
+            if (s.SpecialPrice.HasValue) effective = s.SpecialPrice.Value;
+            else if (s.DiscountPercent.HasValue) effective = RoundUpR10(prod.SellPrice * (1 - s.DiscountPercent.Value / 100m));
+            else continue;
+            result.TryAdd(s.ProductId, (effective, s.Promotion?.Name ?? "Special"));
+        }
+
+        if (promo != null && promo.DiscountPercent > 0)
+        {
+            foreach (var p in products)
+            {
+                if (result.ContainsKey(p.Id)) continue;
+                result[p.Id] = (RoundUpR10(p.SellPrice * (1 - promo.DiscountPercent / 100m)), promo.Name);
+            }
+        }
+
+        return result;
     }
 
     private static string ComposePosName(string title, string? variantTitle)
@@ -1095,3 +1192,5 @@ public class ShopifyController : ControllerBase
 public record LinkVariantRequest(long? ShopifyVariantId, string? ShopifySku, Guid PosProductId);
 
 public record ImportProductRequest(long ShopifyVariantId);
+
+public record PullPriceRequest(decimal Price);
