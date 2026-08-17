@@ -101,17 +101,22 @@ public class InvoicesController : ControllerBase
         var fromBound = from?.AddDays(-1);
         var toBound = to?.AddDays(1);
 
-        // Use navigations (not a query-syntax left join). The previous
-        // DefaultIfEmpty + 3-arg LIKE shape cannot be translated by the SQLite
-        // provider and 500s the sales-history search.
+        // EF/SQLite cannot translate a single Where that touches both the Invoice
+        // and Product navigations, so do the product match as a small pre-query and
+        // feed the ids into the main line query as a plain Contains.
+        var catalogProductIds = await _db.Products.AsNoTracking()
+            .Where(p => EF.Functions.Like(p.Sku, like)
+                        || (p.Barcode != null && EF.Functions.Like(p.Barcode, like)))
+            .Select(p => p.Id)
+            .ToListAsync(ct);
+
         var query = _db.InvoiceLines.AsNoTracking()
             .Where(line =>
                 EF.Functions.Like(line.Description, like)
                 || (line.SkuAtSale != null && EF.Functions.Like(line.SkuAtSale, like))
                 || EF.Functions.Like(line.Invoice!.InvoiceNumber, like)
                 || (line.Invoice.CustomerName != null && EF.Functions.Like(line.Invoice.CustomerName, like))
-                || (line.Product != null && EF.Functions.Like(line.Product.Sku, like))
-                || (line.Product != null && line.Product.Barcode != null && EF.Functions.Like(line.Product.Barcode, like)));
+                || catalogProductIds.Contains(line.ProductId));
 
         if (!includeVoided)
             query = query.Where(line => line.Invoice!.Status != InvoiceStatus.Voided);
@@ -120,16 +125,28 @@ public class InvoicesController : ControllerBase
         if (toBound.HasValue)
             query = query.Where(line => line.Invoice!.CreatedAt <= toBound.Value);
 
-        var rows = await query
+        var lines = await query
+            .Include(line => line.Invoice)
             .OrderByDescending(line => line.Invoice!.CreatedAt)
             .Take(limit + DateTrimBuffer)
+            .ToListAsync(ct);
+
+        // Look up catalog SKUs for the fetched lines so the DTO can fall back to
+        // the current product SKU when SkuAtSale wasn't snapshotted at the time of sale.
+        var productIds = lines.Select(l => l.ProductId).Distinct().ToList();
+        var catalogSkus = await _db.Products.AsNoTracking()
+            .Where(p => productIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.Sku })
+            .ToDictionaryAsync(x => x.Id, x => x.Sku, ct);
+
+        var rows = lines
             .Select(line => new
             {
                 Line = line,
                 Inv = line.Invoice!,
-                CatalogSku = line.Product != null ? line.Product.Sku : null
+                CatalogSku = catalogSkus.TryGetValue(line.ProductId, out var sku) ? sku : null
             })
-            .ToListAsync(ct);
+            .ToList();
 
         var filtered = rows.AsEnumerable();
         if (from.HasValue)
