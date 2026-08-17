@@ -14,9 +14,6 @@ namespace HuntexPos.Api.Controllers;
 [Authorize(Roles = $"{Roles.Sales},{Roles.Admin},{Roles.Owner},{Roles.Dev}")]
 public class InvoicesController : ControllerBase
 {
-    /// Extra rows fetched so the exact in-memory date filter still has a full page to return.
-    private const int DateTrimBuffer = 200;
-
     private readonly InvoiceService _invoices;
     private readonly HuntexDbContext _db;
     private readonly InvoicePdfService _pdf;
@@ -101,60 +98,77 @@ public class InvoicesController : ControllerBase
         var fromBound = from?.AddDays(-1);
         var toBound = to?.AddDays(1);
 
-        // EF/SQLite cannot translate a single Where that touches both the Invoice
-        // and Product navigations, so do the product match as a small pre-query and
-        // feed the ids into the main line query as a plain Contains.
+        // EF Core's SQLite provider cannot translate a Where that combines multiple
+        // LIKE clauses across an Invoice navigation (it emits a Join whose composite
+        // expression it can't lower to SQL and returns 500). Fan out into four
+        // simple queries — each hits a single table with no navigations — and stitch
+        // the results together in memory.
+
+        // 1) Products whose catalog SKU or barcode matches.
         var catalogProductIds = await _db.Products.AsNoTracking()
             .Where(p => EF.Functions.Like(p.Sku, like)
                         || (p.Barcode != null && EF.Functions.Like(p.Barcode, like)))
             .Select(p => p.Id)
             .ToListAsync(ct);
 
-        var query = _db.InvoiceLines.AsNoTracking()
-            .Where(line =>
-                EF.Functions.Like(line.Description, like)
-                || (line.SkuAtSale != null && EF.Functions.Like(line.SkuAtSale, like))
-                || EF.Functions.Like(line.Invoice!.InvoiceNumber, like)
-                || (line.Invoice.CustomerName != null && EF.Functions.Like(line.Invoice.CustomerName, like))
-                || catalogProductIds.Contains(line.ProductId));
-
+        // 2) In-scope invoices (status + widened date), plus which of those match by header.
+        var scopedInvoicesBase = _db.Invoices.AsNoTracking().AsQueryable();
         if (!includeVoided)
-            query = query.Where(line => line.Invoice!.Status != InvoiceStatus.Voided);
+            scopedInvoicesBase = scopedInvoicesBase.Where(i => i.Status != InvoiceStatus.Voided);
         if (fromBound.HasValue)
-            query = query.Where(line => line.Invoice!.CreatedAt >= fromBound.Value);
+            scopedInvoicesBase = scopedInvoicesBase.Where(i => i.CreatedAt >= fromBound.Value);
         if (toBound.HasValue)
-            query = query.Where(line => line.Invoice!.CreatedAt <= toBound.Value);
+            scopedInvoicesBase = scopedInvoicesBase.Where(i => i.CreatedAt <= toBound.Value);
 
-        var lines = await query
-            .Include(line => line.Invoice)
-            .OrderByDescending(line => line.Invoice!.CreatedAt)
-            .Take(limit + DateTrimBuffer)
+        var scopedInvoiceIds = await scopedInvoicesBase
+            .Select(i => i.Id)
             .ToListAsync(ct);
 
-        // Look up catalog SKUs for the fetched lines so the DTO can fall back to
-        // the current product SKU when SkuAtSale wasn't snapshotted at the time of sale.
-        var productIds = lines.Select(l => l.ProductId).Distinct().ToList();
+        var headerMatchInvoiceIds = await scopedInvoicesBase
+            .Where(i => EF.Functions.Like(i.InvoiceNumber, like)
+                        || (i.CustomerName != null && EF.Functions.Like(i.CustomerName, like)))
+            .Select(i => i.Id)
+            .ToListAsync(ct);
+
+        // 3) Lines that either belong to a header-match invoice or match by their own
+        //    columns / product id. Constrained to in-scope invoices so voided/out-of-range
+        //    invoices never leak in.
+        var lines = await _db.InvoiceLines.AsNoTracking()
+            .Where(l => scopedInvoiceIds.Contains(l.InvoiceId)
+                        && (headerMatchInvoiceIds.Contains(l.InvoiceId)
+                            || EF.Functions.Like(l.Description, like)
+                            || (l.SkuAtSale != null && EF.Functions.Like(l.SkuAtSale, like))
+                            || catalogProductIds.Contains(l.ProductId)))
+            .ToListAsync(ct);
+
+        // 4) Fetch metadata for the invoices those lines belong to.
+        var lineInvoiceIds = lines.Select(l => l.InvoiceId).Distinct().ToList();
+        var invoicesById = await _db.Invoices.AsNoTracking()
+            .Where(i => lineInvoiceIds.Contains(i.Id))
+            .ToDictionaryAsync(i => i.Id, ct);
+
+        // 5) Catalog SKUs for the DTO fallback (SkuAtSale is null on older rows).
+        var lineProductIds = lines.Select(l => l.ProductId).Distinct().ToList();
         var catalogSkus = await _db.Products.AsNoTracking()
-            .Where(p => productIds.Contains(p.Id))
+            .Where(p => lineProductIds.Contains(p.Id))
             .Select(p => new { p.Id, p.Sku })
             .ToDictionaryAsync(x => x.Id, x => x.Sku, ct);
 
         var rows = lines
-            .Select(line => new
+            .Where(l => invoicesById.ContainsKey(l.InvoiceId))
+            .Select(l => new
             {
-                Line = line,
-                Inv = line.Invoice!,
-                CatalogSku = catalogSkus.TryGetValue(line.ProductId, out var sku) ? sku : null
-            })
-            .ToList();
+                Line = l,
+                Inv = invoicesById[l.InvoiceId],
+                CatalogSku = catalogSkus.TryGetValue(l.ProductId, out var sku) ? sku : null
+            });
 
-        var filtered = rows.AsEnumerable();
         if (from.HasValue)
-            filtered = filtered.Where(r => r.Inv.CreatedAt >= from.Value);
+            rows = rows.Where(r => r.Inv.CreatedAt >= from.Value);
         if (to.HasValue)
-            filtered = filtered.Where(r => r.Inv.CreatedAt <= to.Value);
+            rows = rows.Where(r => r.Inv.CreatedAt <= to.Value);
 
-        return filtered
+        return rows
             .OrderByDescending(r => r.Inv.CreatedAt)
             .Take(limit)
             .Select(r => new InvoiceLineSearchResultDto
