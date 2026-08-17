@@ -51,6 +51,23 @@ internal static class ControllerFactory
         return controller;
     }
 
+    public static InvoicesController MakeInvoicesController(TestDb tdb)
+    {
+        var controller = new InvoicesController(invoices: null!, tdb.NewContext(), pdf: null!);
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext
+            {
+                User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+                {
+                    new Claim(ClaimTypes.Name, "test-user"),
+                    new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString())
+                }, "TestAuth"))
+            }
+        };
+        return controller;
+    }
+
     public static T Unwrap<T>(ActionResult<T> result)
     {
         if (result.Result is ObjectResult ok && ok.Value is T v)

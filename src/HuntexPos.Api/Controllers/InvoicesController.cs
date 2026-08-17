@@ -14,8 +14,6 @@ namespace HuntexPos.Api.Controllers;
 [Authorize(Roles = $"{Roles.Sales},{Roles.Admin},{Roles.Owner},{Roles.Dev}")]
 public class InvoicesController : ControllerBase
 {
-    private const string LikeEscape = "\\";
-
     /// Extra rows fetched so the exact in-memory date filter still has a full page to return.
     private const int DateTrimBuffer = 200;
 
@@ -87,9 +85,13 @@ public class InvoicesController : ControllerBase
         if (term.Length < 2)
             return BadRequest(new { error = "Enter at least 2 characters to search." });
 
-        // Treat the term as literal text: '%' and '_' are LIKE wildcards, and a bare '%'
-        // would otherwise scan every line on the database.
-        var like = $"%{term.Replace(LikeEscape, LikeEscape + LikeEscape).Replace("%", LikeEscape + "%").Replace("_", LikeEscape + "_")}%";
+        // '%' and '_' are LIKE wildcards. Strip them so a search cannot scan every line.
+        // Two-arg LIKE is what the SQLite provider can translate; the 3-arg ESCAPE form
+        // was part of the untranslatable query that 500'd this endpoint.
+        var safeTerm = term.Replace("%", string.Empty).Replace("_", string.Empty);
+        if (safeTerm.Length < 2)
+            return BadRequest(new { error = "Enter at least 2 characters to search." });
+        var like = $"%{safeTerm}%";
 
         var limit = Math.Clamp(take, 1, 500);
 
@@ -99,29 +101,34 @@ public class InvoicesController : ControllerBase
         var fromBound = from?.AddDays(-1);
         var toBound = to?.AddDays(1);
 
-        // SQLite LIKE is case-insensitive for ASCII, which is what the counter wants.
-        var query =
-            from line in _db.InvoiceLines.AsNoTracking()
-            join inv in _db.Invoices.AsNoTracking() on line.InvoiceId equals inv.Id
-            from prod in _db.Products.AsNoTracking().Where(p => p.Id == line.ProductId).DefaultIfEmpty()
-            where EF.Functions.Like(line.Description, like, LikeEscape)
-               || (line.SkuAtSale != null && EF.Functions.Like(line.SkuAtSale, like, LikeEscape))
-               || EF.Functions.Like(inv.InvoiceNumber, like, LikeEscape)
-               || (inv.CustomerName != null && EF.Functions.Like(inv.CustomerName, like, LikeEscape))
-               || (prod != null && EF.Functions.Like(prod.Sku, like, LikeEscape))
-               || (prod != null && prod.Barcode != null && EF.Functions.Like(prod.Barcode, like, LikeEscape))
-            select new { Line = line, Inv = inv, CatalogSku = prod == null ? null : prod.Sku };
+        // Use navigations (not a query-syntax left join). The previous
+        // DefaultIfEmpty + 3-arg LIKE shape cannot be translated by the SQLite
+        // provider and 500s the sales-history search.
+        var query = _db.InvoiceLines.AsNoTracking()
+            .Where(line =>
+                EF.Functions.Like(line.Description, like)
+                || (line.SkuAtSale != null && EF.Functions.Like(line.SkuAtSale, like))
+                || EF.Functions.Like(line.Invoice!.InvoiceNumber, like)
+                || (line.Invoice.CustomerName != null && EF.Functions.Like(line.Invoice.CustomerName, like))
+                || (line.Product != null && EF.Functions.Like(line.Product.Sku, like))
+                || (line.Product != null && line.Product.Barcode != null && EF.Functions.Like(line.Product.Barcode, like)));
 
         if (!includeVoided)
-            query = query.Where(r => r.Inv.Status != InvoiceStatus.Voided);
+            query = query.Where(line => line.Invoice!.Status != InvoiceStatus.Voided);
         if (fromBound.HasValue)
-            query = query.Where(r => r.Inv.CreatedAt >= fromBound.Value);
+            query = query.Where(line => line.Invoice!.CreatedAt >= fromBound.Value);
         if (toBound.HasValue)
-            query = query.Where(r => r.Inv.CreatedAt <= toBound.Value);
+            query = query.Where(line => line.Invoice!.CreatedAt <= toBound.Value);
 
         var rows = await query
-            .OrderByDescending(r => r.Inv.CreatedAt)
+            .OrderByDescending(line => line.Invoice!.CreatedAt)
             .Take(limit + DateTrimBuffer)
+            .Select(line => new
+            {
+                Line = line,
+                Inv = line.Invoice!,
+                CatalogSku = line.Product != null ? line.Product.Sku : null
+            })
             .ToListAsync(ct);
 
         var filtered = rows.AsEnumerable();
