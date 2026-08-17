@@ -6,7 +6,6 @@ using QuestPDF.Infrastructure;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
 
 namespace HuntexPos.Api.Services;
 
@@ -140,13 +139,15 @@ public static class LabelPdfService
     {
         var logoBytes = LoadLogo();
 
-        page.Size(LabelHeightMm, LabelWidthMm, Unit.Millimetre);
+        // Chrome OS's print pipeline does not expose a per-printer orientation override,
+        // so the PDF has to be laid out in the final orientation. The content is designed
+        // 62 mm wide × 40 mm tall (landscape) to match the tape, so emit a landscape page
+        // and skip any post-render rotation.
+        page.Size(LabelWidthMm, LabelHeightMm, Unit.Millimetre);
         page.DefaultTextStyle(x => x.FontSize(8).FontColor(Colors.Black));
 
         var contentImage = RenderLabelContentImage(product, logoBytes, barcodeBytes, barcodeText, pricing);
-        var rotatedImage = RotateImageCCW(contentImage);
-
-        page.Content().Image(rotatedImage).FitArea();
+        page.Content().Image(contentImage).FitArea();
     }
 
     private static byte[] RenderLabelContentImage(Product product, byte[]? logoBytes, byte[]? barcodeBytes, string barcodeText, LabelPricing pricing)
@@ -213,19 +214,6 @@ public static class LabelPdfService
             ImageCompressionQuality = ImageCompressionQuality.Best,
             RasterDpi = 300
         }).First();
-    }
-
-    // Chrome OS's print pipeline does not expose "rotate to fit" or a print
-    // orientation override for the QL-800, so the rotation has to be baked into
-    // the PDF. CCW is what puts the barcode/text upright when the tape feeds
-    // out of the printer in front of the operator.
-    private static byte[] RotateImageCCW(byte[] pngBytes)
-    {
-        using var img = SixLabors.ImageSharp.Image.Load(pngBytes);
-        img.Mutate(x => x.Rotate(RotateMode.Rotate270));
-        using var ms = new MemoryStream();
-        img.Save(ms, new PngEncoder());
-        return ms.ToArray();
     }
 
     /// <summary>
