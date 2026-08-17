@@ -98,41 +98,62 @@ public class InvoicesController : ControllerBase
         var fromBound = from?.AddDays(-1);
         var toBound = to?.AddDays(1);
 
-        // EF Core's SQLite provider cannot translate a Where that combines multiple
-        // LIKE clauses across an Invoice navigation (it emits a Join whose composite
-        // expression it can't lower to SQL and returns 500). Fan out into four
-        // simple queries — each hits a single table with no navigations — and stitch
-        // the results together in memory.
+        // Two rules force the shape of this query:
+        //   1) EF Core's SQLite provider cannot translate a Where that reaches an
+        //      Invoice navigation from InvoiceLine when combined with LIKEs.
+        //   2) The same provider cannot translate DateTimeOffset comparisons
+        //      against columns (see the "SQLite can't translate" comment in
+        //      ReportsController). Rest of the codebase filters dates in memory.
+        //
+        // So: pull the small "invoice header" fields for candidate invoices into
+        // memory (SQL filter is only by Status), filter by date + term in memory,
+        // then run a single line-level SQL query keyed on plain Guid columns.
 
-        // 1) Products whose catalog SKU or barcode matches.
+        // 1) Products whose catalog SKU or barcode matches (LIKE on plain columns is fine).
         var catalogProductIds = await _db.Products.AsNoTracking()
             .Where(p => EF.Functions.Like(p.Sku, like)
                         || (p.Barcode != null && EF.Functions.Like(p.Barcode, like)))
             .Select(p => p.Id)
             .ToListAsync(ct);
 
-        // 2) In-scope invoices (status + widened date), plus which of those match by header.
-        var scopedInvoicesBase = _db.Invoices.AsNoTracking().AsQueryable();
+        // 2) Invoice headers (SQL: status only). Everything else filtered in memory.
+        var invoiceHeadersQuery = _db.Invoices.AsNoTracking().AsQueryable();
         if (!includeVoided)
-            scopedInvoicesBase = scopedInvoicesBase.Where(i => i.Status != InvoiceStatus.Voided);
+            invoiceHeadersQuery = invoiceHeadersQuery.Where(i => i.Status != InvoiceStatus.Voided);
+
+        var allHeaders = await invoiceHeadersQuery
+            .Select(i => new InvoiceHeader(
+                i.Id,
+                i.InvoiceNumber,
+                i.Status,
+                i.CustomerName,
+                i.CreatedAt,
+                i.PaymentMethod,
+                i.PublicToken))
+            .ToListAsync(ct);
+
+        IEnumerable<InvoiceHeader> scopedHeaders = allHeaders;
         if (fromBound.HasValue)
-            scopedInvoicesBase = scopedInvoicesBase.Where(i => i.CreatedAt >= fromBound.Value);
+            scopedHeaders = scopedHeaders.Where(i => i.CreatedAt >= fromBound.Value);
         if (toBound.HasValue)
-            scopedInvoicesBase = scopedInvoicesBase.Where(i => i.CreatedAt <= toBound.Value);
+            scopedHeaders = scopedHeaders.Where(i => i.CreatedAt <= toBound.Value);
 
-        var scopedInvoiceIds = await scopedInvoicesBase
+        var scopedHeaderList = scopedHeaders.ToList();
+        var scopedInvoiceIds = scopedHeaderList.Select(i => i.Id).ToList();
+        var headersById = scopedHeaderList.ToDictionary(i => i.Id);
+
+        var termForContains = safeTerm;
+        var headerMatchInvoiceIds = scopedHeaderList
+            .Where(i =>
+                (i.InvoiceNumber != null
+                    && i.InvoiceNumber.Contains(termForContains, StringComparison.OrdinalIgnoreCase))
+                || (i.CustomerName != null
+                    && i.CustomerName.Contains(termForContains, StringComparison.OrdinalIgnoreCase)))
             .Select(i => i.Id)
-            .ToListAsync(ct);
+            .ToList();
 
-        var headerMatchInvoiceIds = await scopedInvoicesBase
-            .Where(i => EF.Functions.Like(i.InvoiceNumber, like)
-                        || (i.CustomerName != null && EF.Functions.Like(i.CustomerName, like)))
-            .Select(i => i.Id)
-            .ToListAsync(ct);
-
-        // 3) Lines that either belong to a header-match invoice or match by their own
-        //    columns / product id. Constrained to in-scope invoices so voided/out-of-range
-        //    invoices never leak in.
+        // 3) Matching lines. All predicates are on plain columns / Guid Contains,
+        //    so this is trivially translatable.
         var lines = await _db.InvoiceLines.AsNoTracking()
             .Where(l => scopedInvoiceIds.Contains(l.InvoiceId)
                         && (headerMatchInvoiceIds.Contains(l.InvoiceId)
@@ -141,13 +162,7 @@ public class InvoicesController : ControllerBase
                             || catalogProductIds.Contains(l.ProductId)))
             .ToListAsync(ct);
 
-        // 4) Fetch metadata for the invoices those lines belong to.
-        var lineInvoiceIds = lines.Select(l => l.InvoiceId).Distinct().ToList();
-        var invoicesById = await _db.Invoices.AsNoTracking()
-            .Where(i => lineInvoiceIds.Contains(i.Id))
-            .ToDictionaryAsync(i => i.Id, ct);
-
-        // 5) Catalog SKUs for the DTO fallback (SkuAtSale is null on older rows).
+        // 4) Catalog SKUs for the DTO fallback (SkuAtSale is null on older rows).
         var lineProductIds = lines.Select(l => l.ProductId).Distinct().ToList();
         var catalogSkus = await _db.Products.AsNoTracking()
             .Where(p => lineProductIds.Contains(p.Id))
@@ -155,11 +170,11 @@ public class InvoicesController : ControllerBase
             .ToDictionaryAsync(x => x.Id, x => x.Sku, ct);
 
         var rows = lines
-            .Where(l => invoicesById.ContainsKey(l.InvoiceId))
+            .Where(l => headersById.ContainsKey(l.InvoiceId))
             .Select(l => new
             {
                 Line = l,
-                Inv = invoicesById[l.InvoiceId],
+                Inv = headersById[l.InvoiceId],
                 CatalogSku = catalogSkus.TryGetValue(l.ProductId, out var sku) ? sku : null
             });
 
@@ -283,4 +298,16 @@ public class InvoicesController : ControllerBase
         var bytes = _pdf.BuildOrderConfirmationPdf(inv);
         return File(bytes, "application/pdf", $"order-confirmation-{inv.InvoiceNumber}.pdf");
     }
+
+    /// <summary>Small projection of Invoice used by the sales-history search — kept as
+    /// a record so we can filter the header fields in memory (SQLite cannot translate
+    /// <c>DateTimeOffset</c> comparisons against columns).</summary>
+    private sealed record InvoiceHeader(
+        Guid Id,
+        string InvoiceNumber,
+        InvoiceStatus Status,
+        string? CustomerName,
+        DateTimeOffset CreatedAt,
+        string PaymentMethod,
+        Guid PublicToken);
 }
