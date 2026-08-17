@@ -144,7 +144,7 @@ public static class LabelPdfService
         page.DefaultTextStyle(x => x.FontSize(8).FontColor(Colors.Black));
 
         var contentImage = RenderLabelContentImage(product, logoBytes, barcodeBytes, barcodeText, pricing);
-        var rotatedImage = RotateImageCW(contentImage);
+        var rotatedImage = RotateImageCCW(contentImage);
 
         page.Content().Image(rotatedImage).FitArea();
     }
@@ -215,10 +215,14 @@ public static class LabelPdfService
         }).First();
     }
 
-    private static byte[] RotateImageCW(byte[] pngBytes)
+    // Chrome OS's print pipeline does not expose "rotate to fit" or a print
+    // orientation override for the QL-800, so the rotation has to be baked into
+    // the PDF. CCW is what puts the barcode/text upright when the tape feeds
+    // out of the printer in front of the operator.
+    private static byte[] RotateImageCCW(byte[] pngBytes)
     {
         using var img = SixLabors.ImageSharp.Image.Load(pngBytes);
-        img.Mutate(x => x.Rotate(RotateMode.Rotate90));
+        img.Mutate(x => x.Rotate(RotateMode.Rotate270));
         using var ms = new MemoryStream();
         img.Save(ms, new PngEncoder());
         return ms.ToArray();
