@@ -20,6 +20,7 @@ import McAlert from '@/components/ui/McAlert.vue'
 import McBadge from '@/components/ui/McBadge.vue'
 import McSpinner from '@/components/ui/McSpinner.vue'
 import McEmptyState from '@/components/ui/McEmptyState.vue'
+import ReturnExchangeDialog from '@/views/ReturnExchangeDialog.vue'
 
 type SaleLine = {
   invoiceId: string
@@ -30,14 +31,31 @@ type SaleLine = {
   paymentMethod: string
   publicToken: string
   productId: string
+  invoiceLineId: string
   sku?: string | null
   description: string
   quantity: number
+  returnedQuantity: number
   originalUnitPrice: number
   unitPrice: number
   lineDiscount: number
   lineTotal: number
   effectiveUnitPrice: number
+}
+
+type ExchangeResult = {
+  saleReturnId: string
+  originalInvoiceId: string
+  originalInvoiceNumber: string
+  creditTotal: number
+  netSettlement: number
+  exchangeInvoice: {
+    id: string
+    invoiceNumber: string
+    publicToken: string
+    grandTotal: number
+    amountPaid: number
+  } | null
 }
 
 type SaleGroup = {
@@ -213,6 +231,31 @@ function invoiceUrl(g: SaleGroup) {
   return `/#/invoice/${g.publicToken}`
 }
 
+// ── Return / exchange ────────────────────────────────────────────────────────
+// Open the till exchange dialog for a specific receipt. Any change to
+// ReturnedQuantity on the server changes what search-lines returns, so we
+// re-run the current search after a successful exchange to refresh the view.
+const exchangeTarget = ref<SaleGroup | null>(null)
+const lastExchangeResult = ref<ExchangeResult | null>(null)
+
+function openExchange(g: SaleGroup) {
+  exchangeTarget.value = g
+}
+
+function closeExchange() {
+  exchangeTarget.value = null
+}
+
+async function onExchangeDone(result: ExchangeResult) {
+  lastExchangeResult.value = result
+  exchangeTarget.value = null
+  if (canSearch.value) await search()
+}
+
+function dismissExchangeSummary() {
+  lastExchangeResult.value = null
+}
+
 function fmtWhen(iso: string): string {
   const d = new Date(iso)
   return isNaN(d.getTime()) ? '—' : d.toLocaleString('en-ZA')
@@ -344,6 +387,14 @@ watch(
               <a class="hist-action" :href="invoiceUrl(g)" target="_blank" rel="noreferrer">
                 Open invoice
               </a>
+              <button
+                v-if="g.status !== 'Voided'"
+                type="button"
+                class="hist-action hist-action--exchange"
+                @click="openExchange(g)"
+              >
+                Return / exchange
+              </button>
             </div>
           </header>
 
@@ -372,6 +423,59 @@ watch(
         </article>
       </div>
     </McCard>
+
+    <!-- Post-exchange summary: shows what changed hands + one-tap reprint. -->
+    <div
+      v-if="lastExchangeResult"
+      class="rx-result-overlay"
+      role="dialog"
+      aria-modal="true"
+      @click.self="dismissExchangeSummary"
+    >
+      <McCard class="rx-result-dialog" title="Exchange complete">
+        <p class="rx-result__lead">
+          Return recorded against <strong>{{ lastExchangeResult.originalInvoiceNumber }}</strong>.
+        </p>
+        <ul class="rx-result__rows">
+          <li>
+            <span>Return credit</span>
+            <strong>{{ formatZAR(lastExchangeResult.creditTotal) }}</strong>
+          </li>
+          <li v-if="lastExchangeResult.exchangeInvoice">
+            <span>New sale total</span>
+            <strong>{{ formatZAR(lastExchangeResult.exchangeInvoice.grandTotal) }}</strong>
+          </li>
+          <li class="rx-result__net">
+            <span>
+              <template v-if="lastExchangeResult.netSettlement > 0">Collected from customer</template>
+              <template v-else-if="lastExchangeResult.netSettlement < 0">Refunded to customer</template>
+              <template v-else>Even swap</template>
+            </span>
+            <strong>{{ formatZAR(Math.abs(lastExchangeResult.netSettlement)) }}</strong>
+          </li>
+        </ul>
+        <div class="rx-result__actions">
+          <a
+            v-if="lastExchangeResult.exchangeInvoice"
+            class="hist-action hist-action--primary"
+            :href="`/#/receipt/${lastExchangeResult.exchangeInvoice.publicToken}?auto=1`"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Print new receipt
+          </a>
+          <McButton variant="secondary" type="button" @click="dismissExchangeSummary">Done</McButton>
+        </div>
+      </McCard>
+    </div>
+
+    <ReturnExchangeDialog
+      v-if="exchangeTarget"
+      :invoice-id="exchangeTarget.invoiceId"
+      :invoice-number="exchangeTarget.invoiceNumber"
+      @close="closeExchange"
+      @done="onExchangeDone"
+    />
   </div>
 </template>
 
@@ -534,6 +638,75 @@ watch(
 .hist-action--primary:hover {
   filter: brightness(0.95);
   background: var(--mc-app-accent, #f47a20);
+}
+
+.hist-action--exchange {
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border: 1px solid var(--mc-app-border-subtle, #c8c5bd);
+  background: var(--mc-app-surface-2, #f9f8f6);
+  color: var(--mc-app-heading, #0a0a0c);
+}
+
+.hist-action--exchange:hover {
+  background: var(--mc-app-surface-muted, #f0eeea);
+  border-color: var(--mc-app-border, #9e9c94);
+}
+
+.rx-result-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 998;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.rx-result-dialog {
+  max-width: 460px;
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.rx-result__lead {
+  margin: 0 0 0.75rem;
+  color: var(--mc-app-text-secondary, #333336);
+}
+
+.rx-result__rows {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.rx-result__rows li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.rx-result__net {
+  border-top: 1px solid var(--mc-app-border-faint, #eceae5);
+  padding-top: 0.5rem;
+  margin-top: 0.15rem;
+  font-size: 1.1rem;
+}
+
+.rx-result__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
 }
 
 .hist-receipt__lines {

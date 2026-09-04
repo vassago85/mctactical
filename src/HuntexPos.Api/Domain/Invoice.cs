@@ -58,5 +58,28 @@ public class Invoice
     /// </summary>
     public bool StockDeducted { get; set; }
 
+    // --- Exchange / pay-the-difference ---
+
+    /// <summary>
+    /// Original invoice this sale exchanges from. Set only when this invoice was rung up as the
+    /// "new items" side of an exchange (see <see cref="SaleReturn"/>). Kept so the receipt and
+    /// reports can show what prior sale funded the credit.
+    /// </summary>
+    public Guid? ExchangeFromInvoiceId { get; set; }
+
+    /// <summary>
+    /// Return credit (VAT-inclusive) applied at checkout from an exchange. Reduces the amount the
+    /// customer actually tenders but does not lower <see cref="GrandTotal"/> — the sale itself is
+    /// still recorded at full price so GP and VAT stay correct.
+    /// </summary>
+    public decimal ReturnCreditApplied { get; set; }
+
+    /// <summary>
+    /// What the customer actually paid at the till. Equals <see cref="GrandTotal"/> minus
+    /// <see cref="ReturnCreditApplied"/>, clamped at zero. Reports that aggregate by payment method
+    /// should prefer this over <see cref="GrandTotal"/> so an exchange does not double-count cash.
+    /// </summary>
+    public decimal AmountPaid { get; set; }
+
     public ICollection<InvoiceLine> Lines { get; set; } = new List<InvoiceLine>();
 }

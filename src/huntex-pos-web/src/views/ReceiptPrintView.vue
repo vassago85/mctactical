@@ -55,6 +55,12 @@ type Inv = {
   lines: Line[]
   companyContact?: CompanyContact | null
   receiptFooter?: string | null
+  /** Return credit applied to this sale (when it was rung as part of an exchange). */
+  returnCreditApplied?: number
+  /** Cash/card actually tendered — set when returnCreditApplied is non-zero. */
+  amountPaid?: number
+  /** Prior invoice this exchange was against; when null the sale is a plain checkout. */
+  exchangeFromInvoiceId?: string | null
 }
 
 const inv = ref<Inv | null>(null)
@@ -274,6 +280,19 @@ function fmtDate(iso: string): string {
             <span class="rcpt__num">{{ formatZAR(inv.grandTotal) }}</span>
           </div>
         </template>
+        <!-- Exchange sales: split the total so the customer can see the return
+             credit and the top-up they actually paid. Suppressed on ordinary
+             sales so nothing changes on the vast majority of receipts. -->
+        <template v-if="(inv.returnCreditApplied ?? 0) > 0">
+          <div class="rcpt__sub rcpt__sub--credit">
+            <span>Less return credit</span>
+            <span class="rcpt__num">-{{ formatZAR(inv.returnCreditApplied ?? 0) }}</span>
+          </div>
+          <div class="rcpt__total rcpt__total--paid">
+            <span>PAID BY CUSTOMER</span>
+            <span class="rcpt__num">{{ formatZAR(inv.amountPaid ?? Math.max(0, inv.grandTotal - (inv.returnCreditApplied ?? 0))) }}</span>
+          </div>
+        </template>
         <div class="rcpt__pay">
           <span>Paid by</span>
           <strong>{{ inv.paymentMethod }}</strong>
@@ -463,6 +482,13 @@ function fmtDate(iso: string): string {
   font-weight: 700;
   font-size: 13px;
   margin-top: 1mm;
+}
+.rcpt__sub--credit {
+  font-weight: 700;
+}
+.rcpt__total--paid {
+  border-top: 1px dashed #000;
+  padding-top: 1mm;
 }
 
 /* ── Footer ──────────────────────────────────────────────────────────── */

@@ -35,7 +35,23 @@ public class InvoiceService
         _posRules = posRules.Value;
     }
 
-    public async Task<InvoiceDto> CreateAsync(CreateInvoiceRequest req, string userId, bool managerBypassPosRules, CancellationToken ct)
+    public Task<InvoiceDto> CreateAsync(CreateInvoiceRequest req, string userId, bool managerBypassPosRules, CancellationToken ct)
+        => CreateAsync(req, userId, managerBypassPosRules, ct, exchangeFromInvoiceId: null, returnCreditApplied: 0m);
+
+    /// <summary>
+    /// Extended create used by both the plain POS checkout and the exchange endpoint. When
+    /// <paramref name="exchangeFromInvoiceId"/> is set the new invoice is tagged as an exchange and
+    /// <paramref name="returnCreditApplied"/> is subtracted from <see cref="Invoice.GrandTotal"/> to
+    /// yield <see cref="Invoice.AmountPaid"/> — the sale's ledger totals stay unchanged so GP and VAT
+    /// remain correct, only the reported "cash tendered" shrinks.
+    /// </summary>
+    public async Task<InvoiceDto> CreateAsync(
+        CreateInvoiceRequest req,
+        string userId,
+        bool managerBypassPosRules,
+        CancellationToken ct,
+        Guid? exchangeFromInvoiceId,
+        decimal returnCreditApplied)
     {
         const decimal taxRate = 15m;
 
@@ -186,6 +202,15 @@ public class InvoiceService
         if (!managerBypassPosRules && _posRules.BlockZeroOrNegativeTotal && grandTotal <= 0)
             throw new InvalidOperationException("Sale total must be greater than zero.");
 
+        // Return credit funds the customer's tender first; any remainder is what they actually pay.
+        // Clamp so a customer never appears to have "paid" a negative amount when the credit is
+        // larger than the new sale — the leftover is a cash refund tracked on the SaleReturn record,
+        // not on this invoice.
+        var creditApplied = returnCreditApplied > 0
+            ? Math.Min(PricingCalculator.Round2(returnCreditApplied), grandTotal)
+            : 0m;
+        var amountPaid = PricingCalculator.Round2(grandTotal - creditApplied);
+
         var invoice = new Invoice
         {
             Id = Guid.NewGuid(),
@@ -207,6 +232,9 @@ public class InvoiceService
             CreatedByUserId = userId,
             StockDeducted = true,
             IsSpecialOrder = isSpecialOrder,
+            ExchangeFromInvoiceId = exchangeFromInvoiceId,
+            ReturnCreditApplied = creditApplied,
+            AmountPaid = amountPaid,
             Lines = lines
         };
 
@@ -325,12 +353,16 @@ public class InvoiceService
             PublicToken = inv.PublicToken,
             PdfUrl = pdfUrl,
             CreatedAt = inv.CreatedAt,
+            ReturnCreditApplied = inv.ReturnCreditApplied,
+            AmountPaid = inv.AmountPaid,
+            ExchangeFromInvoiceId = inv.ExchangeFromInvoiceId,
             IsSpecialOrder = inv.IsSpecialOrder,
             IsDelivered = inv.IsDelivered,
             DeliveredAt = inv.DeliveredAt,
             DeliveryNotes = inv.DeliveryNotes,
             Lines = inv.Lines.Select(l => new InvoiceLineDto
             {
+                Id = l.Id,
                 ProductId = l.ProductId,
                 Description = l.Description,
                 Sku = l.SkuAtSale ?? l.Product?.Sku,
@@ -338,7 +370,8 @@ public class InvoiceService
                 UnitPrice = l.UnitPrice,
                 OriginalUnitPrice = l.OriginalUnitPrice,
                 LineDiscount = l.LineDiscount,
-                LineTotal = l.LineTotal
+                LineTotal = l.LineTotal,
+                ReturnedQuantity = l.ReturnedQuantity
             }).ToList(),
             CompanyContact = null
         };
@@ -410,6 +443,179 @@ public class InvoiceService
         }
         await _db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
+    }
+
+    /// <summary>
+    /// Return one or more lines from a prior sale and — optionally — ring up replacement items,
+    /// settling only the net difference. The original invoice stays Final; only the returned qty
+    /// on each affected line is booked (see <see cref="InvoiceLine.ReturnedQuantity"/>). A
+    /// <see cref="SaleReturn"/> record links the return to any new sale for the audit trail.
+    /// </summary>
+    /// <remarks>
+    /// Split across two transactions on purpose: the return + new-sale creation each need their own
+    /// tx, and if the new sale fails we still want the return persisted so the customer's refund
+    /// is recorded. The final "link the two together" write is small and idempotent enough that
+    /// operator recovery is trivial if it ever fails.
+    /// </remarks>
+    public async Task<ExchangeResponse> ExchangeAsync(
+        Guid originalInvoiceId,
+        ExchangeRequest req,
+        string userId,
+        bool managerBypassPosRules,
+        CancellationToken ct)
+    {
+        var original = await _db.Invoices
+            .Include(i => i.Lines)
+            .FirstOrDefaultAsync(i => i.Id == originalInvoiceId, ct)
+            ?? throw new InvalidOperationException("Original invoice not found.");
+        if (original.Status != InvoiceStatus.Final)
+            throw new InvalidOperationException("Only finalised sales can be returned against.");
+
+        if (req.ReturnLines == null || req.ReturnLines.Count == 0)
+            throw new InvalidOperationException("At least one return line is required.");
+
+        // Validate + snapshot each return line up front so we can reject before mutating anything.
+        var linesById = original.Lines.ToDictionary(l => l.Id);
+        var returnPlan = new List<(InvoiceLine line, int qty, decimal unitCredit, decimal lineCredit)>();
+        var mergedByLineId = req.ReturnLines
+            .GroupBy(r => r.InvoiceLineId)
+            .Select(g => (Id: g.Key, Qty: g.Sum(x => x.Quantity)));
+
+        foreach (var (lineId, qty) in mergedByLineId)
+        {
+            if (!linesById.TryGetValue(lineId, out var l))
+                throw new InvalidOperationException($"Line {lineId} is not on invoice {original.InvoiceNumber}.");
+            if (qty <= 0)
+                throw new InvalidOperationException($"Return quantity for \"{l.Description}\" must be greater than zero.");
+            var remaining = l.Quantity - l.ReturnedQuantity;
+            if (qty > remaining)
+                throw new InvalidOperationException(
+                    $"Only {remaining} of \"{l.Description}\" is still returnable (already returned {l.ReturnedQuantity} of {l.Quantity}).");
+
+            // Effective unit price is what the customer actually paid — this is the same basis Find
+            // sale displays and is the fair credit amount for the return.
+            var unitCredit = l.Quantity > 0
+                ? PricingCalculator.Round2(l.LineTotal / l.Quantity)
+                : PricingCalculator.Round2(l.UnitPrice);
+            var lineCredit = PricingCalculator.Round2(unitCredit * qty);
+            returnPlan.Add((l, qty, unitCredit, lineCredit));
+        }
+
+        var creditTotal = PricingCalculator.Round2(returnPlan.Sum(p => p.lineCredit));
+
+        // 1) Persist the return itself. Restock, bump ReturnedQuantity, insert SaleReturn(+Lines).
+        //    Kept independent of new-sale creation so a refund is always recorded even if the
+        //    replacement ring-up fails downstream. NetSettlement is provisionally set as if this
+        //    were refund-only; step 3 revises it once the new-sale total is known.
+        var saleReturn = new SaleReturn
+        {
+            Id = Guid.NewGuid(),
+            OriginalInvoiceId = original.Id,
+            CreditTotal = creditTotal,
+            NetSettlement = -creditTotal,
+            SettlementMethod = req.PaymentMethod,
+            Reason = req.Reason.Trim(),
+            CreatedByUserId = userId,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        await using (var tx = await _db.Database.BeginTransactionAsync(ct))
+        {
+            foreach (var (line, qty, unitCredit, lineCredit) in returnPlan)
+            {
+                line.ReturnedQuantity += qty;
+
+                // Restock only if this invoice actually deducted stock (mirrors VoidAsync logic).
+                if (original.StockDeducted)
+                {
+                    var p = await _db.Products.FirstOrDefaultAsync(x => x.Id == line.ProductId, ct);
+                    if (p != null && p.Sku != ShopifyOrderImportService.UnlinkedPlaceholderSku)
+                    {
+                        p.QtyOnHand += qty;
+                        p.UpdatedAt = DateTimeOffset.UtcNow;
+                    }
+                }
+
+                saleReturn.Lines.Add(new SaleReturnLine
+                {
+                    Id = Guid.NewGuid(),
+                    SaleReturnId = saleReturn.Id,
+                    OriginalInvoiceLineId = line.Id,
+                    ProductId = line.ProductId,
+                    SkuAtReturn = line.SkuAtSale,
+                    Description = line.Description,
+                    Quantity = qty,
+                    UnitCredit = unitCredit,
+                    LineCredit = lineCredit
+                });
+            }
+
+            _db.SaleReturns.Add(saleReturn);
+            await _db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+        }
+
+        // 2) If there are replacement items, create the new sale with the credit applied. We call
+        //    the public CreateAsync so all POS rules, promo pricing and PDF logic run identically.
+        InvoiceDto? newSaleDto = null;
+        if (req.NewLines != null && req.NewLines.Count > 0)
+        {
+            var createReq = new CreateInvoiceRequest
+            {
+                CustomerName = req.CustomerName ?? original.CustomerName,
+                CustomerEmail = req.CustomerEmail ?? original.CustomerEmail,
+                CustomerType = req.CustomerType ?? original.CustomerType,
+                CustomerCompany = req.CustomerCompany ?? original.CustomerCompany,
+                CustomerAddress = req.CustomerAddress ?? original.CustomerAddress,
+                CustomerVatNumber = req.CustomerVatNumber ?? original.CustomerVatNumber,
+                PaymentMethod = req.PaymentMethod,
+                DiscountTotal = req.DiscountTotal,
+                PromotionName = req.PromotionName,
+                SendEmail = req.SendEmail,
+                Lines = req.NewLines
+            };
+
+            newSaleDto = await CreateAsync(
+                createReq,
+                userId,
+                managerBypassPosRules,
+                ct,
+                exchangeFromInvoiceId: original.Id,
+                returnCreditApplied: creditTotal);
+        }
+
+        // 3) Compute net settlement and link the two records. Net > 0 = customer paid the top-up,
+        //    net < 0 = customer got cash back. When there is no new sale, the whole credit is a
+        //    refund (net = -creditTotal).
+        var newSaleTotal = newSaleDto?.GrandTotal ?? 0m;
+        var netSettlement = PricingCalculator.Round2(newSaleTotal - creditTotal);
+        saleReturn.NetSettlement = netSettlement;
+        saleReturn.SettlementMethod = req.PaymentMethod;
+        if (newSaleDto != null)
+        {
+            saleReturn.ExchangeInvoiceId = newSaleDto.Id;
+        }
+        await _db.SaveChangesAsync(ct);
+
+        return new ExchangeResponse
+        {
+            SaleReturnId = saleReturn.Id,
+            OriginalInvoiceId = original.Id,
+            OriginalInvoiceNumber = original.InvoiceNumber,
+            CreditTotal = creditTotal,
+            NetSettlement = netSettlement,
+            ExchangeInvoice = newSaleDto,
+            ReturnedLines = saleReturn.Lines.Select(l => new ExchangeReturnLineResultDto
+            {
+                OriginalInvoiceLineId = l.OriginalInvoiceLineId,
+                ProductId = l.ProductId,
+                Sku = l.SkuAtReturn,
+                Description = l.Description,
+                Quantity = l.Quantity,
+                UnitCredit = l.UnitCredit,
+                LineCredit = l.LineCredit
+            }).ToList()
+        };
     }
 
     private async Task<string> NextInvoiceNumberAsync(CancellationToken ct)

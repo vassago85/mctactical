@@ -324,6 +324,23 @@ public class InvoicePdfService
                             });
                     });
 
+                    // Exchange sales: split return credit vs. what the customer actually tendered.
+                    // The Total-due box above already reflects the full sale for VAT purposes; the
+                    // rows below are informational and only render when there was a return credit.
+                    if (invoice.ReturnCreditApplied > 0)
+                    {
+                        col.Item().PaddingTop(6).AlignRight().Column(exch =>
+                        {
+                            exch.Spacing(2);
+                            exch.Item()
+                                .Text($"Less return credit:  -R{invoice.ReturnCreditApplied:N2}")
+                                .FontSize(10).FontColor("#CC0000");
+                            exch.Item()
+                                .Text($"Amount paid by customer:  R{invoice.AmountPaid:N2}")
+                                .FontSize(10).Bold().FontColor(TextDark);
+                        });
+                    }
+
                     var (footerTitle, footerLines) = ReceiptCompanyContact.ToPdfFooter(eff);
                     col.Item().PaddingTop(30)
                         .LineHorizontal(1).LineColor(BorderLight);

@@ -27,6 +27,8 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<ConsignmentBatchLine> ConsignmentBatchLines => Set<ConsignmentBatchLine>();
     public DbSet<Quote> Quotes => Set<Quote>();
     public DbSet<QuoteLine> QuoteLines => Set<QuoteLine>();
+    public DbSet<SaleReturn> SaleReturns => Set<SaleReturn>();
+    public DbSet<SaleReturnLine> SaleReturnLines => Set<SaleReturnLine>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -71,6 +73,9 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
             e.Property(i => i.TaxAmount).HasPrecision(18, 2);
             e.Property(i => i.DiscountTotal).HasPrecision(18, 2);
             e.Property(i => i.GrandTotal).HasPrecision(18, 2);
+            e.Property(i => i.ReturnCreditApplied).HasPrecision(18, 2);
+            e.Property(i => i.AmountPaid).HasPrecision(18, 2);
+            e.HasIndex(i => i.ExchangeFromInvoiceId);
         });
 
         modelBuilder.Entity<InvoiceLine>(e =>
@@ -200,6 +205,44 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
             e.Property(l => l.LineTotal).HasPrecision(18, 2);
             e.Property(l => l.Sku).HasMaxLength(64);
             e.Property(l => l.ItemName).HasMaxLength(512);
+        });
+
+        modelBuilder.Entity<SaleReturn>(e =>
+        {
+            e.HasIndex(r => r.OriginalInvoiceId);
+            e.HasIndex(r => r.ExchangeInvoiceId);
+            e.HasIndex(r => r.CreatedAt);
+            e.Property(r => r.CreditTotal).HasPrecision(18, 2);
+            e.Property(r => r.NetSettlement).HasPrecision(18, 2);
+            e.Property(r => r.Reason).HasMaxLength(500);
+            e.Property(r => r.SettlementMethod).HasMaxLength(32);
+            e.HasOne(r => r.OriginalInvoice)
+                .WithMany()
+                .HasForeignKey(r => r.OriginalInvoiceId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(r => r.ExchangeInvoice)
+                .WithMany()
+                .HasForeignKey(r => r.ExchangeInvoiceId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(r => r.Lines)
+                .WithOne(l => l.SaleReturn)
+                .HasForeignKey(l => l.SaleReturnId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SaleReturnLine>(e =>
+        {
+            e.HasIndex(l => l.SaleReturnId);
+            e.HasIndex(l => l.OriginalInvoiceLineId);
+            e.HasIndex(l => l.ProductId);
+            e.Property(l => l.UnitCredit).HasPrecision(18, 2);
+            e.Property(l => l.LineCredit).HasPrecision(18, 2);
+            e.Property(l => l.SkuAtReturn).HasMaxLength(64);
+            e.Property(l => l.Description).HasMaxLength(512);
+            e.HasOne(l => l.OriginalInvoiceLine)
+                .WithMany()
+                .HasForeignKey(l => l.OriginalInvoiceLineId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

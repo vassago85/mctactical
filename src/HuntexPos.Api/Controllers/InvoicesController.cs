@@ -196,9 +196,11 @@ public class InvoicesController : ControllerBase
                 PaymentMethod = r.Inv.PaymentMethod,
                 PublicToken = r.Inv.PublicToken,
                 ProductId = r.Line.ProductId,
+                InvoiceLineId = r.Line.Id,
                 Sku = r.Line.SkuAtSale ?? r.CatalogSku,
                 Description = r.Line.Description,
                 Quantity = r.Line.Quantity,
+                ReturnedQuantity = r.Line.ReturnedQuantity,
                 OriginalUnitPrice = r.Line.OriginalUnitPrice,
                 UnitPrice = r.Line.UnitPrice,
                 LineDiscount = r.Line.LineDiscount,
@@ -234,6 +236,27 @@ public class InvoicesController : ControllerBase
         {
             await _invoices.VoidAsync(id, req.Reason, userId, ct);
             return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Return line(s) from a prior sale and optionally ring up replacement items in the same
+    /// transaction. Available to Sales because it is a till operation; PosRules still apply to
+    /// the new-sale side, so staff cannot use it to sneak under discount limits.
+    /// </summary>
+    [HttpPost("{id:guid}/exchange")]
+    public async Task<ActionResult<ExchangeResponse>> Exchange(Guid id, [FromBody] ExchangeRequest req, CancellationToken ct)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)!;
+        var managerBypass = User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Owner) || User.IsInRole(Roles.Dev);
+        try
+        {
+            var result = await _invoices.ExchangeAsync(id, req, userId, managerBypass, ct);
+            return Ok(result);
         }
         catch (InvalidOperationException ex)
         {

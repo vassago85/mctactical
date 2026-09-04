@@ -68,6 +68,14 @@ public class InvoiceDto
     public Guid PublicToken { get; set; }
     public string? PdfUrl { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>Return credit applied at checkout when this sale was rung as part of an exchange.</summary>
+    public decimal ReturnCreditApplied { get; set; }
+    /// <summary>What the customer actually tendered (<c>GrandTotal - ReturnCreditApplied</c>).</summary>
+    public decimal AmountPaid { get; set; }
+    /// <summary>Set when this invoice was created via an exchange against a prior sale.</summary>
+    public Guid? ExchangeFromInvoiceId { get; set; }
+
     public List<InvoiceLineDto> Lines { get; set; } = new();
 
     /// <summary>Set on anonymous public invoice responses so the web receipt can show shop details.</summary>
@@ -88,6 +96,8 @@ public class InvoiceDto
 
 public class InvoiceLineDto
 {
+    /// <summary>Row id, exposed so the return/exchange UI can reference it back to the server.</summary>
+    public Guid Id { get; set; }
     public Guid ProductId { get; set; }
     public string Description { get; set; } = string.Empty;
     /// <summary>Product SKU (from catalog at render time). Empty if the product was deleted.</summary>
@@ -97,6 +107,8 @@ public class InvoiceLineDto
     public decimal OriginalUnitPrice { get; set; }
     public decimal LineDiscount { get; set; }
     public decimal LineTotal { get; set; }
+    /// <summary>Total qty already returned from this line via a prior exchange.</summary>
+    public int ReturnedQuantity { get; set; }
 }
 
 /// <summary>
@@ -116,9 +128,13 @@ public class InvoiceLineSearchResultDto
     public Guid PublicToken { get; set; }
 
     public Guid ProductId { get; set; }
+    /// <summary>Original <see cref="Domain.InvoiceLine.Id"/> — used by the return/exchange flow.</summary>
+    public Guid InvoiceLineId { get; set; }
     public string? Sku { get; set; }
     public string Description { get; set; } = string.Empty;
     public int Quantity { get; set; }
+    /// <summary>How much of this line has already been returned via one or more prior exchanges.</summary>
+    public int ReturnedQuantity { get; set; }
     /// <summary>Catalog retail price at time of sale, before any concession.</summary>
     public decimal OriginalUnitPrice { get; set; }
     public decimal UnitPrice { get; set; }
@@ -163,4 +179,81 @@ public class RecentInvoiceDto
 public class MarkDeliveredRequest
 {
     public string? Notes { get; set; }
+}
+
+/// <summary>One line coming back from a prior sale, referenced by its <c>InvoiceLine.Id</c>.</summary>
+public class ExchangeReturnLineRequest
+{
+    [Required]
+    public Guid InvoiceLineId { get; set; }
+    [Range(1, 99999)]
+    public int Quantity { get; set; }
+}
+
+/// <summary>
+/// Combined return + optional replacement sale request. When <see cref="NewLines"/> is empty this
+/// is a refund only; otherwise the customer settles the net difference.
+/// </summary>
+public class ExchangeRequest
+{
+    [Required, MinLength(3)]
+    public string Reason { get; set; } = string.Empty;
+
+    /// <summary>Lines coming back from the original invoice. Must contain at least one entry.</summary>
+    [Required, MinLength(1)]
+    public List<ExchangeReturnLineRequest> ReturnLines { get; set; } = new();
+
+    /// <summary>Optional replacement items. Same shape as a normal checkout line.</summary>
+    public List<CreateInvoiceLineRequest> NewLines { get; set; } = new();
+
+    /// <summary>Cart-level discount on the new sale, if any. Ignored when NewLines is empty.</summary>
+    public decimal DiscountTotal { get; set; }
+
+    /// <summary>Promotion tag for the new sale, if any. Ignored when NewLines is empty.</summary>
+    public string? PromotionName { get; set; }
+
+    /// <summary>Customer fields for the new sale. When omitted, copied from the original invoice.</summary>
+    public string? CustomerName { get; set; }
+    public string? CustomerEmail { get; set; }
+    public string? CustomerType { get; set; }
+    public string? CustomerCompany { get; set; }
+    public string? CustomerAddress { get; set; }
+    public string? CustomerVatNumber { get; set; }
+
+    /// <summary>
+    /// Tender used to settle the net (Cash / Card / EFT). Used for the new-sale payment method
+    /// when the customer pays a positive difference, and for the refund method when the net is
+    /// negative. Required in either case.
+    /// </summary>
+    [Required]
+    public string PaymentMethod { get; set; } = "Cash";
+
+    /// <summary>Email the new-sale receipt to the customer if a customer email is present.</summary>
+    public bool SendEmail { get; set; }
+}
+
+public class ExchangeResponse
+{
+    public Guid SaleReturnId { get; set; }
+    public Guid OriginalInvoiceId { get; set; }
+    public string OriginalInvoiceNumber { get; set; } = string.Empty;
+    public decimal CreditTotal { get; set; }
+
+    /// <summary>Positive = customer paid the difference; negative = customer was refunded; zero = even swap.</summary>
+    public decimal NetSettlement { get; set; }
+
+    /// <summary>New invoice created for the replacement items. Null when this was a refund-only return.</summary>
+    public InvoiceDto? ExchangeInvoice { get; set; }
+    public List<ExchangeReturnLineResultDto> ReturnedLines { get; set; } = new();
+}
+
+public class ExchangeReturnLineResultDto
+{
+    public Guid OriginalInvoiceLineId { get; set; }
+    public Guid ProductId { get; set; }
+    public string? Sku { get; set; }
+    public string Description { get; set; } = string.Empty;
+    public int Quantity { get; set; }
+    public decimal UnitCredit { get; set; }
+    public decimal LineCredit { get; set; }
 }

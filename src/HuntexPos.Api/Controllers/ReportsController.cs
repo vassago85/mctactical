@@ -147,20 +147,48 @@ public class ReportsController : ControllerBase
         if (to.HasValue) rows = rows.Where(i => i.CreatedAt <= to.Value);
 
         var list = rows.ToList();
-        var byMethod = list
-            .GroupBy(i => NormalisePaymentMethod(i.PaymentMethod))
-            .Select(g => new PaymentMethodBreakdownDto
+
+        // For payment-method rollups we care about *cash actually tendered*, not the sale's ledger
+        // total: an exchange where part of a sale is funded by return credit only moved the
+        // difference into the drawer. AmountPaid captures that; fall back to GrandTotal for legacy
+        // rows written before the exchange columns existed (backfilled to GrandTotal in the seeder,
+        // but this keeps the report safe if that step is ever skipped).
+        static decimal TenderedFor(Invoice i) =>
+            i.AmountPaid > 0 || i.ReturnCreditApplied > 0 ? i.AmountPaid : i.GrandTotal;
+
+        // Cash going the OTHER way — refunds paid out from a SaleReturn where the credit exceeded
+        // the replacement sale (or there was no replacement at all). NetSettlement is signed: < 0
+        // means the customer got money back via SettlementMethod. Netting these against the
+        // payment-method totals gives a balanced day-end drawer picture.
+        var allReturns = await _db.SaleReturns.AsNoTracking().ToListAsync(ct);
+        IEnumerable<SaleReturn> refundRows = allReturns.Where(r => r.NetSettlement < 0);
+        if (from.HasValue) refundRows = refundRows.Where(r => r.CreatedAt >= from.Value);
+        if (to.HasValue) refundRows = refundRows.Where(r => r.CreatedAt <= to.Value);
+        var refundsByMethod = refundRows
+            .GroupBy(r => NormalisePaymentMethod(r.SettlementMethod))
+            .ToDictionary(g => g.Key, g => g.Sum(r => -r.NetSettlement));
+
+        var methodKeys = list.Select(i => NormalisePaymentMethod(i.PaymentMethod))
+            .Concat(refundsByMethod.Keys)
+            .Distinct();
+        var byMethod = methodKeys
+            .Select(method =>
             {
-                Method = g.Key,
-                Count = g.Count(),
-                GrandTotal = g.Sum(x => x.GrandTotal)
+                var salesForMethod = list.Where(i => NormalisePaymentMethod(i.PaymentMethod) == method).ToList();
+                var refundForMethod = refundsByMethod.TryGetValue(method, out var r) ? r : 0m;
+                return new PaymentMethodBreakdownDto
+                {
+                    Method = method,
+                    Count = salesForMethod.Count,
+                    GrandTotal = salesForMethod.Sum(TenderedFor) - refundForMethod
+                };
             })
             .OrderBy(m => m.Method)
             .ToList();
 
         return new PaymentsSummaryDto
         {
-            TotalGrand = list.Sum(i => i.GrandTotal),
+            TotalGrand = list.Sum(TenderedFor) - refundsByMethod.Values.Sum(),
             TotalCount = list.Count,
             ByMethod = byMethod
         };

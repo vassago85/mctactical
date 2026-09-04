@@ -32,4 +32,11 @@ public class InvoiceLine
     /// product. Null for in-store sales and for shipping lines.
     /// </summary>
     public long? ShopifyVariantId { get; set; }
+
+    /// <summary>
+    /// Total qty from this line that has been returned across one or more <see cref="SaleReturn"/>
+    /// records. Never exceeds <see cref="Quantity"/>. Used by the exchange/return flow to enforce
+    /// remaining-returnable amounts without voiding the whole invoice.
+    /// </summary>
+    public int ReturnedQuantity { get; set; }
 }

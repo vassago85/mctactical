@@ -45,6 +45,9 @@ public static class DbSeeder
         await EnsureProductShopifyColumnsAsync(db, ct);
         await EnsureInvoiceShopifyColumnsAsync(db, ct);
         await EnsureInvoiceLineShopifyColumnsAsync(db, ct);
+        await EnsureInvoiceExchangeColumnsAsync(db, ct);
+        await EnsureInvoiceLineReturnedQtyColumnAsync(db, ct);
+        await EnsureSaleReturnsTablesAsync(db, ct);
         await MergeDuplicateSkusAsync(db, log, ct);
         await VenaticsGearSeeder.SeedAsync(db, log, ct);
 
@@ -492,6 +495,86 @@ public static class DbSeeder
     {
         if (!db.Database.IsSqlite()) return;
         try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "InvoiceLines" ADD COLUMN "ShopifyVariantId" INTEGER NULL;""", ct); } catch { }
+    }
+
+    /// <summary>
+    /// Add exchange / pay-the-difference columns to Invoices on older DBs. Backfills
+    /// <c>AmountPaid</c> from <c>GrandTotal</c> so historical sales still aggregate correctly in
+    /// the payments report (which prefers AmountPaid when non-zero).
+    /// </summary>
+    private static async Task EnsureInvoiceExchangeColumnsAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        try { await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Invoices" ADD COLUMN "ExchangeFromInvoiceId" TEXT NULL;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Invoices" ADD COLUMN "ReturnCreditApplied" TEXT NOT NULL DEFAULT '0';""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Invoices" ADD COLUMN "AmountPaid" TEXT NOT NULL DEFAULT '0';""", ct); } catch { }
+        // Backfill historical rows so reports don't see zero-paid on every legacy sale.
+        try { await db.Database.ExecuteSqlRawAsync(
+            """UPDATE "Invoices" SET "AmountPaid" = "GrandTotal" WHERE ("AmountPaid" IS NULL OR "AmountPaid" = '0') AND "GrandTotal" IS NOT NULL;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_Invoices_ExchangeFromInvoiceId" ON "Invoices" ("ExchangeFromInvoiceId");""", ct); } catch { }
+    }
+
+    /// <summary>Add ReturnedQuantity to InvoiceLines so partial returns can enforce remaining qty.</summary>
+    private static async Task EnsureInvoiceLineReturnedQtyColumnAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        try { await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "InvoiceLines" ADD COLUMN "ReturnedQuantity" INTEGER NOT NULL DEFAULT 0;""", ct); } catch { }
+    }
+
+    /// <summary>Create SaleReturns + SaleReturnLines tables on older DBs.</summary>
+    private static async Task EnsureSaleReturnsTablesAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS "SaleReturns" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_SaleReturns" PRIMARY KEY,
+                "OriginalInvoiceId" TEXT NOT NULL,
+                "ExchangeInvoiceId" TEXT NULL,
+                "CreditTotal" TEXT NOT NULL DEFAULT '0',
+                "NetSettlement" TEXT NOT NULL DEFAULT '0',
+                "SettlementMethod" TEXT NULL,
+                "Reason" TEXT NOT NULL DEFAULT '',
+                "CreatedByUserId" TEXT NULL,
+                "CreatedAt" TEXT NOT NULL,
+                CONSTRAINT "FK_SaleReturns_Invoices_OriginalInvoiceId" FOREIGN KEY ("OriginalInvoiceId") REFERENCES "Invoices" ("Id"),
+                CONSTRAINT "FK_SaleReturns_Invoices_ExchangeInvoiceId" FOREIGN KEY ("ExchangeInvoiceId") REFERENCES "Invoices" ("Id")
+            );
+            """, ct);
+        try { await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_SaleReturns_OriginalInvoiceId" ON "SaleReturns" ("OriginalInvoiceId");""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_SaleReturns_ExchangeInvoiceId" ON "SaleReturns" ("ExchangeInvoiceId");""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_SaleReturns_CreatedAt" ON "SaleReturns" ("CreatedAt");""", ct); } catch { }
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS "SaleReturnLines" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_SaleReturnLines" PRIMARY KEY,
+                "SaleReturnId" TEXT NOT NULL,
+                "OriginalInvoiceLineId" TEXT NOT NULL,
+                "ProductId" TEXT NOT NULL,
+                "SkuAtReturn" TEXT NULL,
+                "Description" TEXT NOT NULL DEFAULT '',
+                "Quantity" INTEGER NOT NULL DEFAULT 0,
+                "UnitCredit" TEXT NOT NULL DEFAULT '0',
+                "LineCredit" TEXT NOT NULL DEFAULT '0',
+                CONSTRAINT "FK_SaleReturnLines_SaleReturns_SaleReturnId" FOREIGN KEY ("SaleReturnId") REFERENCES "SaleReturns" ("Id") ON DELETE CASCADE,
+                CONSTRAINT "FK_SaleReturnLines_InvoiceLines_OriginalInvoiceLineId" FOREIGN KEY ("OriginalInvoiceLineId") REFERENCES "InvoiceLines" ("Id")
+            );
+            """, ct);
+        try { await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_SaleReturnLines_SaleReturnId" ON "SaleReturnLines" ("SaleReturnId");""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_SaleReturnLines_OriginalInvoiceLineId" ON "SaleReturnLines" ("OriginalInvoiceLineId");""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_SaleReturnLines_ProductId" ON "SaleReturnLines" ("ProductId");""", ct); } catch { }
     }
 
     /// <summary>
