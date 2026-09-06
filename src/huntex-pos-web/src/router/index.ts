@@ -58,6 +58,11 @@ const router = createRouter({
       meta: { public: true, layout: 'public' }
     },
     {
+      path: '/return/:token',
+      component: () => import('@/views/ReturnSlipPrintView.vue'),
+      meta: { public: true, layout: 'public' }
+    },
+    {
       path: '/quote/:token',
       component: () => import('@/views/QuotePublicView.vue'),
       meta: { public: true, layout: 'public' }

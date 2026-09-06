@@ -235,6 +235,8 @@ public class ExchangeRequest
 public class ExchangeResponse
 {
     public Guid SaleReturnId { get; set; }
+    /// <summary>Public slug for the return slip print URL (<c>/#/return/&lt;token&gt;</c>).</summary>
+    public Guid SaleReturnPublicToken { get; set; }
     public Guid OriginalInvoiceId { get; set; }
     public string OriginalInvoiceNumber { get; set; } = string.Empty;
     public decimal CreditTotal { get; set; }
@@ -253,6 +255,39 @@ public class ExchangeReturnLineResultDto
     public Guid ProductId { get; set; }
     public string? Sku { get; set; }
     public string Description { get; set; } = string.Empty;
+    public int Quantity { get; set; }
+    public decimal UnitCredit { get; set; }
+    public decimal LineCredit { get; set; }
+}
+
+/// <summary>
+/// Payload behind the public return-slip print URL. Includes shop contact + the exact figures
+/// the customer sees so the thermal slip can render without a second lookup.
+/// </summary>
+public class PublicSaleReturnDto
+{
+    public Guid Id { get; set; }
+    public Guid PublicToken { get; set; }
+    public string OriginalInvoiceNumber { get; set; } = string.Empty;
+    public Guid OriginalInvoiceId { get; set; }
+    /// <summary>New sale's invoice number when this was an exchange; null for a refund-only return.</summary>
+    public string? ExchangeInvoiceNumber { get; set; }
+    public string Reason { get; set; } = string.Empty;
+    public string? CustomerName { get; set; }
+    public decimal CreditTotal { get; set; }
+    public decimal NetSettlement { get; set; }
+    public string? SettlementMethod { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public string? CashierName { get; set; }
+    public List<PublicSaleReturnLineDto> Lines { get; set; } = new();
+    public CompanyContactDto? CompanyContact { get; set; }
+    public string? ReceiptFooter { get; set; }
+}
+
+public class PublicSaleReturnLineDto
+{
+    public string Description { get; set; } = string.Empty;
+    public string? Sku { get; set; }
     public int Quantity { get; set; }
     public decimal UnitCredit { get; set; }
     public decimal LineCredit { get; set; }

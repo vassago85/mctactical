@@ -534,6 +534,7 @@ public static class DbSeeder
             """
             CREATE TABLE IF NOT EXISTS "SaleReturns" (
                 "Id" TEXT NOT NULL CONSTRAINT "PK_SaleReturns" PRIMARY KEY,
+                "PublicToken" TEXT NOT NULL DEFAULT '',
                 "OriginalInvoiceId" TEXT NOT NULL,
                 "ExchangeInvoiceId" TEXT NULL,
                 "CreditTotal" TEXT NOT NULL DEFAULT '0',
@@ -546,12 +547,20 @@ public static class DbSeeder
                 CONSTRAINT "FK_SaleReturns_Invoices_ExchangeInvoiceId" FOREIGN KEY ("ExchangeInvoiceId") REFERENCES "Invoices" ("Id")
             );
             """, ct);
+        // Older SaleReturns tables (created before the public-token slip URL) get the column
+        // added and backfilled to a fresh Guid per row so the unique index can be applied.
+        try { await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "SaleReturns" ADD COLUMN "PublicToken" TEXT NOT NULL DEFAULT '';""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync(
+            """UPDATE "SaleReturns" SET "PublicToken" = lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)),2) || '-' || substr('89ab',abs(random()) % 4 + 1, 1) || substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))) WHERE "PublicToken" = '';""", ct); } catch { }
         try { await db.Database.ExecuteSqlRawAsync(
             """CREATE INDEX IF NOT EXISTS "IX_SaleReturns_OriginalInvoiceId" ON "SaleReturns" ("OriginalInvoiceId");""", ct); } catch { }
         try { await db.Database.ExecuteSqlRawAsync(
             """CREATE INDEX IF NOT EXISTS "IX_SaleReturns_ExchangeInvoiceId" ON "SaleReturns" ("ExchangeInvoiceId");""", ct); } catch { }
         try { await db.Database.ExecuteSqlRawAsync(
             """CREATE INDEX IF NOT EXISTS "IX_SaleReturns_CreatedAt" ON "SaleReturns" ("CreatedAt");""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync(
+            """CREATE UNIQUE INDEX IF NOT EXISTS "IX_SaleReturns_PublicToken" ON "SaleReturns" ("PublicToken");""", ct); } catch { }
 
         await db.Database.ExecuteSqlRawAsync(
             """

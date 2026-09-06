@@ -45,6 +45,7 @@ type SaleLine = {
 
 type ExchangeResult = {
   saleReturnId: string
+  saleReturnPublicToken: string
   originalInvoiceId: string
   originalInvoiceNumber: string
   creditTotal: number
@@ -456,8 +457,16 @@ watch(
         </ul>
         <div class="rx-result__actions">
           <a
-            v-if="lastExchangeResult.exchangeInvoice"
             class="hist-action hist-action--primary"
+            :href="`/#/return/${lastExchangeResult.saleReturnPublicToken}?auto=1`"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Print return slip
+          </a>
+          <a
+            v-if="lastExchangeResult.exchangeInvoice"
+            class="hist-action"
             :href="`/#/receipt/${lastExchangeResult.exchangeInvoice.publicToken}?auto=1`"
             target="_blank"
             rel="noreferrer"

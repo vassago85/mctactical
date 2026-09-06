@@ -414,6 +414,56 @@ public class InvoiceService
         return await GetPdfBytesAsync(inv.Id, ct);
     }
 
+    /// <summary>
+    /// Load a return by its public slug for the printable slip. Anonymous callers get shop contact
+    /// and the customer-facing figures — no cost / GP / staff identifiers leak out.
+    /// </summary>
+    public async Task<PublicSaleReturnDto?> GetSaleReturnByPublicTokenAsync(Guid token, CancellationToken ct)
+    {
+        var sr = await _db.SaleReturns
+            .Include(r => r.OriginalInvoice)
+            .Include(r => r.ExchangeInvoice)
+            .Include(r => r.Lines)
+            .FirstOrDefaultAsync(r => r.PublicToken == token, ct);
+        if (sr == null) return null;
+
+        var eff = await _business.GetAsync(ct);
+        string? cashierName = null;
+        if (!string.IsNullOrWhiteSpace(sr.CreatedByUserId))
+        {
+            cashierName = await _db.Users.AsNoTracking()
+                .Where(u => u.Id == sr.CreatedByUserId)
+                .Select(u => u.DisplayName ?? u.UserName ?? u.Email)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        return new PublicSaleReturnDto
+        {
+            Id = sr.Id,
+            PublicToken = sr.PublicToken,
+            OriginalInvoiceId = sr.OriginalInvoiceId,
+            OriginalInvoiceNumber = sr.OriginalInvoice?.InvoiceNumber ?? string.Empty,
+            ExchangeInvoiceNumber = sr.ExchangeInvoice?.InvoiceNumber,
+            Reason = sr.Reason,
+            CustomerName = sr.OriginalInvoice?.CustomerName,
+            CreditTotal = sr.CreditTotal,
+            NetSettlement = sr.NetSettlement,
+            SettlementMethod = sr.SettlementMethod,
+            CreatedAt = sr.CreatedAt,
+            CashierName = cashierName,
+            Lines = sr.Lines.Select(l => new PublicSaleReturnLineDto
+            {
+                Description = l.Description,
+                Sku = l.SkuAtReturn,
+                Quantity = l.Quantity,
+                UnitCredit = l.UnitCredit,
+                LineCredit = l.LineCredit
+            }).ToList(),
+            CompanyContact = ReceiptCompanyContact.ToDto(eff),
+            ReceiptFooter = string.IsNullOrWhiteSpace(eff.ReceiptFooter) ? null : eff.ReceiptFooter.Trim()
+        };
+    }
+
     public async Task VoidAsync(Guid id, string reason, string? userId, CancellationToken ct)
     {
         var inv = await _db.Invoices.Include(i => i.Lines).FirstOrDefaultAsync(i => i.Id == id, ct)
@@ -600,6 +650,7 @@ public class InvoiceService
         return new ExchangeResponse
         {
             SaleReturnId = saleReturn.Id,
+            SaleReturnPublicToken = saleReturn.PublicToken,
             OriginalInvoiceId = original.Id,
             OriginalInvoiceNumber = original.InvoiceNumber,
             CreditTotal = creditTotal,

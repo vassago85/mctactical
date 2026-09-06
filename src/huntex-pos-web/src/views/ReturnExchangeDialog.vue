@@ -23,6 +23,7 @@ import { Minus, Plus, Trash2, Search } from 'lucide-vue-next'
 
 type ExchangeResult = {
   saleReturnId: string
+  saleReturnPublicToken: string
   originalInvoiceId: string
   originalInvoiceNumber: string
   creditTotal: number

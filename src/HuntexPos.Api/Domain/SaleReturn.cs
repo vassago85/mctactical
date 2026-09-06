@@ -9,6 +9,9 @@ public class SaleReturn
 {
     public Guid Id { get; set; }
 
+    /// <summary>Stable, unguessable slug used by the public "print return slip" URL.</summary>
+    public Guid PublicToken { get; set; } = Guid.NewGuid();
+
     /// <summary>The prior sale being returned against.</summary>
     public Guid OriginalInvoiceId { get; set; }
     public Invoice? OriginalInvoice { get; set; }

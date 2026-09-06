@@ -212,6 +212,7 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
             e.HasIndex(r => r.OriginalInvoiceId);
             e.HasIndex(r => r.ExchangeInvoiceId);
             e.HasIndex(r => r.CreatedAt);
+            e.HasIndex(r => r.PublicToken).IsUnique();
             e.Property(r => r.CreditTotal).HasPrecision(18, 2);
             e.Property(r => r.NetSettlement).HasPrecision(18, 2);
             e.Property(r => r.Reason).HasMaxLength(500);
