@@ -11,6 +11,7 @@ import McField from '@/components/ui/McField.vue'
 import McAlert from '@/components/ui/McAlert.vue'
 import McBadge from '@/components/ui/McBadge.vue'
 import McSpinner from '@/components/ui/McSpinner.vue'
+import SalespersonReportPanel from '@/views/SalespersonReportPanel.vue'
 
 type Row = {
   id: string
@@ -139,7 +140,7 @@ async function confirmReverse() {
 const stockReport = ref<StockReport | null>(null)
 const stockErr = ref<string | null>(null)
 const stockBusy = ref(false)
-const activeTab = ref<'sales' | 'stock' | 'consignment'>('stock')
+const activeTab = ref<'sales' | 'stock' | 'consignment' | 'salespeople'>('stock')
 
 /* Consignment report state */
 const consignReport = ref<ConsignmentReport | null>(null)
@@ -532,7 +533,7 @@ async function purgeData() {
   <div class="rep-page">
     <McPageHeader title="Reports" description="Sales, consignment, and stock reports with CSV export.">
       <template #actions>
-        <McButton variant="secondary" type="button" @click="activeTab === 'sales' ? loadSales() : activeTab === 'consignment' ? loadConsignmentReport() : loadStockReport()">Refresh</McButton>
+        <McButton v-if="activeTab !== 'salespeople'" variant="secondary" type="button" @click="activeTab === 'sales' ? loadSales() : activeTab === 'consignment' ? loadConsignmentReport() : loadStockReport()">Refresh</McButton>
         <McButton v-if="activeTab === 'sales'" variant="primary" type="button" @click="exportCsv">Export invoices CSV</McButton>
         <McButton v-if="activeTab === 'consignment' && consignReport && consignReport.suppliers.length" variant="primary" type="button" @click="exportConsignmentCsv">Export consignment CSV</McButton>
         <McButton v-if="activeTab === 'stock' && stockReport" variant="primary" type="button" @click="exportSohCsv">Export stock-on-hand CSV</McButton>
@@ -562,7 +563,10 @@ async function purgeData() {
       <button type="button" class="rep-tab" :class="{ 'rep-tab--active': activeTab === 'stock' }" @click="activeTab = 'stock'">Stock report</button>
       <button type="button" class="rep-tab" :class="{ 'rep-tab--active': activeTab === 'consignment' }" @click="activeTab = 'consignment'">Consignment</button>
       <button type="button" class="rep-tab" :class="{ 'rep-tab--active': activeTab === 'sales' }" @click="activeTab = 'sales'">Sales report</button>
+      <button type="button" class="rep-tab" :class="{ 'rep-tab--active': activeTab === 'salespeople' }" @click="activeTab = 'salespeople'">Salespeople</button>
     </div>
+
+    <SalespersonReportPanel v-if="activeTab === 'salespeople'" />
 
     <!-- ── STOCK REPORT TAB ── -->
     <template v-if="activeTab === 'stock'">

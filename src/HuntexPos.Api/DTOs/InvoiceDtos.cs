@@ -26,6 +26,8 @@ public class CreateInvoiceRequest
     public decimal DiscountTotal { get; set; }
     public string? PromotionName { get; set; }
     public bool SendEmail { get; set; }
+    /// <summary>Salesperson credited with the sale. Required at the till once any salespeople exist.</summary>
+    public Guid? SalespersonId { get; set; }
     [Required, MinLength(1)]
     public List<CreateInvoiceLineRequest> Lines { get; set; } = new();
 }
@@ -68,6 +70,9 @@ public class InvoiceDto
     public Guid PublicToken { get; set; }
     public string? PdfUrl { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+    public Guid? SalespersonId { get; set; }
+    /// <summary>Shown as "Served by" on receipts.</summary>
+    public string? SalespersonName { get; set; }
 
     /// <summary>Return credit applied at checkout when this sale was rung as part of an exchange.</summary>
     public decimal ReturnCreditApplied { get; set; }
@@ -230,6 +235,9 @@ public class ExchangeRequest
 
     /// <summary>Email the new-sale receipt to the customer if a customer email is present.</summary>
     public bool SendEmail { get; set; }
+
+    /// <summary>Salesperson credited with the replacement sale. Ignored when NewLines is empty.</summary>
+    public Guid? SalespersonId { get; set; }
 }
 
 public class ExchangeResponse

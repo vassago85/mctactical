@@ -29,6 +29,7 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<QuoteLine> QuoteLines => Set<QuoteLine>();
     public DbSet<SaleReturn> SaleReturns => Set<SaleReturn>();
     public DbSet<SaleReturnLine> SaleReturnLines => Set<SaleReturnLine>();
+    public DbSet<Salesperson> Salespeople => Set<Salesperson>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -76,6 +77,15 @@ public class HuntexDbContext : IdentityDbContext<ApplicationUser>
             e.Property(i => i.ReturnCreditApplied).HasPrecision(18, 2);
             e.Property(i => i.AmountPaid).HasPrecision(18, 2);
             e.HasIndex(i => i.ExchangeFromInvoiceId);
+            e.HasIndex(i => i.SalespersonId);
+            e.Property(i => i.SalespersonName).HasMaxLength(128);
+        });
+
+        modelBuilder.Entity<Salesperson>(e =>
+        {
+            e.Property(s => s.Name).HasMaxLength(128);
+            e.Property(s => s.CommissionPercent).HasPrecision(18, 4);
+            e.Property(s => s.CommissionBasis).HasConversion<string>().HasMaxLength(20);
         });
 
         modelBuilder.Entity<InvoiceLine>(e =>

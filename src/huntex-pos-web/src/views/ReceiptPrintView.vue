@@ -52,6 +52,7 @@ type Inv = {
   createdAt: string
   customerName?: string | null
   paymentMethod: string
+  salespersonName?: string | null
   lines: Line[]
   companyContact?: CompanyContact | null
   receiptFooter?: string | null
@@ -296,6 +297,10 @@ function fmtDate(iso: string): string {
         <div class="rcpt__pay">
           <span>Paid by</span>
           <strong>{{ inv.paymentMethod }}</strong>
+        </div>
+        <div v-if="inv.salespersonName" class="rcpt__pay">
+          <span>Served by</span>
+          <strong>{{ inv.salespersonName }}</strong>
         </div>
       </div>
 

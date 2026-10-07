@@ -35,6 +35,12 @@ public class Invoice
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public string? CreatedByUserId { get; set; }
 
+    /// <summary>Who is credited with this sale (picked at checkout). Null for unassigned/online sales.</summary>
+    public Guid? SalespersonId { get; set; }
+
+    /// <summary>Salesperson name snapshotted at sale time so receipts never change if they are renamed.</summary>
+    public string? SalespersonName { get; set; }
+
     public bool IsSpecialOrder { get; set; }
     public bool IsDelivered { get; set; }
     public DateTimeOffset? DeliveredAt { get; set; }

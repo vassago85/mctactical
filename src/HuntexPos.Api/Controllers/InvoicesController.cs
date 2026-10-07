@@ -30,6 +30,8 @@ public class InvoicesController : ControllerBase
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)!;
         var managerBypass = User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Owner) || User.IsInRole(Roles.Dev);
+        if (req.SalespersonId == null && await AnyActiveSalespersonAsync(ct))
+            return BadRequest(new { error = SalespersonRequiredMessage });
         try
         {
             var inv = await _invoices.CreateAsync(req, userId, managerBypass, ct);
@@ -253,6 +255,8 @@ public class InvoicesController : ControllerBase
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)!;
         var managerBypass = User.IsInRole(Roles.Admin) || User.IsInRole(Roles.Owner) || User.IsInRole(Roles.Dev);
+        if (req.NewLines is { Count: > 0 } && req.SalespersonId == null && await AnyActiveSalespersonAsync(ct))
+            return BadRequest(new { error = SalespersonRequiredMessage });
         try
         {
             var result = await _invoices.ExchangeAsync(id, req, userId, managerBypass, ct);
@@ -321,6 +325,15 @@ public class InvoicesController : ControllerBase
         var bytes = _pdf.BuildOrderConfirmationPdf(inv);
         return File(bytes, "application/pdf", $"order-confirmation-{inv.InvoiceNumber}.pdf");
     }
+
+    private const string SalespersonRequiredMessage = "Choose the salesperson who made this sale.";
+
+    /// <summary>
+    /// Salesperson is only enforced once the shop has set some up, so a fresh install (or a shop
+    /// that doesn't track this) can still ring up sales.
+    /// </summary>
+    private Task<bool> AnyActiveSalespersonAsync(CancellationToken ct) =>
+        _db.Salespeople.AnyAsync(s => s.IsActive, ct);
 
     /// <summary>Small projection of Invoice used by the sales-history search — kept as
     /// a record so we can filter the header fields in memory (SQLite cannot translate

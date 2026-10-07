@@ -7,7 +7,7 @@ import { useBranding } from '@/composables/useBranding'
 import {
   Menu, ChevronLeft, ChevronRight,
   ShoppingCart, Search, Package, ClipboardList, Truck,
-  PackageCheck, Upload, BarChart3, DollarSign, Mail, Users, Building2,
+  PackageCheck, Upload, BarChart3, DollarSign, Mail, Users, UserCheck, Building2,
   Settings as SettingsIcon,
   FileText,
   Printer,
@@ -95,6 +95,7 @@ function logout() {
           <p class="mc-nav-group__label">Manage</p>
           <RouterLink class="mc-nav-link" to="/deliveries" @click="sidebarOpen = false"><PackageCheck :size="16" />Deliveries</RouterLink>
           <RouterLink class="mc-nav-link" to="/wholesalers" @click="sidebarOpen = false"><Building2 :size="16" />Wholesalers</RouterLink>
+          <RouterLink class="mc-nav-link" to="/salespeople" @click="sidebarOpen = false"><UserCheck :size="16" />Salespeople</RouterLink>
           <RouterLink class="mc-nav-link" to="/import" @click="sidebarOpen = false"><Upload :size="16" />Import</RouterLink>
           <RouterLink class="mc-nav-link" to="/reports" @click="sidebarOpen = false"><BarChart3 :size="16" />Reports</RouterLink>
           <RouterLink class="mc-nav-link" to="/financial-report" @click="sidebarOpen = false"><FileText :size="16" />Financial overview</RouterLink>

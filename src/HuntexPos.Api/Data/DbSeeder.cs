@@ -48,6 +48,7 @@ public static class DbSeeder
         await EnsureInvoiceExchangeColumnsAsync(db, ct);
         await EnsureInvoiceLineReturnedQtyColumnAsync(db, ct);
         await EnsureSaleReturnsTablesAsync(db, ct);
+        await EnsureSalespeopleAsync(db, ct);
         await MergeDuplicateSkusAsync(db, log, ct);
         await VenaticsGearSeeder.SeedAsync(db, log, ct);
 
@@ -584,6 +585,30 @@ public static class DbSeeder
             """CREATE INDEX IF NOT EXISTS "IX_SaleReturnLines_OriginalInvoiceLineId" ON "SaleReturnLines" ("OriginalInvoiceLineId");""", ct); } catch { }
         try { await db.Database.ExecuteSqlRawAsync(
             """CREATE INDEX IF NOT EXISTS "IX_SaleReturnLines_ProductId" ON "SaleReturnLines" ("ProductId");""", ct); } catch { }
+    }
+
+    /// <summary>Create the Salespeople table and the Invoices salesperson columns on older DBs.</summary>
+    private static async Task EnsureSalespeopleAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS "Salespeople" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_Salespeople" PRIMARY KEY,
+                "Name" TEXT NOT NULL DEFAULT '',
+                "CommissionPercent" TEXT NOT NULL DEFAULT '0',
+                "CommissionBasis" TEXT NOT NULL DEFAULT 'SalesExVat',
+                "IsActive" INTEGER NOT NULL DEFAULT 1,
+                "CreatedAt" TEXT NOT NULL,
+                "UpdatedAt" TEXT NOT NULL
+            );
+            """, ct);
+        try { await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Invoices" ADD COLUMN "SalespersonId" TEXT NULL;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "Invoices" ADD COLUMN "SalespersonName" TEXT NULL;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_Invoices_SalespersonId" ON "Invoices" ("SalespersonId");""", ct); } catch { }
     }
 
     /// <summary>

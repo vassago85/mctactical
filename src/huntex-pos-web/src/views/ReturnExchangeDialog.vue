@@ -12,6 +12,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { http } from '@/api/http'
 import { useToast } from '@/composables/useToast'
+import { useSalespeople } from '@/composables/useSalespeople'
 import { formatZAR } from '@/utils/format'
 import McCard from '@/components/ui/McCard.vue'
 import McButton from '@/components/ui/McButton.vue'
@@ -108,6 +109,7 @@ const newLines = ref<NewLine[]>([])
 
 const reason = ref('')
 const paymentMethod = ref<'Card' | 'Cash' | 'EFT'>('Card')
+const { salespeople, selectedId: salespersonId, missing: salespersonMissing, load: loadSalespeople } = useSalespeople()
 
 async function loadInvoice() {
   loading.value = true
@@ -127,7 +129,10 @@ async function loadInvoice() {
   }
 }
 
-onMounted(loadInvoice)
+onMounted(() => {
+  loadInvoice()
+  loadSalespeople()
+})
 
 function effectiveUnitPrice(l: InvoiceLine): number {
   return l.quantity > 0 ? Math.round((l.lineTotal / l.quantity) * 100) / 100 : l.unitPrice
@@ -185,7 +190,10 @@ const netVariant = computed<'ok' | 'due' | 'refund'>(() => {
 })
 
 const canConfirm = computed(() =>
-  anyReturned.value && reason.value.trim().length >= 3 && !busy.value,
+  anyReturned.value
+  && reason.value.trim().length >= 3
+  && !busy.value
+  && !(newLines.value.length && salespersonMissing.value),
 )
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
@@ -263,6 +271,7 @@ async function submit() {
       discountTotal: 0,
       paymentMethod: paymentMethod.value,
       sendEmail: false,
+      salespersonId: newLinesPayload.length ? salespersonId.value : null,
     }
 
     const { data } = await http.post<ExchangeResult>(
@@ -438,13 +447,21 @@ async function submit() {
                 placeholder="e.g. Didn't fit, wrong colour, warranty swap…"
               ></textarea>
             </McField>
-            <McField label="Tender for the difference" for-id="rx-tender">
-              <select id="rx-tender" v-model="paymentMethod">
-                <option value="Card">Card</option>
-                <option value="Cash">Cash</option>
-                <option value="EFT">EFT</option>
-              </select>
-            </McField>
+            <div class="rx-form-col">
+              <McField label="Tender for the difference" for-id="rx-tender">
+                <select id="rx-tender" v-model="paymentMethod">
+                  <option value="Card">Card</option>
+                  <option value="Cash">Cash</option>
+                  <option value="EFT">EFT</option>
+                </select>
+              </McField>
+              <McField v-if="newLines.length && salespeople.length" label="Salesperson (new sale)" for-id="rx-salesperson">
+                <select id="rx-salesperson" v-model="salespersonId">
+                  <option :value="null" disabled>Choose…</option>
+                  <option v-for="sp in salespeople" :key="sp.id" :value="sp.id">{{ sp.name }}</option>
+                </select>
+              </McField>
+            </div>
           </div>
         </section>
 
@@ -744,6 +761,12 @@ async function submit() {
   display: grid;
   grid-template-columns: 1fr 12rem;
   gap: 1rem;
+}
+
+.rx-form-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 @media (max-width: 560px) {

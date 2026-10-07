@@ -194,6 +194,117 @@ public class ReportsController : ControllerBase
         };
     }
 
+    [HttpGet("salespeople")]
+    public async Task<SalespersonReportDto> Salespeople(
+        [FromQuery] DateTimeOffset? from,
+        [FromQuery] DateTimeOffset? to,
+        CancellationToken ct)
+    {
+        bool InRange(DateTimeOffset at) =>
+            (!from.HasValue || at >= from.Value) && (!to.HasValue || at <= to.Value);
+
+        var invoices = (await _db.Invoices.AsNoTracking()
+                .Include(i => i.Lines)
+                .Where(i => i.Status == InvoiceStatus.Final)
+                .ToListAsync(ct))
+            .Where(i => InRange(i.CreatedAt))
+            .ToList();
+
+        var returns = (await _db.SaleReturns.AsNoTracking()
+                .Include(r => r.OriginalInvoice)
+                .Include(r => r.Lines).ThenInclude(l => l.OriginalInvoiceLine)
+                .ToListAsync(ct))
+            .Where(r => InRange(r.CreatedAt) && r.OriginalInvoice?.Status == InvoiceStatus.Final)
+            .ToList();
+
+        var productIds = invoices.SelectMany(i => i.Lines.Select(l => l.ProductId))
+            .Concat(returns.SelectMany(r => r.Lines.Select(l => l.ProductId)))
+            .Distinct()
+            .ToList();
+        var productCosts = await _db.Products.AsNoTracking()
+            .Where(p => productIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id, p => p.Cost, ct);
+
+        decimal UnitCostEx(Guid productId, decimal costAtSale) =>
+            costAtSale > 0 ? costAtSale : productCosts.GetValueOrDefault(productId);
+
+        var people = await _db.Salespeople.AsNoTracking().ToDictionaryAsync(s => s.Id, ct);
+
+        var buckets = new Dictionary<Guid, Bucket>();
+        var unassigned = new Bucket();
+        Bucket For(Guid? id) => id.HasValue
+            ? buckets.TryGetValue(id.Value, out var b) ? b : buckets[id.Value] = new Bucket()
+            : unassigned;
+
+        foreach (var inv in invoices)
+        {
+            var b = For(inv.SalespersonId);
+            b.Count++;
+            b.GrossIncl += inv.GrandTotal;
+            b.NetEx += inv.GrandTotal - inv.TaxAmount;
+            b.CostEx += inv.Lines.Sum(l => UnitCostEx(l.ProductId, l.CostAtSale) * l.Quantity);
+            if (inv.SalespersonName != null) b.SnapshotName = inv.SalespersonName;
+        }
+
+        foreach (var sr in returns)
+        {
+            var b = For(sr.OriginalInvoice!.SalespersonId);
+            var rate = sr.OriginalInvoice.TaxRate > 0 ? sr.OriginalInvoice.TaxRate : 15m;
+            b.ReturnsIncl += sr.CreditTotal;
+            b.NetEx -= sr.CreditTotal / (1 + rate / 100m);
+            b.CostEx -= sr.Lines.Sum(l => UnitCostEx(l.ProductId, l.OriginalInvoiceLine?.CostAtSale ?? 0) * l.Quantity);
+            if (sr.OriginalInvoice.SalespersonName != null) b.SnapshotName ??= sr.OriginalInvoice.SalespersonName;
+        }
+
+        SalespersonReportRowDto ToRow(Guid? id, Bucket b)
+        {
+            Salesperson? sp = id.HasValue ? people.GetValueOrDefault(id.Value) : null;
+            var netEx = Math.Round(b.NetEx, 2);
+            var gp = Math.Round(b.NetEx - b.CostEx, 2);
+            var pct = sp?.CommissionPercent ?? 0m;
+            var basis = sp?.CommissionBasis ?? CommissionBasis.SalesExVat;
+            var basisAmount = basis == CommissionBasis.GrossProfit ? gp : netEx;
+            return new SalespersonReportRowDto
+            {
+                SalespersonId = id,
+                Name = sp?.Name ?? b.SnapshotName ?? "Unassigned",
+                IsActive = sp?.IsActive ?? false,
+                SalesCount = b.Count,
+                GrossSalesInclVat = Math.Round(b.GrossIncl, 2),
+                ReturnsInclVat = Math.Round(b.ReturnsIncl, 2),
+                NetSalesInclVat = Math.Round(b.GrossIncl - b.ReturnsIncl, 2),
+                NetSalesExVat = netEx,
+                GrossProfitExVat = gp,
+                CommissionPercent = pct,
+                CommissionBasis = basis.ToString(),
+                Commission = Math.Round(basisAmount * pct / 100m, 2)
+            };
+        }
+
+        // Active salespeople always appear (even with no sales) so the month-end sheet is complete.
+        foreach (var sp in people.Values.Where(p => p.IsActive)) For(sp.Id);
+
+        var rows = buckets
+            .Select(kv => ToRow(kv.Key, kv.Value))
+            .OrderByDescending(r => r.NetSalesInclVat)
+            .ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (unassigned.Count > 0 || unassigned.ReturnsIncl != 0)
+            rows.Add(ToRow(null, unassigned));
+
+        return new SalespersonReportDto { Rows = rows };
+    }
+
+    private sealed class Bucket
+    {
+        public int Count;
+        public decimal GrossIncl;
+        public decimal ReturnsIncl;
+        public decimal NetEx;
+        public decimal CostEx;
+        public string? SnapshotName;
+    }
+
     /// <summary>
     /// Maps legacy/variant payment-method strings onto the canonical Card / Cash / EFT bucket.
     /// Historical invoices stored "Bank" for electronic transfer; treat those as EFT for rollups.

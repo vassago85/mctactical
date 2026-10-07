@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { http } from '@/api/http'
 import { useToast } from '@/composables/useToast'
+import { useSalespeople } from '@/composables/useSalespeople'
 import { formatZAR } from '@/utils/format'
 import BarcodeScanner from '@/components/BarcodeScanner.vue'
 import McButton from '@/components/ui/McButton.vue'
@@ -61,6 +62,13 @@ const showBusinessFields = ref(false)
 const customerLoading = ref(false)
 const customerMatch = ref(false)
 const paymentMethod = ref('Card')
+const {
+  salespeople,
+  selectedId: salespersonId,
+  selected: selectedSalesperson,
+  missing: salespersonMissing,
+  load: loadSalespeople
+} = useSalespeople()
 
 const customerSummary = computed(() => {
   const parts = [customerName.value, customerEmail.value].filter((s) => !!s?.trim())
@@ -91,6 +99,7 @@ const saleSummary = ref<{
   grandTotal: number
   customerName: string | null
   paymentMethod: string
+  salespersonName: string | null
   emailSent: boolean
   emailWarning: string | null
   belowCostWarning: string | null
@@ -184,6 +193,7 @@ onMounted(async () => {
     if (data.promotionId || data.specials.length) activePromo.value = data
   } catch { /* no active promotion */ }
   loadRecentInvoices()
+  loadSalespeople()
 })
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
@@ -571,6 +581,7 @@ async function doCheckout() {
       discountTotal: discountTotal.value,
       promotionName: activePromo.value?.promotionName || null,
       sendEmail: sendEmail.value && !!customerEmail.value.trim(),
+      salespersonId: salespersonId.value,
       lines: cart.value.map((l) => ({
         productId: l.product.id,
         quantity: l.qty,
@@ -586,6 +597,7 @@ async function doCheckout() {
       grandTotal: data.grandTotal,
       customerName: customerName.value || null,
       paymentMethod: paymentMethod.value,
+      salespersonName: data.salespersonName ?? null,
       emailSent: sendEmail.value && !!customerEmail.value.trim(),
       emailWarning: data.emailWarning ?? null,
       belowCostWarning: data.belowCostWarning ?? null,
@@ -620,6 +632,10 @@ async function doCheckout() {
 
 function requestCheckout() {
   if (!cart.value.length) return
+  if (salespersonMissing.value) {
+    toast.error('Choose the salesperson who made this sale.')
+    return
+  }
   if (discountBlockWarning.value) {
     toast.error(discountBlockWarning.value)
     return
@@ -959,6 +975,25 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
             <span>Checkout</span>
           </div>
           <div class="pos-checkout__scroll">
+            <!-- Remembered per device until changed; required once any salespeople exist -->
+            <div v-if="salespeople.length" class="pos-checkout__group">
+              <div class="pos-checkout__label">
+                Salesperson
+                <span v-if="salespersonMissing" class="pos-sp-required">— pick who made this sale</span>
+              </div>
+              <div class="pos-sp-group" role="group" aria-label="Salesperson">
+                <button
+                  v-for="sp in salespeople"
+                  :key="sp.id"
+                  type="button"
+                  class="pos-pay-btn"
+                  :class="{ 'pos-pay-btn--on': salespersonId === sp.id }"
+                  :aria-pressed="salespersonId === sp.id"
+                  @click="salespersonId = sp.id"
+                >{{ sp.name }}</button>
+              </div>
+            </div>
+
             <!-- Payment method as button group -->
             <div class="pos-checkout__group">
               <div class="pos-checkout__label">Payment method</div>
@@ -1065,11 +1100,13 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
               variant="primary"
               type="button"
               block
-              :disabled="busy || !cart.length || !!discountBlockWarning"
+              :disabled="busy || !cart.length || !!discountBlockWarning || salespersonMissing"
               class="pos-checkout-btn"
               @click="requestCheckout"
             >
               <McSpinner v-if="busy" />
+              <span v-else-if="salespersonMissing">Choose salesperson</span>
+              <span v-else-if="selectedSalesperson">Complete sale · {{ selectedSalesperson.name }}</span>
               <span v-else>Complete sale</span>
             </McButton>
           </div>
@@ -1089,11 +1126,12 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
       <McButton
         variant="primary"
         type="button"
-        :disabled="busy || !!discountBlockWarning"
+        :disabled="busy || !!discountBlockWarning || salespersonMissing"
         class="pos-tender-bar__btn"
         @click="requestCheckout"
       >
         <McSpinner v-if="busy" />
+        <span v-else-if="salespersonMissing">Choose salesperson</span>
         <span v-else>{{ paymentMethod }} · Complete sale</span>
       </McButton>
     </div>
@@ -1127,6 +1165,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
             <span class="sale-summary__invoice">{{ saleSummary.invoiceNumber }}</span>
             <span class="sale-summary__method">{{ saleSummary.paymentMethod }}</span>
           </div>
+          <p v-if="saleSummary.salespersonName" class="sale-summary__served">Served by {{ saleSummary.salespersonName }}</p>
 
           <table class="mc-table sale-summary__table">
             <thead>
@@ -1865,6 +1904,28 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
   border-color: var(--mc-accent, #f47a20);
   color: #fff;
   box-shadow: 0 2px 6px rgba(244, 122, 32, 0.35);
+}
+.pos-sp-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  gap: 0.4rem;
+}
+.pos-sp-group .pos-pay-btn {
+  letter-spacing: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pos-sp-required {
+  color: var(--mc-danger, #c0392b);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+.sale-summary__served {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.9rem;
+  color: var(--mc-app-text-secondary, #5c5a56);
 }
 
 .pos-email-wrap { position: relative; width: 100%; }

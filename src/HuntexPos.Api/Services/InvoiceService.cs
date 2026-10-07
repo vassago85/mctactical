@@ -55,6 +55,15 @@ public class InvoiceService
     {
         const decimal taxRate = 15m;
 
+        Salesperson? salesperson = null;
+        if (req.SalespersonId.HasValue)
+        {
+            salesperson = await _db.Salespeople.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == req.SalespersonId.Value, ct);
+            if (salesperson == null || !salesperson.IsActive)
+                throw new InvalidOperationException("The selected salesperson is no longer available. Pick another.");
+        }
+
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
         var productIds = req.Lines.Select(l => l.ProductId).Distinct().ToList();
@@ -230,6 +239,8 @@ public class InvoiceService
             GrandTotal = grandTotal,
             PromotionName = req.PromotionName,
             CreatedByUserId = userId,
+            SalespersonId = salesperson?.Id,
+            SalespersonName = salesperson?.Name,
             StockDeducted = true,
             IsSpecialOrder = isSpecialOrder,
             ExchangeFromInvoiceId = exchangeFromInvoiceId,
@@ -353,6 +364,8 @@ public class InvoiceService
             PublicToken = inv.PublicToken,
             PdfUrl = pdfUrl,
             CreatedAt = inv.CreatedAt,
+            SalespersonId = inv.SalespersonId,
+            SalespersonName = inv.SalespersonName,
             ReturnCreditApplied = inv.ReturnCreditApplied,
             AmountPaid = inv.AmountPaid,
             ExchangeFromInvoiceId = inv.ExchangeFromInvoiceId,
@@ -553,6 +566,10 @@ public class InvoiceService
 
         var creditTotal = PricingCalculator.Round2(returnPlan.Sum(p => p.lineCredit));
 
+        if (req.NewLines is { Count: > 0 } && req.SalespersonId.HasValue
+            && !await _db.Salespeople.AnyAsync(s => s.Id == req.SalespersonId.Value && s.IsActive, ct))
+            throw new InvalidOperationException("The selected salesperson is no longer available. Pick another.");
+
         // 1) Persist the return itself. Restock, bump ReturnedQuantity, insert SaleReturn(+Lines).
         //    Kept independent of new-sale creation so a refund is always recorded even if the
         //    replacement ring-up fails downstream. NetSettlement is provisionally set as if this
@@ -622,6 +639,7 @@ public class InvoiceService
                 DiscountTotal = req.DiscountTotal,
                 PromotionName = req.PromotionName,
                 SendEmail = req.SendEmail,
+                SalespersonId = req.SalespersonId,
                 Lines = req.NewLines
             };
 

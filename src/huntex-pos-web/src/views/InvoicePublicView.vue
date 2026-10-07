@@ -28,6 +28,7 @@ type Inv = {
   createdAt: string
   customerName?: string | null
   paymentMethod: string
+  salespersonName?: string | null
   lines: Array<{ description: string; quantity: number; unitPrice: number; lineTotal: number }>
   companyContact?: CompanyContact | null
 }
@@ -75,6 +76,10 @@ function pdfLink() {
           <div>
             <dt>Payment</dt>
             <dd>{{ inv.paymentMethod }}</dd>
+          </div>
+          <div v-if="inv.salespersonName">
+            <dt>Served by</dt>
+            <dd>{{ inv.salespersonName }}</dd>
           </div>
         </dl>
 

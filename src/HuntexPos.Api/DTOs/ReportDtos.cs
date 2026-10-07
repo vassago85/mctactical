@@ -22,6 +22,32 @@ public class PaymentsSummaryDto
     public List<PaymentMethodBreakdownDto> ByMethod { get; set; } = new();
 }
 
+/// <summary>
+/// Per-salesperson performance for a period. Returns are deducted from the original sale's
+/// salesperson in the period the return happened, so a closed month never changes later.
+/// </summary>
+public class SalespersonReportDto
+{
+    public List<SalespersonReportRowDto> Rows { get; set; } = new();
+}
+
+public class SalespersonReportRowDto
+{
+    /// <summary>Null for the "Unassigned" bucket (older sales, Shopify orders).</summary>
+    public Guid? SalespersonId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public bool IsActive { get; set; }
+    public int SalesCount { get; set; }
+    public decimal GrossSalesInclVat { get; set; }
+    public decimal ReturnsInclVat { get; set; }
+    public decimal NetSalesInclVat { get; set; }
+    public decimal NetSalesExVat { get; set; }
+    public decimal GrossProfitExVat { get; set; }
+    public decimal CommissionPercent { get; set; }
+    public string CommissionBasis { get; set; } = string.Empty;
+    public decimal Commission { get; set; }
+}
+
 public class InvoiceListItemDto
 {
     public Guid Id { get; set; }

@@ -191,6 +191,8 @@ public class InvoicePdfService
                         MetaCell(row.RelativeItem(), "DATE",
                             invoice.CreatedAt.ToOffset(TimeSpan.FromHours(2)).ToString("yyyy-MM-dd  HH:mm"));
                         MetaCell(row.RelativeItem(), "PAYMENT", invoice.PaymentMethod);
+                        if (!string.IsNullOrWhiteSpace(invoice.SalespersonName))
+                            MetaCell(row.RelativeItem(), "SERVED BY", invoice.SalespersonName);
                     });
 
                     // ── Line items table ──
