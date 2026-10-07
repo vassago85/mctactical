@@ -1,5 +1,6 @@
+import { execFileSync } from 'node:child_process'
 import { request, expect, type APIRequestContext, type Page } from '@playwright/test'
-import { API_URL, OWNER_EMAIL, OWNER_PASSWORD } from './env'
+import { API_URL, DATA_VOLUME, OWNER_EMAIL, OWNER_PASSWORD, SQLITE_IMAGE } from './env'
 
 export type CommissionBasis = 'SalesExVat' | 'GrossProfit'
 export type Salesperson = { id: string; name: string; commissionPercent: number; commissionBasis: CommissionBasis; isActive: boolean }
@@ -14,6 +15,18 @@ export type Invoice = {
   salespersonId: string | null
   salespersonName: string | null
   lines: InvoiceLine[]
+}
+export type MissingCostRow = {
+  key: string
+  isUnlinkedShopify: boolean
+  productId: string | null
+  shopifyVariantId: number | null
+  sku: string | null
+  name: string
+  qtySold: number
+  saleCount: number
+  revenue: number
+  lastSoldAt: string
 }
 export type ReportRow = {
   salespersonId: string | null
@@ -131,6 +144,17 @@ export class Api {
     return this.ok<Invoice>(await this.ctx.get(`/api/invoices/${id}`), 'get invoice')
   }
 
+  async missingCosts(from?: Date, to?: Date): Promise<MissingCostRow[]> {
+    const params: Record<string, string> = {}
+    if (from) params.from = from.toISOString()
+    if (to) params.to = to.toISOString()
+    return this.ok<MissingCostRow[]>(await this.ctx.get('/api/missing-costs', { params }), 'missing costs')
+  }
+
+  saveMissingCostsRaw(items: { key: string; costExVat: number }[]) {
+    return this.ctx.post('/api/missing-costs', { data: { items } })
+  }
+
   async report(from: Date, to: Date): Promise<ReportRow[]> {
     const res = await this.ctx.get('/api/reports/salespeople', { params: { from: from.toISOString(), to: to.toISOString() } })
     return (await this.ok<{ rows: ReportRow[] }>(res, 'salesperson report')).rows
@@ -148,6 +172,20 @@ export class Api {
     return Api.login(email, password)
   }
 }
+
+/**
+ * Runs SQL against the e2e API's SQLite file (shared volume) and returns stdout. For seeding rows the
+ * API cannot create, such as Shopify-import lines. EF stores GUIDs as upper-case TEXT.
+ */
+export function sql(statements: string): string {
+  return execFileSync(
+    'docker',
+    ['run', '--rm', '-i', '-v', `${DATA_VOLUME}:/d`, SQLITE_IMAGE, 'sqlite3', '-batch', '/d/huntex.db'],
+    { input: `.timeout 10000\n${statements}\n`, encoding: 'utf8' }
+  ).trim()
+}
+
+export const sqlId = (id: string) => `'${id.toUpperCase()}'`
 
 /** Boots the SPA already signed in. Only seeds the token so later reloads keep app state. */
 export async function signIn(page: Page, token: string) {

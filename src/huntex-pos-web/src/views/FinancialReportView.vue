@@ -27,6 +27,7 @@ type PaymentsSummary = { totalGrand: number; totalCount: number; byMethod: Payme
 
 const busy = ref(false)
 const err = ref<string | null>(null)
+const missingCosts = ref<{ count: number; revenue: number } | null>(null)
 const stock = ref<StockReport | null>(null)
 const daily = ref<DailySummary[]>([])
 const payments = ref<PaymentsSummary | null>(null)
@@ -69,6 +70,7 @@ async function loadReport() {
   err.value = null
   try {
     const params = buildDateParams()
+    void loadMissingCosts(params)
     const [s, d, p] = await Promise.all([
       http.get<StockReport>('/api/reports/stock', { params }),
       http.get<DailySummary[]>('/api/reports/daily', { params }),
@@ -84,6 +86,21 @@ async function loadReport() {
     err.value = 'Failed to load report data'
   } finally {
     busy.value = false
+  }
+}
+
+/** Warns when items in the period were sold at R0 cost, which inflates GP. Never blocks the report. */
+async function loadMissingCosts(params: Record<string, string>) {
+  missingCosts.value = null
+  try {
+    const { data } = await http.get<{ revenue: number }[]>('/api/missing-costs', {
+      params: { from: params.from, to: params.to }
+    })
+    missingCosts.value = data.length
+      ? { count: data.length, revenue: data.reduce((s, r) => s + r.revenue, 0) }
+      : null
+  } catch {
+    missingCosts.value = null
   }
 }
 
@@ -369,6 +386,15 @@ function renderTopProductsChart() {
 
     <div v-if="err" class="fr-err no-print">{{ err }}</div>
 
+    <div v-if="missingCosts" class="fr-missing-costs no-print" role="status">
+      <span>
+        <strong>{{ formatNumber(missingCosts.count) }} item{{ missingCosts.count === 1 ? '' : 's' }}</strong>
+        sold in this period {{ missingCosts.count === 1 ? 'has' : 'have' }} no cost, so
+        <span class="sensitive-value">{{ formatZAR(missingCosts.revenue) }}</span> is counted as 100% profit.
+      </span>
+      <RouterLink class="fr-missing-costs__link" :to="{ path: '/reports', query: { tab: 'missing-costs' } }">Fix costs</RouterLink>
+    </div>
+
     <div v-if="busy" class="fr-loading"><McSpinner /> Loading report…</div>
 
     <!-- Report body -->
@@ -550,6 +576,26 @@ function renderTopProductsChart() {
 <style scoped>
 .no-print { }
 @media print { .no-print { display: none !important; } }
+
+.fr-missing-costs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #f0c48a;
+  border-radius: 10px;
+  background: #fff6ea;
+  color: #6b4513;
+  font-size: 0.9rem;
+}
+.fr-missing-costs__link {
+  font-weight: 700;
+  color: var(--mc-accent, #f47a20);
+  white-space: nowrap;
+}
 
 /* ── Page ────────────────────────────────────────────────────────────── */
 .fr { max-width: 1060px; margin: 0 auto; padding: 1.5rem; }

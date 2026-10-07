@@ -96,7 +96,7 @@ public class ReportsController : ControllerBase
         [FromQuery] string? channel = null)
     {
         var all = await _db.Invoices.AsNoTracking()
-            .Include(i => i.Lines)
+            .Include(i => i.Lines).ThenInclude(l => l.Product)
             .ToListAsync(ct);
         IEnumerable<Invoice> rows = FilterByChannel(all.Where(i => i.Status == InvoiceStatus.Final), channel);
 
@@ -119,7 +119,7 @@ public class ReportsController : ControllerBase
                 var revenue = dayInvoices.Sum(i => i.Lines.Sum(l => l.LineTotal));
                 var orderDisc = dayInvoices.Sum(i => i.DiscountTotal);
                 var costEx = dayInvoices.Sum(i => i.Lines.Sum(l =>
-                    (l.CostAtSale > 0 ? l.CostAtSale : 0m) * l.Quantity));
+                    (l.CostAtSale > 0 ? l.CostAtSale : (l.Product?.Cost ?? 0)) * l.Quantity));
                 var gp = Math.Round((revenue - orderDisc) - costEx * 1.15m, 2);
 
                 return new DailySummaryDto
@@ -559,25 +559,12 @@ public class ReportsController : ControllerBase
             });
         }).ToList();
 
-        // Unlinked Shopify items all share one placeholder product, so grouping by ProductId would
-        // collapse dozens of different online items into a single misleading row. For those lines,
-        // group by their Shopify identity (variant id, else SKU, else title) so each shows separately.
-        static bool IsUnlinkedShopify(InvoiceLine l) =>
-            l.Product?.Sku == ShopifyOrderImportService.UnlinkedPlaceholderSku;
-        static string SoldGroupKey(InvoiceLine l)
-        {
-            if (!IsUnlinkedShopify(l)) return $"p:{l.ProductId}";
-            if (l.ShopifyVariantId.HasValue) return $"u:v:{l.ShopifyVariantId.Value}";
-            if (!string.IsNullOrWhiteSpace(l.SkuAtSale)) return $"u:s:{l.SkuAtSale.Trim().ToLowerInvariant()}";
-            return $"u:d:{(l.Description ?? string.Empty).Trim().ToLowerInvariant()}";
-        }
-
         var soldInPeriod = soldLineRecords
-            .GroupBy(x => SoldGroupKey(x.Line))
+            .GroupBy(x => SoldItemKey.For(x.Line))
             .Select(g =>
             {
                 var first = g.First().Line;
-                var unlinked = IsUnlinkedShopify(first);
+                var unlinked = SoldItemKey.IsUnlinkedShopify(first);
                 var costEx = g.Sum(x => (x.Line.CostAtSale > 0 ? x.Line.CostAtSale : (x.Line.Product?.Cost ?? 0)) * x.Line.Quantity);
                 var costIncl = g.Sum(x => Math.Round((x.Line.CostAtSale > 0 ? x.Line.CostAtSale : (x.Line.Product?.Cost ?? 0)) * 1.15m, 2) * x.Line.Quantity);
                 var discount = g.Sum(x => x.OrderDiscountShare);

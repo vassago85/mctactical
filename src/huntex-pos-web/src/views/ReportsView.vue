@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { http } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
@@ -12,6 +13,7 @@ import McAlert from '@/components/ui/McAlert.vue'
 import McBadge from '@/components/ui/McBadge.vue'
 import McSpinner from '@/components/ui/McSpinner.vue'
 import SalespersonReportPanel from '@/views/SalespersonReportPanel.vue'
+import MissingCostsPanel from '@/views/MissingCostsPanel.vue'
 
 type Row = {
   id: string
@@ -140,7 +142,12 @@ async function confirmReverse() {
 const stockReport = ref<StockReport | null>(null)
 const stockErr = ref<string | null>(null)
 const stockBusy = ref(false)
-const activeTab = ref<'sales' | 'stock' | 'consignment' | 'salespeople'>('stock')
+type ReportTab = 'sales' | 'stock' | 'consignment' | 'salespeople' | 'missing-costs'
+const REPORT_TABS: readonly ReportTab[] = ['sales', 'stock', 'consignment', 'salespeople', 'missing-costs']
+const requestedTab = useRoute().query.tab
+const activeTab = ref<ReportTab>(
+  REPORT_TABS.find(t => t === requestedTab) ?? 'stock'
+)
 
 /* Consignment report state */
 const consignReport = ref<ConsignmentReport | null>(null)
@@ -533,7 +540,7 @@ async function purgeData() {
   <div class="rep-page">
     <McPageHeader title="Reports" description="Sales, consignment, and stock reports with CSV export.">
       <template #actions>
-        <McButton v-if="activeTab !== 'salespeople'" variant="secondary" type="button" @click="activeTab === 'sales' ? loadSales() : activeTab === 'consignment' ? loadConsignmentReport() : loadStockReport()">Refresh</McButton>
+        <McButton v-if="activeTab !== 'salespeople' && activeTab !== 'missing-costs'" variant="secondary" type="button" @click="activeTab === 'sales' ? loadSales() : activeTab === 'consignment' ? loadConsignmentReport() : loadStockReport()">Refresh</McButton>
         <McButton v-if="activeTab === 'sales'" variant="primary" type="button" @click="exportCsv">Export invoices CSV</McButton>
         <McButton v-if="activeTab === 'consignment' && consignReport && consignReport.suppliers.length" variant="primary" type="button" @click="exportConsignmentCsv">Export consignment CSV</McButton>
         <McButton v-if="activeTab === 'stock' && stockReport" variant="primary" type="button" @click="exportSohCsv">Export stock-on-hand CSV</McButton>
@@ -564,9 +571,11 @@ async function purgeData() {
       <button type="button" class="rep-tab" :class="{ 'rep-tab--active': activeTab === 'consignment' }" @click="activeTab = 'consignment'">Consignment</button>
       <button type="button" class="rep-tab" :class="{ 'rep-tab--active': activeTab === 'sales' }" @click="activeTab = 'sales'">Sales report</button>
       <button type="button" class="rep-tab" :class="{ 'rep-tab--active': activeTab === 'salespeople' }" @click="activeTab = 'salespeople'">Salespeople</button>
+      <button type="button" class="rep-tab" :class="{ 'rep-tab--active': activeTab === 'missing-costs' }" @click="activeTab = 'missing-costs'">Missing costs</button>
     </div>
 
     <SalespersonReportPanel v-if="activeTab === 'salespeople'" />
+    <MissingCostsPanel v-if="activeTab === 'missing-costs'" />
 
     <!-- ── STOCK REPORT TAB ── -->
     <template v-if="activeTab === 'stock'">
