@@ -99,7 +99,6 @@ const payments = ref<PaymentsSummary | null>(null)
 const err = ref<string | null>(null)
 const salesBusy = ref(false)
 
-const isDev = computed(() => auth.hasRole('Dev', 'Owner'))
 const canReverse = computed(() => auth.hasRole('Owner', 'Admin', 'Dev'))
 
 const reverseTarget = ref<Row | null>(null)
@@ -160,22 +159,6 @@ const supplierList = ref<Supplier[]>([])
 const expandedConsignSuppliers = ref<Set<string>>(new Set())
 
 const showSohDetail = ref(false)
-
-/* Purge state */
-const showPurgeConfirm = ref(false)
-const purging = ref(false)
-const purgeConfirmText = ref('')
-const purgeConfirmed = computed(() => purgeConfirmText.value.trim().toUpperCase() === 'PURGE')
-
-function openPurgeConfirm() {
-  purgeConfirmText.value = ''
-  showPurgeConfirm.value = true
-}
-
-function closePurgeConfirm() {
-  showPurgeConfirm.value = false
-  purgeConfirmText.value = ''
-}
 
 function toDateStr(d: Date) {
   return d.toISOString().slice(0, 10)
@@ -514,26 +497,6 @@ function exportConsignmentCsv() {
   ].join(','))
   downloadCsv('consignment-report.csv', rows)
 }
-
-async function purgeData() {
-  if (!purgeConfirmed.value) return
-  purging.value = true
-  try {
-    await http.post('/api/reports/purge')
-    toast.success('All transactional data purged')
-    closePurgeConfirm()
-    invoices.value = []
-    daily.value = []
-    stockReport.value = null
-    void loadSales()
-    void loadStockReport()
-  } catch (e: unknown) {
-    const ax = e as { response?: { data?: { error?: string } }; message?: string }
-    toast.error(ax.response?.data?.error ?? ax.message ?? 'Purge failed')
-  } finally {
-    purging.value = false
-  }
-}
 </script>
 
 <template>
@@ -544,27 +507,8 @@ async function purgeData() {
         <McButton v-if="activeTab === 'sales'" variant="primary" type="button" @click="exportCsv">Export invoices CSV</McButton>
         <McButton v-if="activeTab === 'consignment' && consignReport && consignReport.suppliers.length" variant="primary" type="button" @click="exportConsignmentCsv">Export consignment CSV</McButton>
         <McButton v-if="activeTab === 'stock' && stockReport" variant="primary" type="button" @click="exportSohCsv">Export stock-on-hand CSV</McButton>
-        <McButton v-if="isDev" variant="ghost" dense type="button" class="rep-purge-trigger" @click="openPurgeConfirm">Purge all data</McButton>
       </template>
     </McPageHeader>
-
-    <!-- Purge confirmation dialog -->
-    <div v-if="showPurgeConfirm" class="rep-overlay" @click.self="closePurgeConfirm">
-      <McCard title="Purge all transactional data?" class="rep-dialog">
-        <p>This will <strong>permanently delete</strong> all invoices, stock receipts, stocktake sessions, and invoice PDFs. Product quantities will be reset to zero.</p>
-        <p style="margin-top: 0.5rem; color: var(--mc-app-text-muted, #5c5a56);">Products, wholesalers, users, and settings are not affected. This cannot be undone.</p>
-        <McField label="Type PURGE to confirm" for-id="rep-purge-confirm">
-          <input id="rep-purge-confirm" v-model="purgeConfirmText" type="text" autocomplete="off" placeholder="PURGE" />
-        </McField>
-        <div class="rep-dialog__actions">
-          <McButton variant="secondary" type="button" @click="closePurgeConfirm">Cancel</McButton>
-          <McButton variant="danger" type="button" :disabled="purging || !purgeConfirmed" @click="purgeData">
-            <McSpinner v-if="purging" />
-            <span v-else>Yes, purge everything</span>
-          </McButton>
-        </div>
-      </McCard>
-    </div>
 
     <div class="rep-tabs">
       <button type="button" class="rep-tab" :class="{ 'rep-tab--active': activeTab === 'stock' }" @click="activeTab = 'stock'">Stock report</button>
@@ -1412,14 +1356,5 @@ async function purgeData() {
   justify-content: flex-end;
   gap: 0.75rem;
   margin-top: 1.25rem;
-}
-
-/* Dev-only destructive action: kept discreet so it is not mistaken for a routine control. */
-.rep-purge-trigger {
-  color: var(--mc-danger, #b42318);
-  opacity: 0.7;
-}
-.rep-purge-trigger:hover {
-  opacity: 1;
 }
 </style>

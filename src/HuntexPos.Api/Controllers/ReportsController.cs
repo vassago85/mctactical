@@ -4,12 +4,10 @@ using System.Text;
 using HuntexPos.Api.Data;
 using HuntexPos.Api.Domain;
 using HuntexPos.Api.DTOs;
-using HuntexPos.Api.Options;
 using HuntexPos.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 
 namespace HuntexPos.Api.Controllers;
 
@@ -19,12 +17,10 @@ namespace HuntexPos.Api.Controllers;
 public class ReportsController : ControllerBase
 {
     private readonly HuntexDbContext _db;
-    private readonly AppOptions _app;
 
-    public ReportsController(HuntexDbContext db, IOptions<AppOptions> app)
+    public ReportsController(HuntexDbContext db)
     {
         _db = db;
-        _app = app.Value;
     }
 
     [HttpGet("invoices")]
@@ -838,27 +834,6 @@ public class ReportsController : ControllerBase
             Products = products,
             SoldLines = soldLines
         };
-    }
-
-    [HttpPost("purge")]
-    [Authorize(Roles = $"{Roles.Owner},{Roles.Dev}")]
-    public async Task<IActionResult> PurgeData(CancellationToken ct)
-    {
-        await _db.Database.ExecuteSqlRawAsync("DELETE FROM InvoiceLines", ct);
-        await _db.Database.ExecuteSqlRawAsync("DELETE FROM Invoices", ct);
-        await _db.Database.ExecuteSqlRawAsync("DELETE FROM StocktakeLines", ct);
-        await _db.Database.ExecuteSqlRawAsync("DELETE FROM StocktakeSessions", ct);
-        await _db.Database.ExecuteSqlRawAsync("DELETE FROM StockReceipts", ct);
-        await _db.Database.ExecuteSqlRawAsync("UPDATE Products SET QtyOnHand = 0, QtyConsignment = 0", ct);
-
-        var pdfDir = Path.Combine(Directory.GetCurrentDirectory(), _app.PdfStoragePath);
-        if (Directory.Exists(pdfDir))
-        {
-            foreach (var file in Directory.GetFiles(pdfDir, "*.pdf"))
-                System.IO.File.Delete(file);
-        }
-
-        return Ok(new { message = "All sales, stock receipts, stocktakes and PDFs purged. Product quantities reset to zero." });
     }
 
     private static string Csv(string s)
