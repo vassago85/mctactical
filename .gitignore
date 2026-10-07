@@ -5,6 +5,8 @@
 **/*.db-wal
 **/node_modules/
 **/dist/
+**/test-results/
+**/playwright-report/
 **/storage/pdfs/
 **/.env
 **/.env.local
