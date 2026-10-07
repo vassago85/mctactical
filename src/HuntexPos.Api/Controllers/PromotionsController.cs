@@ -10,14 +10,18 @@ namespace HuntexPos.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = $"{Roles.Admin},{Roles.Owner},{Roles.Dev}")]
+[Authorize]
 public class PromotionsController : ControllerBase
 {
+    // Role lists on actions are ANDed with any class-level list, so the class stays open to every
+    // signed-in user and each action declares its own roles (GetActive must reach Sales).
+    private const string ManagerRoles = $"{Roles.Admin},{Roles.Owner},{Roles.Dev}";
     private readonly HuntexDbContext _db;
 
     public PromotionsController(HuntexDbContext db) => _db = db;
 
     [HttpGet]
+    [Authorize(Roles = ManagerRoles)]
     public async Task<ActionResult<List<PromotionDto>>> List(CancellationToken ct)
     {
         try
@@ -50,6 +54,7 @@ public class PromotionsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = ManagerRoles)]
     public async Task<ActionResult<PromotionDto>> Create([FromBody] CreatePromotionRequest req, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(req.Name))
@@ -74,6 +79,7 @@ public class PromotionsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [Authorize(Roles = ManagerRoles)]
     public async Task<ActionResult<PromotionDto>> Update(Guid id, [FromBody] UpdatePromotionRequest req, CancellationToken ct)
     {
         var promo = await _db.Promotions.FirstOrDefaultAsync(p => p.Id == id, ct);
@@ -96,6 +102,7 @@ public class PromotionsController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
+    [Authorize(Roles = ManagerRoles)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var promo = await _db.Promotions.FirstOrDefaultAsync(p => p.Id == id, ct);
@@ -111,6 +118,7 @@ public class PromotionsController : ControllerBase
     /* ── Product specials ── */
 
     [HttpGet("{promoId:guid}/specials")]
+    [Authorize(Roles = ManagerRoles)]
     public async Task<List<ProductSpecialDto>> ListSpecials(Guid promoId, CancellationToken ct)
     {
         var specials = await _db.ProductSpecials.AsNoTracking()
@@ -123,6 +131,7 @@ public class PromotionsController : ControllerBase
     }
 
     [HttpPost("specials")]
+    [Authorize(Roles = ManagerRoles)]
     public async Task<ActionResult<ProductSpecialDto>> CreateSpecial([FromBody] CreateProductSpecialRequest req, CancellationToken ct)
     {
         var product = await _db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == req.ProductId, ct);
@@ -158,6 +167,7 @@ public class PromotionsController : ControllerBase
     }
 
     [HttpPut("specials/{id:guid}")]
+    [Authorize(Roles = ManagerRoles)]
     public async Task<ActionResult<ProductSpecialDto>> UpdateSpecial(Guid id, [FromBody] UpdateProductSpecialRequest req, CancellationToken ct)
     {
         var special = await _db.ProductSpecials.Include(s => s.Product).Include(s => s.Promotion)
@@ -172,6 +182,7 @@ public class PromotionsController : ControllerBase
     }
 
     [HttpDelete("specials/{id:guid}")]
+    [Authorize(Roles = ManagerRoles)]
     public async Task<IActionResult> DeleteSpecial(Guid id, CancellationToken ct)
     {
         var special = await _db.ProductSpecials.FirstOrDefaultAsync(s => s.Id == id, ct);
@@ -184,7 +195,7 @@ public class PromotionsController : ControllerBase
     /* ── Active promotion (for POS) ── */
 
     [HttpGet("active")]
-    [Authorize(Roles = $"{Roles.Sales},{Roles.Admin},{Roles.Owner},{Roles.Dev}")]
+    [Authorize(Roles = $"{Roles.Sales},{ManagerRoles}")]
     public async Task<ActivePromotionDto> GetActive(CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
