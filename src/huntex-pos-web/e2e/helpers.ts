@@ -160,16 +160,20 @@ export class Api {
     return (await this.ok<{ rows: ReportRow[] }>(res, 'salesperson report')).rows
   }
 
-  /** Creates a Sales-role user with a known password and returns a logged-in client for them. */
-  async createSalesUser(): Promise<Api> {
-    const email = `${uniq('sales')}@e2e.local`
+  /** Creates a user with a known password and returns a logged-in client for them. */
+  async createUser(role: 'Sales' | 'Admin'): Promise<Api> {
+    const email = `${uniq(role.toLowerCase())}@e2e.local`
     const password = 'E2e-Sales-Pass!1'
     const user = await this.ok<{ id: string }>(
-      await this.ctx.post('/api/admin/users', { data: { email, displayName: 'Till staff', role: 'Sales' } }),
-      'create sales user'
+      await this.ctx.post('/api/admin/users', { data: { email, displayName: `${role} staff`, role } }),
+      `create ${role} user`
     )
     await this.ok(await this.ctx.post(`/api/admin/users/${user.id}/password`, { data: { newPassword: password } }), 'set password')
     return Api.login(email, password)
+  }
+
+  createSalesUser(): Promise<Api> {
+    return this.createUser('Sales')
   }
 }
 

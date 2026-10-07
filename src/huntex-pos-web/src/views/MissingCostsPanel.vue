@@ -150,7 +150,7 @@ onMounted(load)
                 <span v-if="r.sku" class="mcost-sku">{{ r.sku }}</span>
                 <div v-if="r.isUnlinkedShopify" class="mcost-online">
                   <McBadge variant="warning">Online item, not linked</McBadge>
-                  <RouterLink v-if="canLinkShopify" class="mcost-link" to="/settings/shopify">Link to product</RouterLink>
+                  <RouterLink v-if="canLinkShopify" class="mcost-link" to="/settings/integrations">Link to product</RouterLink>
                 </div>
               </td>
               <td class="mcost-num">{{ formatNumber(r.qtySold) }}</td>

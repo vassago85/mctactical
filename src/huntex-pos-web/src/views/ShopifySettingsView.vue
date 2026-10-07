@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Shopify dashboard (Owner/Dev): KPI cards, quick actions, the "match unlinked sales" tool,
+ * Shopify integration (Owner/Dev): matching status, quick actions, the "match unlinked sales" tool,
  * category/tag sync, and a browsable list of all Shopify variants with link status.
  */
 import { computed, onMounted, ref } from 'vue'
@@ -24,23 +24,15 @@ function handleErr(e: unknown, fallback: string): string {
   return ax.response?.data?.error ?? ax.message ?? fallback
 }
 
-function toDateStr(d: Date) { return d.toISOString().slice(0, 10) }
-
-// ── KPI dashboard ───────────────────────────────────────────────────────────
+// ── Matching status (all-time; period sales figures live in Reports → Shopify sales) ──
 type TopUnlinked = { title: string; revenue: number }
 type Dashboard = {
-  revenue: number
-  orders: number
-  units: number
-  avgOrderValue: number
   linkedProducts: number
   unlinkedItems: number
   unlinkedRevenue: number
   topUnlinked: TopUnlinked | null
 }
 
-const from = ref(toDateStr(new Date(Date.now() - 30 * 864e5)))
-const to = ref(toDateStr(new Date()))
 const dash = ref<Dashboard | null>(null)
 const dashBusy = ref(false)
 const dashErr = ref<string | null>(null)
@@ -49,10 +41,7 @@ async function loadDashboard() {
   dashBusy.value = true
   dashErr.value = null
   try {
-    const params: Record<string, string> = {}
-    if (from.value) params.from = new Date(from.value).toISOString()
-    if (to.value) { const e = new Date(to.value); e.setHours(23, 59, 59, 999); params.to = e.toISOString() }
-    const { data } = await http.get<Dashboard>('/api/shopify/dashboard', { params })
+    const { data } = await http.get<Dashboard>('/api/shopify/dashboard')
     dash.value = data
   } catch (e) {
     dashErr.value = handleErr(e, 'Could not load dashboard')
@@ -619,44 +608,15 @@ onMounted(() => {
   <div class="shopify-page">
     <McPageHeader title="Shopify">
       <template #default>
-        Overview of your online channel. The POS is the source of truth.
+        Sync your online channel and match Shopify items to POS products. The POS is the source of truth.
+        Online sales figures are under Reports → Shopify sales.
       </template>
     </McPageHeader>
 
-    <!-- Period + KPIs -->
-    <McCard title="Overview">
-      <div class="shp-period">
-        <McField label="From" for-id="shp-from"><input id="shp-from" v-model="from" type="date" /></McField>
-        <McField label="To" for-id="shp-to"><input id="shp-to" v-model="to" type="date" /></McField>
-        <McButton variant="primary" type="button" :disabled="dashBusy" @click="loadDashboard">
-          <McSpinner v-if="dashBusy" />
-          <span v-else>Refresh</span>
-        </McButton>
-      </div>
-
+    <McCard title="Sync &amp; matching status">
       <McAlert v-if="dashErr" variant="error">{{ dashErr }}</McAlert>
 
       <div v-if="dash" class="shp-kpis">
-        <div class="kpi kpi--accent">
-          <span class="kpi__label">Shopify revenue (incl VAT)</span>
-          <strong class="kpi__value">{{ formatZAR(dash.revenue) }}</strong>
-          <span class="kpi__sub">selected period</span>
-        </div>
-        <div class="kpi">
-          <span class="kpi__label">Orders</span>
-          <strong class="kpi__value">{{ formatNumber(dash.orders) }}</strong>
-          <span class="kpi__sub">selected period</span>
-        </div>
-        <div class="kpi">
-          <span class="kpi__label">Items sold</span>
-          <strong class="kpi__value">{{ formatNumber(dash.units) }}</strong>
-          <span class="kpi__sub">units, selected period</span>
-        </div>
-        <div class="kpi">
-          <span class="kpi__label">Avg order value</span>
-          <strong class="kpi__value">{{ formatZAR(dash.avgOrderValue) }}</strong>
-          <span class="kpi__sub">selected period</span>
-        </div>
         <div class="kpi">
           <span class="kpi__label">Linked products</span>
           <strong class="kpi__value">{{ formatNumber(dash.linkedProducts) }}</strong>
@@ -1031,8 +991,6 @@ onMounted(() => {
   width: 100%;
 }
 .shp-hint { margin: 0 0 0.75rem; font-size: 0.9rem; color: var(--mc-app-text-muted, #5c5a56); line-height: 1.55; }
-.shp-period { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.75rem; margin-bottom: 1rem; }
-.shp-period :deep(.mc-field) { margin-bottom: 0; }
 .shp-actions { display: flex; gap: 0.6rem; margin: 0.5rem 0; }
 .shp-quick { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--mc-app-border-faint, #eceae5); }
 

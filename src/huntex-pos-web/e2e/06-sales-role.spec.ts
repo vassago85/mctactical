@@ -51,7 +51,10 @@ test.describe('Sales-role login (till staff)', () => {
     await page.goto('/#/salespeople')
     await expect(page).toHaveURL(/#\/pos$/)
 
-    await page.goto('/#/reports')
+    await page.goto('/#/settings/team')
+    await expect(page).toHaveURL(/#\/pos$/)
+
+    await page.goto('/#/reports/salespeople')
     await expect(page).toHaveURL(/#\/pos$/)
   })
 

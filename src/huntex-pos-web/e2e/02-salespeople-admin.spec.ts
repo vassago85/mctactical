@@ -1,16 +1,17 @@
 import { test, expect } from '@playwright/test'
 import { Api, signIn, uniq } from './helpers'
 
-test.describe('Manage → Salespeople', () => {
+test.describe('Settings → Team & salespeople', () => {
   test('add, validate, edit, deactivate and reactivate through the UI', async ({ page }) => {
     const api = await Api.login()
     await signIn(page, api.token)
     page.on('dialog', (d) => d.accept())
 
     await page.goto('/#/pos')
-    await page.getByRole('link', { name: 'Salespeople' }).click()
-    await expect(page).toHaveURL(/#\/salespeople$/)
-    await expect(page.getByRole('heading', { name: 'Salespeople', level: 1 })).toBeVisible()
+    await page.getByRole('link', { name: 'Settings', exact: true }).click()
+    await page.locator('.rep-tab', { hasText: 'Team & salespeople' }).click()
+    await expect(page).toHaveURL(/#\/settings\/team$/)
+    await expect(page.getByRole('heading', { name: 'Salespeople', level: 2, exact: true })).toBeVisible()
 
     const name = uniq('Thandi')
 

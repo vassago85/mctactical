@@ -161,8 +161,8 @@ onMounted(load)
 <template>
   <div class="ws-page">
     <McPageHeader
-      title="Wholesalers / Distributors"
-      description="Manage the suppliers you buy from. Used by stock imports, consignment batches, stock receipts, supplier-scoped pricing rules, and reporting filters. Deactivating a wholesaler hides it from pickers for new records but keeps all historical references intact."
+      title="Suppliers"
+      description="Manage the wholesalers and distributors you buy from. Used by stock imports, consignment batches, stock receipts, supplier-scoped pricing rules, and reporting filters. Deactivating a supplier hides it from pickers for new records but keeps all historical references intact."
     />
 
     <McAlert v-if="err" variant="error">{{ err }}</McAlert>

@@ -15,7 +15,8 @@ import McEmptyState from '@/components/ui/McEmptyState.vue'
 import McModal from '@/components/ui/McModal.vue'
 import McCheckbox from '@/components/ui/McCheckbox.vue'
 import McFilterToolbar from '@/components/ui/McFilterToolbar.vue'
-import { AlertTriangle, MoreHorizontal, X, Star } from 'lucide-vue-next'
+import LabelPrintDialog from '@/components/LabelPrintDialog.vue'
+import { AlertTriangle, MoreHorizontal, X, Star, Printer } from 'lucide-vue-next'
 
 type Supplier = { id: string; name: string }
 
@@ -119,11 +120,86 @@ const pageLabel = computed(() => {
   return `${from}–${to} of ${page.value.total}`
 })
 
+function isInStock(p: Product) {
+  return p.qtyOnHand + p.qtyConsignment > 0
+}
+
 const visibleItems = computed(() => {
   const items = page.value?.items ?? []
   if (!filterInStockOnly.value) return items
-  return items.filter((p) => p.qtyOnHand + p.qtyConsignment > 0)
+  return items.filter(isInStock)
 })
+
+/* ── Bulk label selection (keyed by id so it survives paging and filter changes) ── */
+const selectedIds = ref<Set<string>>(new Set())
+const showBulkLabels = ref(false)
+const selectAllBusy = ref(false)
+const knownQty = ref<Map<string, number>>(new Map())
+
+const visibleIds = computed(() => visibleItems.value.map((p) => p.id))
+const allVisibleSelected = computed(
+  () => visibleIds.value.length > 0 && visibleIds.value.every((id) => selectedIds.value.has(id))
+)
+const someVisibleSelected = computed(() => visibleIds.value.some((id) => selectedIds.value.has(id)))
+const selectedList = computed(() => Array.from(selectedIds.value))
+
+watch(page, (p) => {
+  if (!p) return
+  const next = new Map(knownQty.value)
+  for (const item of p.items) next.set(item.id, item.qtyOnHand)
+  knownQty.value = next
+})
+
+function toggleSelected(id: string) {
+  const next = new Set(selectedIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  selectedIds.value = next
+}
+
+function toggleAllVisible() {
+  const next = new Set(selectedIds.value)
+  const select = !allVisibleSelected.value
+  for (const id of visibleIds.value) {
+    if (select) next.add(id)
+    else next.delete(id)
+  }
+  selectedIds.value = next
+}
+
+function clearSelection() {
+  selectedIds.value = new Set()
+}
+
+async function selectAllMatching() {
+  selectAllBusy.value = true
+  try {
+    const { data } = await http.get<Page>('/api/products/stocklist', {
+      params: {
+        q: q.value.trim() || undefined,
+        includeInactive: includeInactive.value,
+        hasSpecial: filterSpecials.value || undefined,
+        supplierId: filterSupplierId.value || undefined,
+        skip: 0,
+        take: 10_000
+      }
+    })
+    const next = new Set(selectedIds.value)
+    const qty = new Map(knownQty.value)
+    for (const p of data.items) {
+      if (filterInStockOnly.value && !isInStock(p)) continue
+      next.add(p.id)
+      qty.set(p.id, p.qtyOnHand)
+    }
+    selectedIds.value = next
+    knownQty.value = qty
+    toast.success(`Selected ${next.size} item${next.size === 1 ? '' : 's'}`)
+  } catch {
+    toast.error('Could not expand selection')
+  } finally {
+    selectAllBusy.value = false
+  }
+}
 
 let debounce: ReturnType<typeof setTimeout> | null = null
 watch([q, includeInactive, filterSupplierId], () => {
@@ -716,14 +792,11 @@ onUnmounted(() => {
 
 <template>
   <div class="stock-page">
-    <McPageHeader title="Stock list" description="Full inventory. Use Import to load items from your Huntex workbook or CSV.">
+    <McPageHeader title="Products" description="Full inventory. Use Receiving → Import to load items from your Huntex workbook or CSV. Tick products to print labels in bulk.">
       <template v-if="canManage" #actions>
         <McButton variant="primary" type="button" @click="openAdd">Add product</McButton>
-        <RouterLink to="/receiving" custom v-slot="{ navigate }">
+        <RouterLink :to="{ path: '/receiving/batches', query: { type: 'OwnedReceive' } }" custom v-slot="{ navigate }">
           <McButton variant="secondary" type="button" @click="navigate">Receive stock</McButton>
-        </RouterLink>
-        <RouterLink to="/stock/labels" custom v-slot="{ navigate }">
-          <McButton variant="secondary" type="button" @click="navigate">Bulk labels</McButton>
         </RouterLink>
         <McButton v-if="canExport" variant="secondary" type="button" @click="exportCsv">Export CSV</McButton>
       </template>
@@ -796,6 +869,15 @@ onUnmounted(() => {
         <table v-if="visibleItems.length" class="stock-table mc-table">
           <thead>
             <tr>
+              <th v-if="canManage" class="stock-select">
+                <input
+                  type="checkbox"
+                  :checked="allVisibleSelected"
+                  :indeterminate.prop="someVisibleSelected && !allVisibleSelected"
+                  aria-label="Select all products on this page"
+                  @change="toggleAllVisible"
+                />
+              </th>
               <th>Product</th>
               <th>Wholesaler</th>
               <th class="text-right">Cost</th>
@@ -808,7 +890,15 @@ onUnmounted(() => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="p in visibleItems" :key="p.id">
+            <tr v-for="p in visibleItems" :key="p.id" :class="{ 'stock-row--selected': selectedIds.has(p.id) }">
+              <td v-if="canManage" class="stock-select">
+                <input
+                  type="checkbox"
+                  :checked="selectedIds.has(p.id)"
+                  :aria-label="`Select ${p.name}`"
+                  @change="toggleSelected(p.id)"
+                />
+              </td>
               <td class="stock-product">
                 <div class="stock-product__name">{{ p.name }}</div>
                 <div class="stock-product__meta">
@@ -890,7 +980,7 @@ onUnmounted(() => {
         <McEmptyState
           v-else-if="page && !busy"
           title="No products in this view"
-          hint="Try clearing the search filter or import stock from the Import page."
+          hint="Try clearing the search filter or import stock under Receiving → Import."
         />
         <div v-else-if="busy" class="stock-loading">
           <McSpinner />
@@ -898,6 +988,28 @@ onUnmounted(() => {
         </div>
       </div>
     </McCard>
+
+    <div v-if="canManage && selectedIds.size" class="stock-select-bar" role="region" aria-label="Selected products">
+      <span class="stock-select-bar__info"><strong>{{ selectedIds.size }}</strong> selected</span>
+      <McButton
+        v-if="page && page.total > visibleItems.length"
+        variant="ghost"
+        dense
+        type="button"
+        :disabled="selectAllBusy"
+        @click="selectAllMatching"
+      >
+        <McSpinner v-if="selectAllBusy" />
+        <span v-else>Select all {{ page.total }} matching</span>
+      </McButton>
+      <span class="stock-select-bar__spacer" />
+      <McButton variant="secondary" type="button" :disabled="!selectedIds.size" @click="clearSelection">Clear</McButton>
+      <McButton variant="primary" type="button" :disabled="!selectedIds.size" @click="showBulkLabels = true">
+        <Printer :size="16" /> Print labels
+      </McButton>
+    </div>
+
+    <LabelPrintDialog v-model="showBulkLabels" :product-ids="selectedList" :qty-by-id="knownQty" />
 
     <Teleport to="body">
       <Transition name="stock-drawer-fade">
@@ -1427,6 +1539,57 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.25rem;
+}
+
+.stock-select {
+  width: 2.25rem;
+  text-align: center;
+}
+.stock-select input {
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--mc-accent, #f47a20);
+  cursor: pointer;
+}
+.stock-row--selected {
+  background: rgba(244, 122, 32, 0.06);
+}
+
+/* Fixed rather than sticky: the document scrolls, not .app-main, so sticky never engages here. */
+.stock-select-bar {
+  position: fixed;
+  right: 1.5rem;
+  bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+  z-index: 60;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  max-width: calc(100vw - 3rem);
+  padding: 0.65rem 0.85rem;
+  background: var(--mc-app-surface, #fff);
+  border: 1px solid var(--mc-app-border-soft, #ddd9d3);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+}
+.stock-select-bar__info {
+  font-size: 0.92rem;
+  padding: 0 0.25rem;
+}
+.stock-select-bar__spacer {
+  display: none;
+}
+@media (max-width: 640px) {
+  .stock-select-bar {
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+    max-width: none;
+  }
+  .stock-select-bar__spacer {
+    display: block;
+    flex: 1;
+  }
 }
 
 .stock-actions-more {

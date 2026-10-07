@@ -275,7 +275,7 @@ onMounted(() => {
         <span>Build a quote by searching for stock items or adding custom lines.</span>
       </template>
       <template #actions>
-        <McButton variant="ghost" @click="router.push('/quotes')">
+        <McButton variant="ghost" @click="router.push('/sales/quotes')">
           <ArrowLeft :size="16" /> Back
         </McButton>
         <McButton variant="primary" :disabled="busy || loading" @click="save">

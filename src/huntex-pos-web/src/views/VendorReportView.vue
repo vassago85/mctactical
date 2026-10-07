@@ -111,7 +111,7 @@ async function load() {
   } catch (e: unknown) {
     const ax = e as { response?: { status?: number; data?: { error?: string } }; message?: string }
     if (ax.response?.status === 403) {
-      err.value = 'Your account is not linked to a vendor. Ask an admin to assign you to a supplier on the Team page.'
+      err.value = 'Your account is not linked to a vendor. Ask an admin to assign you to a supplier under Settings → Team & salespeople.'
     } else {
       err.value = ax.response?.data?.error ?? ax.message ?? 'Could not load vendor report'
       toast.error(err.value)

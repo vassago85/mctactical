@@ -12,8 +12,12 @@ import McField from '@/components/ui/McField.vue'
 import McAlert from '@/components/ui/McAlert.vue'
 import McBadge from '@/components/ui/McBadge.vue'
 import McSpinner from '@/components/ui/McSpinner.vue'
+import McTabs, { type McTab } from '@/components/ui/McTabs.vue'
+import McTabPanel from '@/components/ui/McTabPanel.vue'
 import SalespersonReportPanel from '@/views/SalespersonReportPanel.vue'
 import MissingCostsPanel from '@/views/MissingCostsPanel.vue'
+import FinancialReportView from '@/views/FinancialReportView.vue'
+import ShopifySalesPanel from '@/views/ShopifySalesPanel.vue'
 
 type Row = {
   id: string
@@ -141,12 +145,44 @@ async function confirmReverse() {
 const stockReport = ref<StockReport | null>(null)
 const stockErr = ref<string | null>(null)
 const stockBusy = ref(false)
-type ReportTab = 'sales' | 'stock' | 'consignment' | 'salespeople' | 'missing-costs'
-const REPORT_TABS: readonly ReportTab[] = ['sales', 'stock', 'consignment', 'salespeople', 'missing-costs']
-const requestedTab = useRoute().query.tab
-const activeTab = ref<ReportTab>(
-  REPORT_TABS.find(t => t === requestedTab) ?? 'stock'
-)
+type ReportTab = 'financial' | 'stock' | 'consignment' | 'sales' | 'salespeople' | 'shopify' | 'missing-costs'
+const REPORT_TABS: readonly ReportTab[] = ['financial', 'stock', 'consignment', 'sales', 'salespeople', 'shopify', 'missing-costs']
+const route = useRoute()
+const activeTab = computed<ReportTab>(() => {
+  const segment = route.path.split('/')[2]
+  return REPORT_TABS.find(t => t === segment) ?? 'financial'
+})
+const canSeeShopify = computed(() => auth.hasRole('Owner', 'Dev'))
+const tabs = computed<McTab[]>(() => {
+  const list: McTab[] = [
+    { to: '/reports/financial', label: 'Financial overview' },
+    { to: '/reports/stock', label: 'Stock' },
+    { to: '/reports/consignment', label: 'Consignment' },
+    { to: '/reports/sales', label: 'Sales' },
+    { to: '/reports/salespeople', label: 'Salespeople' }
+  ]
+  if (canSeeShopify.value) list.push({ to: '/reports/shopify', label: 'Shopify sales' })
+  list.push({ to: '/reports/missing-costs', label: 'Missing costs' })
+  return list
+})
+const hasOwnToolbar = computed(() => activeTab.value === 'stock' || activeTab.value === 'consignment' || activeTab.value === 'sales')
+
+function refreshActive() {
+  switch (activeTab.value) {
+    case 'sales': return loadSales()
+    case 'consignment': return loadConsignmentReport()
+    case 'stock': return loadStockReport()
+    case 'financial':
+    case 'salespeople':
+    case 'shopify':
+    case 'missing-costs':
+      return
+    default: {
+      const exhaustive: never = activeTab.value
+      return exhaustive
+    }
+  }
+}
 
 /* Consignment report state */
 const consignReport = ref<ConsignmentReport | null>(null)
@@ -500,25 +536,23 @@ function exportConsignmentCsv() {
 </script>
 
 <template>
-  <div class="rep-page">
-    <McPageHeader title="Reports" description="Sales, consignment, and stock reports with CSV export.">
-      <template #actions>
-        <McButton v-if="activeTab !== 'salespeople' && activeTab !== 'missing-costs'" variant="secondary" type="button" @click="activeTab === 'sales' ? loadSales() : activeTab === 'consignment' ? loadConsignmentReport() : loadStockReport()">Refresh</McButton>
+  <div class="rep-page" :class="{ 'rep-page--financial': activeTab === 'financial' }">
+    <McPageHeader title="Reports" description="Financial, stock, consignment, sales and commission reports with CSV export.">
+      <template v-if="hasOwnToolbar" #actions>
+        <McButton variant="secondary" type="button" @click="refreshActive">Refresh</McButton>
         <McButton v-if="activeTab === 'sales'" variant="primary" type="button" @click="exportCsv">Export invoices CSV</McButton>
         <McButton v-if="activeTab === 'consignment' && consignReport && consignReport.suppliers.length" variant="primary" type="button" @click="exportConsignmentCsv">Export consignment CSV</McButton>
         <McButton v-if="activeTab === 'stock' && stockReport" variant="primary" type="button" @click="exportSohCsv">Export stock-on-hand CSV</McButton>
       </template>
     </McPageHeader>
 
-    <div class="rep-tabs">
-      <button type="button" class="rep-tab" :class="{ 'rep-tab--active': activeTab === 'stock' }" @click="activeTab = 'stock'">Stock report</button>
-      <button type="button" class="rep-tab" :class="{ 'rep-tab--active': activeTab === 'consignment' }" @click="activeTab = 'consignment'">Consignment</button>
-      <button type="button" class="rep-tab" :class="{ 'rep-tab--active': activeTab === 'sales' }" @click="activeTab = 'sales'">Sales report</button>
-      <button type="button" class="rep-tab" :class="{ 'rep-tab--active': activeTab === 'salespeople' }" @click="activeTab = 'salespeople'">Salespeople</button>
-      <button type="button" class="rep-tab" :class="{ 'rep-tab--active': activeTab === 'missing-costs' }" @click="activeTab = 'missing-costs'">Missing costs</button>
-    </div>
+    <McTabs :tabs="tabs" label="Report sections" />
 
+    <McTabPanel v-if="activeTab === 'financial'">
+      <FinancialReportView />
+    </McTabPanel>
     <SalespersonReportPanel v-if="activeTab === 'salespeople'" />
+    <ShopifySalesPanel v-if="activeTab === 'shopify'" />
     <MissingCostsPanel v-if="activeTab === 'missing-costs'" />
 
     <!-- ── STOCK REPORT TAB ── -->
@@ -1089,33 +1123,10 @@ function exportConsignmentCsv() {
   min-height: 100%;
 }
 
-.rep-tabs {
-  display: flex;
-  gap: 0;
-  margin-bottom: 1.25rem;
-  border-bottom: 2px solid var(--mc-app-border-faint, #eceae5);
-}
-
-.rep-tab {
-  padding: 0.75rem 1.5rem;
-  border: none;
-  background: none;
-  font-weight: 600;
-  font-size: 0.95rem;
-  color: var(--mc-app-text-muted, #5c5a56);
-  cursor: pointer;
-  border-bottom: 3px solid transparent;
-  margin-bottom: -2px;
-  transition: color 0.15s, border-color 0.15s;
-}
-
-.rep-tab:hover {
-  color: var(--mc-app-text, #1a1a1c);
-}
-
-.rep-tab--active {
-  color: var(--mc-accent, #f47a20);
-  border-bottom-color: var(--mc-accent, #f47a20);
+@media print {
+  .rep-page--financial > .mc-page-header {
+    display: none;
+  }
 }
 
 .rep-date-row {

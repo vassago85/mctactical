@@ -82,12 +82,12 @@ test.describe('missing costs — list', () => {
 test.describe('missing costs — fixing them', () => {
   test('UI: enter costs for a POS product and an online item; past sales are back-filled', async ({ page }) => {
     await signIn(page, api.token)
-    await page.goto('/#/reports?tab=missing-costs')
+    await page.goto('/#/reports/missing-costs')
     await expect(page.locator('.rep-tab--active')).toHaveText('Missing costs')
 
     const torchRow = page.locator('.mcost-row', { hasText: 'Online torch' })
     await expect(torchRow.getByText('Online item, not linked')).toBeVisible()
-    await expect(torchRow.getByRole('link', { name: 'Link to product' })).toHaveAttribute('href', '#/settings/shopify')
+    await expect(torchRow.getByRole('link', { name: 'Link to product' })).toHaveAttribute('href', '#/settings/integrations')
     await expect(page.locator('.mcost-row', { hasText: noCost.sku }).getByText('Online item, not linked')).toHaveCount(0)
 
     const save = page.locator('.mcost-actions button')
@@ -172,13 +172,13 @@ test.describe('missing costs — fixing them', () => {
 test.describe('missing costs — elsewhere in reports', () => {
   test('Financial Report warns and links to the fixer', async ({ page }) => {
     await signIn(page, api.token)
-    await page.goto('/#/financial-report')
+    await page.goto('/#/reports/financial')
     const banner = page.locator('.fr-missing-costs')
     await expect(banner).toBeVisible()
     await expect(banner).toContainText('sold in this period')
     await expect(banner).toContainText('counted as 100% profit')
     await banner.getByRole('link', { name: 'Fix costs' }).click()
-    await expect(page).toHaveURL(/#\/reports\?tab=missing-costs$/)
+    await expect(page).toHaveURL(/#\/reports\/missing-costs$/)
     await expect(page.locator('.rep-tab--active')).toHaveText('Missing costs')
     await expect(page.locator('.mcost-row', { hasText: 'Online knife' })).toBeVisible()
   })

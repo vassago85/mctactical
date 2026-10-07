@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { onBeforeRouteLeave, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { http } from '@/api/http'
 import { useToast } from '@/composables/useToast'
 import { useSalespeople } from '@/composables/useSalespeople'
 import { formatZAR } from '@/utils/format'
 import BarcodeScanner from '@/components/BarcodeScanner.vue'
+import PriceCheckPopover from '@/components/PriceCheckPopover.vue'
 import McButton from '@/components/ui/McButton.vue'
 import McField from '@/components/ui/McField.vue'
 import McAlert from '@/components/ui/McAlert.vue'
@@ -19,6 +20,7 @@ import { Minus, Plus, ChevronDown, ChevronRight, Search, Camera, Check, Printer 
 import { beepSuccess, beepError } from '@/utils/beep'
 
 const router = useRouter()
+const route = useRoute()
 
 type Product = {
   id: string
@@ -327,8 +329,8 @@ const scanToFindSale = ref(false)
 const findSaleRoute = computed(() => {
   const term = q.value.trim()
   return term.length >= 2
-    ? { path: '/find-sale', query: { q: term } }
-    : { path: '/find-sale' }
+    ? { path: '/sales/invoices', query: { q: term } }
+    : { path: '/sales/invoices' }
 })
 
 function goFindSale(code?: string) {
@@ -336,11 +338,18 @@ function goFindSale(code?: string) {
   scanToFindSale.value = false
   scanOpen.value = false
   if (term.length >= 2) {
-    void router.push({ path: '/find-sale', query: { q: term } })
+    void router.push({ path: '/sales/invoices', query: { q: term } })
   } else {
-    void router.push('/find-sale')
+    void router.push('/sales/invoices')
   }
 }
+
+/** Old #/price-lookup links arrive as /pos?check=1 and open the price check straight away. */
+const priceCheckOpen = ref(route.query.check === '1')
+
+watch(priceCheckOpen, (isOpen) => {
+  if (!isOpen) void refocusSearch()
+})
 
 function onSearchKeydown(ev: KeyboardEvent) {
   noteKeyTimingFromKey(ev)
@@ -760,6 +769,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
         <Camera :size="16" />
         <span>{{ scanOpen ? 'Hide camera' : 'Camera' }}</span>
       </button>
+      <PriceCheckPopover v-model:open="priceCheckOpen" :price-of="getEffectivePrice" />
     </div>
 
     <div v-if="scanOpen" class="pos-camera-wrap">

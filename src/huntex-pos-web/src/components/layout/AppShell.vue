@@ -6,13 +6,9 @@ import { logoLight } from '@/branding'
 import { useBranding } from '@/composables/useBranding'
 import {
   Menu, ChevronLeft, ChevronRight,
-  ShoppingCart, Search, Package, ClipboardList, Truck,
-  PackageCheck, Upload, BarChart3, DollarSign, Mail, Users, UserCheck, Building2,
+  ShoppingCart, Receipt, Package, ClipboardList, Truck, BarChart3, Building2,
   Settings as SettingsIcon,
-  FileText,
-  Printer,
   Store,
-  History,
   LogOut
 } from 'lucide-vue-next'
 
@@ -20,7 +16,13 @@ const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 const sidebarOpen = ref(false)
-const { businessName, logoUrl, features, terminology } = useBranding()
+const { businessName, logoUrl } = useBranding()
+const isManager = computed(() => auth.hasRole('Admin', 'Owner', 'Dev'))
+
+/** Tabbed pages link to their first tab, so keep the menu item lit on every tab. */
+function isUnder(prefix: string) {
+  return route.path === prefix || route.path.startsWith(`${prefix}/`)
+}
 const brandLogo = computed(() => logoUrl.value ?? logoLight)
 
 const isStandalone = ref(
@@ -76,37 +78,26 @@ function logout() {
         <div class="mc-nav-group">
           <p class="mc-nav-group__label">Sell</p>
           <RouterLink class="mc-nav-link" to="/pos" @click="sidebarOpen = false"><ShoppingCart :size="16" />POS</RouterLink>
-          <RouterLink v-if="features.quotes" class="mc-nav-link" to="/quotes" @click="sidebarOpen = false"><FileText :size="16" />{{ terminology.quote }}s</RouterLink>
-          <RouterLink class="mc-nav-link" to="/price-lookup" @click="sidebarOpen = false"><Search :size="16" />Price lookup</RouterLink>
-          <RouterLink class="mc-nav-link" to="/find-sale" @click="sidebarOpen = false"><History :size="16" />Find sale</RouterLink>
+          <RouterLink class="mc-nav-link" :class="{ 'router-link-active': isUnder('/sales') }" to="/sales/invoices" @click="sidebarOpen = false"><Receipt :size="16" />Sales</RouterLink>
         </div>
         <div class="mc-nav-group">
           <p class="mc-nav-group__label">Stock</p>
-          <RouterLink class="mc-nav-link" to="/stock" @click="sidebarOpen = false"><Package :size="16" />Stock list</RouterLink>
-          <RouterLink class="mc-nav-link" to="/stock/labels" @click="sidebarOpen = false"><Printer :size="16" />Print labels</RouterLink>
+          <RouterLink class="mc-nav-link" to="/stock" @click="sidebarOpen = false"><Package :size="16" />Products</RouterLink>
+          <RouterLink v-if="isManager" class="mc-nav-link" :class="{ 'router-link-active': isUnder('/receiving') }" to="/receiving/batches" @click="sidebarOpen = false"><Truck :size="16" />Receiving</RouterLink>
           <RouterLink class="mc-nav-link" to="/stocktake" @click="sidebarOpen = false"><ClipboardList :size="16" />Stocktake</RouterLink>
-          <RouterLink class="mc-nav-link" to="/consignment" @click="sidebarOpen = false"><Truck :size="16" />Stock batches</RouterLink>
         </div>
         <div v-if="auth.hasVendorScope" class="mc-nav-group">
           <p class="mc-nav-group__label">Vendor</p>
           <RouterLink class="mc-nav-link" to="/vendor-report" @click="sidebarOpen = false"><Store :size="16" />My vendor report</RouterLink>
         </div>
-        <div v-if="auth.hasRole('Admin', 'Owner', 'Dev')" class="mc-nav-group">
+        <div v-if="isManager" class="mc-nav-group">
           <p class="mc-nav-group__label">Manage</p>
-          <RouterLink class="mc-nav-link" to="/deliveries" @click="sidebarOpen = false"><PackageCheck :size="16" />Deliveries</RouterLink>
-          <RouterLink class="mc-nav-link" to="/wholesalers" @click="sidebarOpen = false"><Building2 :size="16" />Wholesalers</RouterLink>
-          <RouterLink class="mc-nav-link" to="/salespeople" @click="sidebarOpen = false"><UserCheck :size="16" />Salespeople</RouterLink>
-          <RouterLink class="mc-nav-link" to="/import" @click="sidebarOpen = false"><Upload :size="16" />Import</RouterLink>
-          <RouterLink class="mc-nav-link" to="/reports" @click="sidebarOpen = false"><BarChart3 :size="16" />Reports</RouterLink>
-          <RouterLink class="mc-nav-link" to="/financial-report" @click="sidebarOpen = false"><FileText :size="16" />Financial overview</RouterLink>
+          <RouterLink class="mc-nav-link" to="/suppliers" @click="sidebarOpen = false"><Building2 :size="16" />Suppliers</RouterLink>
+          <RouterLink class="mc-nav-link" :class="{ 'router-link-active': isUnder('/reports') }" to="/reports/financial" @click="sidebarOpen = false"><BarChart3 :size="16" />Reports</RouterLink>
         </div>
-        <div v-if="auth.hasRole('Admin', 'Owner', 'Dev')" class="mc-nav-group">
+        <div v-if="isManager" class="mc-nav-group">
           <p class="mc-nav-group__label">Settings</p>
-          <RouterLink class="mc-nav-link" to="/settings" @click="sidebarOpen = false"><DollarSign :size="16" />Pricing</RouterLink>
-          <RouterLink class="mc-nav-link" to="/settings/business" @click="sidebarOpen = false"><SettingsIcon :size="16" />Business</RouterLink>
-          <RouterLink v-if="auth.hasRole('Owner', 'Dev')" class="mc-nav-link" to="/settings/shopify" @click="sidebarOpen = false"><Store :size="16" />Shopify</RouterLink>
-          <RouterLink class="mc-nav-link" to="/setup" @click="sidebarOpen = false"><Mail :size="16" />Email</RouterLink>
-          <RouterLink class="mc-nav-link" to="/admin/team" @click="sidebarOpen = false"><Users :size="16" />Team</RouterLink>
+          <RouterLink class="mc-nav-link" :class="{ 'router-link-active': isUnder('/settings') }" to="/settings/business" @click="sidebarOpen = false"><SettingsIcon :size="16" />Settings</RouterLink>
         </div>
       </nav>
       <div class="mc-sidebar__foot">

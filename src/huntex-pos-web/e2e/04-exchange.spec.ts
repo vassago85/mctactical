@@ -13,7 +13,7 @@ test.beforeAll(async () => {
 
 async function openExchange(page: Page, original: Invoice, sku: string) {
   await signIn(page, api.token)
-  await page.goto('/#/find-sale')
+  await page.goto('/#/sales/invoices')
   await page.locator('#hist-q').fill(sku)
   await page.getByRole('button', { name: 'Find', exact: true }).click()
   const receipt = page.locator('article.hist-receipt', { hasText: original.invoiceNumber })

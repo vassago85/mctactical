@@ -10,7 +10,6 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { http } from '@/api/http'
 import { useToast } from '@/composables/useToast'
-import { useAuthStore } from '@/stores/auth'
 import { formatZAR, formatNumber } from '@/utils/format'
 import McPageHeader from '@/components/ui/McPageHeader.vue'
 import McCard from '@/components/ui/McCard.vue'
@@ -70,15 +69,26 @@ type SaleGroup = {
   lines: SaleLine[]
 }
 
+type RecentInvoice = {
+  id: string
+  invoiceNumber: string
+  customerName: string | null
+  grandTotal: number
+  paymentMethod: string
+  createdAt: string
+  publicToken: string
+}
+
+type ExchangeTarget = Pick<SaleGroup, 'invoiceId' | 'invoiceNumber'>
+
 const DEFAULT_LOOKBACK_DAYS = 90
+const RECENT_COUNT = 20
 
 const route = useRoute()
 const toast = useToast()
-const auth = useAuthStore()
 
-/** Only managers pull online sales in; Sales staff just look sales up. */
-const canSyncShopify = computed(() => auth.hasRole('Owner', 'Dev'))
-const syncingShopify = ref(false)
+const recent = ref<RecentInvoice[]>([])
+const recentFailed = ref(false)
 
 const q = ref('')
 const fromDate = ref('')
@@ -195,40 +205,21 @@ function resetFilters() {
   if (canSearch.value) void search()
 }
 
-/**
- * Pull recently-paid Shopify orders in as invoices tagged "Shopify" (visibility only — no stock
- * change). Idempotent: already-imported orders are skipped, so it doubles as a "refresh" button.
- */
-async function syncShopify() {
-  if (syncingShopify.value) return
-  syncingShopify.value = true
+async function loadRecent() {
   try {
-    const { data } = await http.post('/api/shopify/orders/sync?apply=true')
-    const imported = data.importedCount ?? 0
-    const repaired = data.repairedCount ?? 0
-    const skipped = data.skippedExistingCount ?? 0
-    const skippedNote = skipped ? ` (${skipped} already up to date)` : ''
-    const repairedNote = repaired ? `, fixed ${repaired} with missing items` : ''
-    if (imported > 0 || repaired > 0) {
-      const importedNote = imported > 0 ? `Imported ${imported} Shopify sale${imported === 1 ? '' : 's'}` : 'No new sales'
-      toast.success(`${importedNote}${repairedNote}${skippedNote}.`)
-    } else {
-      toast.info(`No new Shopify sales to import${skippedNote}.`)
-    }
-    if (canSearch.value) await search()
-  } catch (e: unknown) {
-    const ax = e as { response?: { data?: { error?: string } }; message?: string }
-    toast.error(ax.response?.data?.error ?? ax.message ?? 'Shopify sync failed')
-  } finally {
-    syncingShopify.value = false
+    const { data } = await http.get<RecentInvoice[]>('/api/invoices/recent', { params: { take: RECENT_COUNT } })
+    recent.value = data
+    recentFailed.value = false
+  } catch {
+    recentFailed.value = true
   }
 }
 
-function receiptUrl(g: SaleGroup) {
+function receiptUrl(g: { publicToken: string }) {
   return `/#/receipt/${g.publicToken}?auto=0`
 }
 
-function invoiceUrl(g: SaleGroup) {
+function invoiceUrl(g: { publicToken: string }) {
   return `/#/invoice/${g.publicToken}`
 }
 
@@ -236,10 +227,10 @@ function invoiceUrl(g: SaleGroup) {
 // Open the till exchange dialog for a specific receipt. Any change to
 // ReturnedQuantity on the server changes what search-lines returns, so we
 // re-run the current search after a successful exchange to refresh the view.
-const exchangeTarget = ref<SaleGroup | null>(null)
+const exchangeTarget = ref<ExchangeTarget | null>(null)
 const lastExchangeResult = ref<ExchangeResult | null>(null)
 
-function openExchange(g: SaleGroup) {
+function openExchange(g: ExchangeTarget) {
   exchangeTarget.value = g
 }
 
@@ -250,7 +241,8 @@ function closeExchange() {
 async function onExchangeDone(result: ExchangeResult) {
   lastExchangeResult.value = result
   exchangeTarget.value = null
-  if (canSearch.value) await search()
+  if (rows.value && canSearch.value) await search()
+  else void loadRecent()
 }
 
 function dismissExchangeSummary() {
@@ -263,6 +255,7 @@ function fmtWhen(iso: string): string {
 }
 
 onMounted(async () => {
+  void loadRecent()
   applyDefaultDateRange()
   const incoming = typeof route.query.q === 'string' ? route.query.q.trim() : ''
   if (incoming) q.value = incoming
@@ -292,12 +285,6 @@ watch(
       <template #default>
         Look up what a customer paid when they have no receipt. Scan a barcode or type a
         SKU, item name, invoice number or customer name.
-      </template>
-      <template v-if="canSyncShopify" #actions>
-        <McButton variant="secondary" :disabled="syncingShopify" @click="syncShopify">
-          <McSpinner v-if="syncingShopify" />
-          <span v-else>Sync Shopify sales</span>
-        </McButton>
       </template>
     </McPageHeader>
 
@@ -355,6 +342,35 @@ watch(
     </McCard>
 
     <McAlert v-if="err" variant="error">{{ err }}</McAlert>
+
+    <McCard v-if="!rows" title="Recent invoices" :padded="false">
+      <ul v-if="recent.length" class="hist-recent">
+        <li v-for="inv in recent" :key="inv.id" class="hist-recent__row">
+          <div class="hist-recent__main">
+            <span class="hist-recent__num">{{ inv.invoiceNumber }}</span>
+            <span class="hist-recent__who">{{ inv.customerName || 'No customer on receipt' }}</span>
+            <span class="hist-recent__when">{{ fmtWhen(inv.createdAt) }}<template v-if="inv.paymentMethod"> · {{ inv.paymentMethod }}</template></span>
+          </div>
+          <strong class="hist-recent__total">{{ formatZAR(inv.grandTotal) }}</strong>
+          <div class="hist-receipt__actions">
+            <a class="hist-action hist-action--primary" :href="receiptUrl(inv)" target="_blank" rel="noreferrer">Reprint receipt</a>
+            <a class="hist-action" :href="invoiceUrl(inv)" target="_blank" rel="noreferrer">Open invoice</a>
+            <button
+              type="button"
+              class="hist-action hist-action--exchange"
+              @click="openExchange({ invoiceId: inv.id, invoiceNumber: inv.invoiceNumber })"
+            >
+              Return / exchange
+            </button>
+          </div>
+        </li>
+      </ul>
+      <p v-else-if="recentFailed" class="hist-recent__empty">
+        Could not load recent sales.
+        <button type="button" class="hist-till__more" @click="loadRecent">Retry</button>
+      </p>
+      <p v-else class="hist-recent__empty">No sales yet.</p>
+    </McCard>
 
     <McCard v-if="rows" :title="resultsTitle">
       <McEmptyState
@@ -571,6 +587,55 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
+}
+
+.hist-recent {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hist-recent__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--mc-app-border-soft, #ddd9d3);
+}
+
+.hist-recent__row:last-child {
+  border-bottom: none;
+}
+
+.hist-recent__main {
+  flex: 1 1 14rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.hist-recent__num {
+  font-weight: 700;
+  color: var(--mc-app-heading, #0a0a0c);
+}
+
+.hist-recent__who,
+.hist-recent__when {
+  font-size: 0.85rem;
+  color: var(--mc-app-text-muted, #5c5a56);
+}
+
+.hist-recent__total {
+  font-variant-numeric: tabular-nums;
+}
+
+.hist-recent__empty {
+  margin: 0;
+  padding: 1rem;
+  font-size: 0.9rem;
+  color: var(--mc-app-text-muted, #5c5a56);
 }
 
 .hist-receipt {

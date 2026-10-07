@@ -201,8 +201,8 @@ async function commitWholesaler() {
   <div class="imp-page">
     <McPageHeader title="Stock import">
       <template #default>
-        After importing, open <RouterLink to="/stock">Stock list</RouterLink> to verify. Use <strong>Preview</strong> before
-        <strong>Commit</strong> so you can catch mapping issues. Wholesalers/suppliers can be assigned to products later in stock list.
+        After importing, open <RouterLink to="/stock">Products</RouterLink> to verify. Use <strong>Preview</strong> before
+        <strong>Commit</strong> so you can catch mapping issues. Suppliers can be assigned to products later on the Products page.
       </template>
     </McPageHeader>
 

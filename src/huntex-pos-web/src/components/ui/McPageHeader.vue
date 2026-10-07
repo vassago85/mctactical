@@ -1,14 +1,19 @@
 <script setup lang="ts">
+import { inject } from 'vue'
+import { EMBEDDED_PAGE } from './embedded'
+
 defineProps<{
   title: string
   description?: string
 }>()
+
+const embedded = inject(EMBEDDED_PAGE, false)
 </script>
 
 <template>
-  <header class="mc-page-header">
+  <header class="mc-page-header" :class="{ 'mc-page-header--embedded': embedded }">
     <div class="mc-page-header__text">
-      <h1 class="mc-page-header__title">{{ title }}</h1>
+      <component :is="embedded ? 'h2' : 'h1'" class="mc-page-header__title">{{ title }}</component>
       <p v-if="description || $slots.default" class="mc-page-header__desc">
         <slot>{{ description }}</slot>
       </p>
@@ -53,5 +58,17 @@ defineProps<{
   flex-wrap: wrap;
   gap: 0.6rem;
   align-items: center;
+}
+
+.mc-page-header--embedded {
+  margin-bottom: 1.25rem;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+.mc-page-header--embedded .mc-page-header__title {
+  font-size: 1.3rem;
+}
+.mc-page-header--embedded .mc-page-header__desc {
+  font-size: 0.875rem;
 }
 </style>

@@ -392,7 +392,7 @@ function renderTopProductsChart() {
         sold in this period {{ missingCosts.count === 1 ? 'has' : 'have' }} no cost, so
         <span class="sensitive-value">{{ formatZAR(missingCosts.revenue) }}</span> is counted as 100% profit.
       </span>
-      <RouterLink class="fr-missing-costs__link" :to="{ path: '/reports', query: { tab: 'missing-costs' } }">Fix costs</RouterLink>
+      <RouterLink class="fr-missing-costs__link" to="/reports/missing-costs">Fix costs</RouterLink>
     </div>
 
     <div v-if="busy" class="fr-loading"><McSpinner /> Loading report…</div>

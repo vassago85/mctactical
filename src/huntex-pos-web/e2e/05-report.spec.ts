@@ -137,6 +137,7 @@ test.describe('salesperson report — Reports page', () => {
     await signIn(page, api.token)
     await page.goto('/#/reports')
     await page.locator('.rep-tab', { hasText: 'Salespeople' }).click()
+    await expect(page).toHaveURL(/#\/reports\/salespeople$/)
 
     const monthName = new Date().toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })
     await expect(page.getByText(`Salespeople — ${monthName}`)).toBeVisible()

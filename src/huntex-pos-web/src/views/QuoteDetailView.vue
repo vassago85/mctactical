@@ -116,7 +116,7 @@ async function remove() {
   try {
     await http.delete(`/api/quotes/${quote.value.id}`)
     toast.success('Quote deleted')
-    router.push('/quotes')
+    router.push('/sales/quotes')
   } catch (e: unknown) {
     const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error
     toast.error(msg || 'Could not delete')
@@ -173,7 +173,7 @@ onMounted(() => void load())
         <span v-if="quote">Created {{ formatDate(quote.createdAt) }}</span>
       </template>
       <template #actions>
-        <McButton variant="ghost" @click="router.push('/quotes')">
+        <McButton variant="ghost" @click="router.push('/sales/quotes')">
           <ArrowLeft :size="16" /> Back
         </McButton>
         <McButton v-if="canEdit" variant="secondary" @click="router.push(`/quotes/${id}/edit`)">
