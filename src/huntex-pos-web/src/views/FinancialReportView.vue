@@ -229,7 +229,7 @@ function renderRevenueChart() {
         legend: { position: 'top', labels: { usePointStyle: true, padding: 16, font: { size: 11 } } },
         tooltip: {
           callbacks: {
-            label: (ctx) => `${ctx.dataset.label}: R${ctx.parsed.y.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`
+            label: (ctx) => `${ctx.dataset.label}: R${(ctx.parsed.y ?? 0).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`
           }
         }
       },
@@ -326,7 +326,7 @@ function renderTopProductsChart() {
         legend: { position: 'top', labels: { usePointStyle: true, padding: 16, font: { size: 11 } } },
         tooltip: {
           callbacks: {
-            label: (ctx) => `${ctx.dataset.label}: R${ctx.parsed.x.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`
+            label: (ctx) => `${ctx.dataset.label}: R${(ctx.parsed.x ?? 0).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`
           }
         }
       },

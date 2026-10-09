@@ -453,10 +453,10 @@ function lineStatus(l: BatchLine): 'done' | 'partial' | 'extra' | 'pending' {
   return 'pending'
 }
 
-function statusVariant(s: string): 'success' | 'warning' | 'error' | 'neutral' {
+function statusVariant(s: string): 'success' | 'warning' | 'danger' | 'neutral' {
   if (s === 'done') return 'success'
   if (s === 'partial') return 'warning'
-  if (s === 'extra') return 'error'
+  if (s === 'extra') return 'danger'
   return 'neutral'
 }
 
@@ -466,8 +466,8 @@ function typeLabel(t: BatchType): string {
   return 'Owned stock in'
 }
 
-function typeVariant(t: BatchType): 'success' | 'warning' | 'error' | 'info' | 'neutral' {
-  if (t === 'Receive') return 'info'
+function typeVariant(t: BatchType): 'success' | 'warning' | 'accent' {
+  if (t === 'Receive') return 'accent'
   if (t === 'Return') return 'warning'
   return 'success'
 }

@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.app.json",
     "test:e2e": "playwright test",
     "test:upgrade": "node e2e/db-upgrade.mjs"
   },

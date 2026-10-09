@@ -336,7 +336,7 @@ function openAdd() {
   sellPriceManual.value = false
   form.value = {
     sku: '', barcode: '', name: '', category: '', manufacturer: '', itemType: '',
-    supplierId: '', cost: 0, sellPrice: 0, qtyOnHand: 0,
+    supplierId: '', cost: 0, supplierDiscountPercent: 0, sellPrice: 0, qtyOnHand: 0,
     pricingMethod: 'default', customMarkupPercent: null, fixedSellPrice: null,
     minSellPrice: null, priceLocked: false
   }
@@ -622,13 +622,13 @@ async function openHistory(p: Product) {
   }
 }
 
-function receiptTypeBadge(type: string): { label: string; variant: 'success' | 'neutral' | 'warning' | 'error' } {
+function receiptTypeBadge(type: string): { label: string; variant: 'success' | 'neutral' | 'warning' | 'danger' } {
   switch (type) {
     case 'OwnedIn': return { label: 'Received (owned)', variant: 'success' }
     case 'ConsignmentIn': return { label: 'Received (consignment)', variant: 'warning' }
     case 'ConsignmentToStock': return { label: 'Consign → Stock', variant: 'success' }
     case 'StockToConsignment': return { label: 'Stock → Consign', variant: 'warning' }
-    case 'ConsignmentReturn': return { label: 'Returned', variant: 'error' }
+    case 'ConsignmentReturn': return { label: 'Returned', variant: 'danger' }
     case 'Adjustment': return { label: 'Adjustment', variant: 'neutral' }
     default: return { label: type, variant: 'neutral' }
   }
