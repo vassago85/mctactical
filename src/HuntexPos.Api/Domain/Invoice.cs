@@ -87,5 +87,13 @@ public class Invoice
     /// </summary>
     public decimal AmountPaid { get; set; }
 
+    // --- Roll for It (in-store die) ---
+
+    /// <summary>Roll for It roll_id when this invoice applied a Roll for It winning. Null otherwise.</summary>
+    public long? RollForItRollId { get; set; }
+
+    /// <summary>Amount (ZAR) subtracted from the sale as a Roll for It win. Zero when no win applied.</summary>
+    public decimal RollForItPayout { get; set; }
+
     public ICollection<InvoiceLine> Lines { get; set; } = new List<InvoiceLine>();
 }

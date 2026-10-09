@@ -49,6 +49,7 @@ public static class DbSeeder
         await EnsureInvoiceLineReturnedQtyColumnAsync(db, ct);
         await EnsureSaleReturnsTablesAsync(db, ct);
         await EnsureSalespeopleAsync(db, ct);
+        await EnsureInvoiceRollForItColumnsAsync(db, ct);
         await MergeDuplicateSkusAsync(db, log, ct);
         await VenaticsGearSeeder.SeedAsync(db, log, ct);
 
@@ -794,6 +795,14 @@ public static class DbSeeder
             );
             """,
             ct);
+    }
+
+    /// <summary>Upgrades SQLite DBs created before Roll for It landed. Try-catch handles the "already exists" case.</summary>
+    private static async Task EnsureInvoiceRollForItColumnsAsync(HuntexDbContext db, CancellationToken ct)
+    {
+        if (!db.Database.IsSqlite()) return;
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "RollForItRollId" INTEGER NULL;""", ct); } catch { }
+        try { await db.Database.ExecuteSqlRawAsync("""ALTER TABLE "Invoices" ADD COLUMN "RollForItPayout" TEXT NOT NULL DEFAULT '0';""", ct); } catch { }
     }
 
     /// <summary>Upgrades SQLite DBs created before MailSettings existed (EnsureCreated does not alter schema).</summary>

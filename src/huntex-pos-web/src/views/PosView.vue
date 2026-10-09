@@ -7,6 +7,7 @@ import { useSalespeople } from '@/composables/useSalespeople'
 import { formatZAR } from '@/utils/format'
 import BarcodeScanner from '@/components/BarcodeScanner.vue'
 import PriceCheckPopover from '@/components/PriceCheckPopover.vue'
+import RollForItDialog from '@/components/RollForItDialog.vue'
 import McButton from '@/components/ui/McButton.vue'
 import McField from '@/components/ui/McField.vue'
 import McAlert from '@/components/ui/McAlert.vue'
@@ -196,7 +197,48 @@ onMounted(async () => {
   } catch { /* no active promotion */ }
   loadRecentInvoices()
   loadSalespeople()
+  void loadRollForItStatus()
 })
+
+async function loadRollForItStatus() {
+  try {
+    const { data } = await http.get('/api/rollforit/status')
+    if (!data?.enabled) {
+      rollForItEnabled.value = false
+      return
+    }
+    const s = data.status ?? data
+    rollForItEnabled.value = true
+    rollForItOpen.value = !!s.open
+    rollForItMinOrder.value = Number(s.minOrder ?? 0)
+  } catch {
+    rollForItEnabled.value = false
+  }
+}
+
+const cartSubtotalCents = computed(() => Math.round(subTotal.value * 100))
+const canOfferRollForIt = computed(() =>
+  rollForItEnabled.value &&
+  rollForItOpen.value &&
+  !rollForItRollId.value &&
+  cart.value.length > 0 &&
+  cartSubtotalCents.value >= rollForItMinOrder.value,
+)
+
+function onRollForItApplied(payload: { rollId: number; payout: number; payoutFormatted: string; displayedNumber: number }) {
+  rollForItRollId.value = payload.rollId
+  rollForItPayout.value = payload.payout
+  rollForItPayoutFormatted.value = payload.payoutFormatted
+  rollForItDisplayedNumber.value = payload.displayedNumber
+  toast.success('Roll for It win applied: ' + payload.payoutFormatted)
+}
+
+function clearRollForIt() {
+  rollForItRollId.value = null
+  rollForItPayout.value = 0
+  rollForItPayoutFormatted.value = ''
+  rollForItDisplayedNumber.value = null
+}
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 watch(q, () => {
@@ -519,7 +561,21 @@ const cartLineDiscounts = computed(() =>
 /** What the cart would come to at going prices, before any concession. */
 const cartGross = computed(() => Math.round((subTotal.value + cartLineDiscounts.value) * 100) / 100)
 
-const grandPreview = computed(() => Math.max(0, subTotal.value - discountTotal.value))
+/**
+ * Roll for It (optional in-store die promo). The till fetches the current status once per cart
+ * so the "Roll for It" button is only shown when the integration is enabled, the promotion is
+ * running, and the sale is above the shop's minimum. The applied win rides along with the invoice.
+ */
+const rollForItEnabled = ref(false)
+const rollForItOpen = ref(false)
+const rollForItMinOrder = ref<number>(0) // cents
+const rollForItRollId = ref<number | null>(null)
+const rollForItPayout = ref(0) // rand
+const rollForItPayoutFormatted = ref('')
+const rollForItDisplayedNumber = ref<number | null>(null)
+const rollForItDialogOpen = ref(false)
+
+const grandPreview = computed(() => Math.max(0, subTotal.value - discountTotal.value - rollForItPayout.value))
 const vatAmount = computed(() => {
   const total = grandPreview.value
   return Math.round((total - total / 1.15) * 100) / 100
@@ -591,6 +647,8 @@ async function doCheckout() {
       promotionName: activePromo.value?.promotionName || null,
       sendEmail: sendEmail.value && !!customerEmail.value.trim(),
       salespersonId: salespersonId.value,
+      rollForItRollId: rollForItRollId.value,
+      rollForItPayout: rollForItPayout.value,
       lines: cart.value.map((l) => ({
         productId: l.product.id,
         quantity: l.qty,
@@ -615,6 +673,7 @@ async function doCheckout() {
     }
     cart.value = []
     discountTotal.value = 0
+    clearRollForIt()
     customerName.value = ''
     customerEmail.value = ''
     customerType.value = ''
@@ -1093,6 +1152,13 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
                 <span>Order discount</span>
                 <strong>− {{ formatZAR(discountTotal) }}</strong>
               </div>
+              <div v-if="rollForItPayout > 0" class="pos-totals__row pos-totals__row--rfi">
+                <span>
+                  Roll for It <McBadge tone="success">won</McBadge>
+                  <button type="button" class="btn-link-toggle pos-rfi-remove" @click="clearRollForIt">remove</button>
+                </span>
+                <strong>− {{ rollForItPayoutFormatted }}</strong>
+              </div>
               <div v-if="grandPreview > 0" class="pos-totals__row pos-totals__row--muted">
                 <span>Incl. VAT (15%)</span>
                 <span>{{ formatZAR(vatAmount) }}</span>
@@ -1106,23 +1172,43 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
             <McAlert v-if="discountBlockWarning" variant="error" class="pos-checkout__warn">{{ discountBlockWarning }}</McAlert>
             <McAlert v-if="belowCostWarning" variant="warning" class="pos-checkout__warn">{{ belowCostWarning }}</McAlert>
 
-            <McButton
-              variant="primary"
-              type="button"
-              block
-              :disabled="busy || !cart.length || !!discountBlockWarning || salespersonMissing"
-              class="pos-checkout-btn"
-              @click="requestCheckout"
-            >
-              <McSpinner v-if="busy" />
-              <span v-else-if="salespersonMissing">Choose salesperson</span>
-              <span v-else-if="selectedSalesperson">Complete sale · {{ selectedSalesperson.name }}</span>
-              <span v-else>Complete sale</span>
-            </McButton>
+            <div class="pos-checkout-actions">
+              <McButton
+                v-if="canOfferRollForIt"
+                variant="secondary"
+                type="button"
+                class="pos-rfi-btn"
+                @click="rollForItDialogOpen = true"
+              >
+                🎲 Roll for It
+              </McButton>
+              <McButton
+                variant="primary"
+                type="button"
+                block
+                :disabled="busy || !cart.length || !!discountBlockWarning || salespersonMissing"
+                class="pos-checkout-btn"
+                @click="requestCheckout"
+              >
+                <McSpinner v-if="busy" />
+                <span v-else-if="salespersonMissing">Choose salesperson</span>
+                <span v-else-if="selectedSalesperson">Complete sale · {{ selectedSalesperson.name }}</span>
+                <span v-else>Complete sale</span>
+              </McButton>
+            </div>
           </div>
         </div>
       </aside>
     </div>
+
+    <RollForItDialog
+      v-if="rollForItEnabled"
+      v-model="rollForItDialogOpen"
+      :cart-subtotal-cents="cartSubtotalCents"
+      :customer-email="customerEmail"
+      :customer-phone="''"
+      @applied="onRollForItApplied"
+    />
 
     <!--
       Below 1100px the checkout column sits under the cart, so the tender action would
@@ -1133,6 +1219,15 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
         <span>Total due</span>
         <strong>{{ formatZAR(grandPreview) }}</strong>
       </div>
+      <McButton
+        v-if="canOfferRollForIt"
+        variant="secondary"
+        type="button"
+        class="pos-tender-bar__btn pos-tender-bar__btn--rfi"
+        @click="rollForItDialogOpen = true"
+      >
+        🎲 Roll
+      </McButton>
       <McButton
         variant="primary"
         type="button"
@@ -1275,6 +1370,35 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
 .pos-tender-bar__btn {
   flex: 1;
   min-height: var(--mc-touch-min, 44px);
+}
+.pos-tender-bar__btn--rfi {
+  flex: 0 0 auto;
+  min-width: 110px;
+}
+
+.pos-checkout-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+.pos-checkout-actions .pos-rfi-btn {
+  flex: 0 0 auto;
+  min-width: 140px;
+}
+.pos-checkout-actions .pos-checkout-btn {
+  flex: 1;
+}
+
+.pos-totals__row--rfi {
+  color: #047857;
+}
+.pos-totals__row--rfi .pos-rfi-remove {
+  margin-left: 0.5rem;
+  font-size: 0.75em;
+}
+
+@media (max-width: 1099px) {
+  /* On mobile the tender bar is the primary CTA; hide the inline Roll button so it isn't duplicated. */
+  .pos-checkout-actions .pos-rfi-btn { display: none; }
 }
 /* Reserve room so the bar never covers the last cart line or the checkout panel. */
 .pos-shell {

@@ -30,6 +30,16 @@ public class CreateInvoiceRequest
     public Guid? SalespersonId { get; set; }
     [Required, MinLength(1)]
     public List<CreateInvoiceLineRequest> Lines { get; set; } = new();
+
+    /// <summary>
+    /// Roll for It <c>roll_id</c> returned by <c>POST /api/pos/roll</c>. When set the API will
+    /// consume the server-side held win and subtract <see cref="RollForItPayout"/> from the sale,
+    /// bypassing the usual cart-discount cap. Omit when there was no Roll for It win.
+    /// </summary>
+    public long? RollForItRollId { get; set; }
+
+    /// <summary>Amount (ZAR) to subtract as a Roll for It win. Must match what Roll for It returned.</summary>
+    public decimal RollForItPayout { get; set; }
 }
 
 /// <summary>Shop contact block for customer-facing receipts (e.g. public invoice view).</summary>
@@ -67,6 +77,10 @@ public class InvoiceDto
     public decimal DiscountTotal { get; set; }
     public decimal GrandTotal { get; set; }
     public string? PromotionName { get; set; }
+    /// <summary>Roll for It roll_id when a win was applied; null otherwise.</summary>
+    public long? RollForItRollId { get; set; }
+    /// <summary>Discount applied via Roll for It (ZAR). Zero when no win.</summary>
+    public decimal RollForItPayout { get; set; }
     public Guid PublicToken { get; set; }
     public string? PdfUrl { get; set; }
     public DateTimeOffset CreatedAt { get; set; }

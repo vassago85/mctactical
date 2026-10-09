@@ -288,18 +288,26 @@ public class InvoicePdfService
                     {
                         totals.Spacing(3);
 
-                        var afterDiscount = invoice.SubTotal - invoice.DiscountTotal;
+                        var afterDiscount = invoice.SubTotal - invoice.DiscountTotal - invoice.RollForItPayout;
                         if (afterDiscount < 0) afterDiscount = 0;
                         var exclVat = afterDiscount - invoice.TaxAmount;
 
-                        if (invoice.DiscountTotal > 0)
+                        if (invoice.DiscountTotal > 0 || invoice.RollForItPayout > 0)
                         {
                             totals.Item().Text($"Subtotal (incl. VAT):  R{invoice.SubTotal:N2}")
                                 .FontSize(10).FontColor(TextMuted);
-                            var discLabel = !string.IsNullOrWhiteSpace(invoice.PromotionName)
-                                ? $"{invoice.PromotionName} discount" : "Discount";
-                            totals.Item().Text($"{discLabel}:  -R{invoice.DiscountTotal:N2}")
-                                .FontSize(10).FontColor("#CC0000");
+                            if (invoice.DiscountTotal > 0)
+                            {
+                                var discLabel = !string.IsNullOrWhiteSpace(invoice.PromotionName)
+                                    ? $"{invoice.PromotionName} discount" : "Discount";
+                                totals.Item().Text($"{discLabel}:  -R{invoice.DiscountTotal:N2}")
+                                    .FontSize(10).FontColor("#CC0000");
+                            }
+                            if (invoice.RollForItPayout > 0)
+                            {
+                                totals.Item().Text($"Roll for It — won (ROLL-{invoice.RollForItRollId}):  -R{invoice.RollForItPayout:N2}")
+                                    .FontSize(10).FontColor("#CC0000");
+                            }
                         }
 
                         totals.Item().Text($"Total excl. VAT:  R{exclVat:N2}")

@@ -16,6 +16,7 @@ public class InvoiceService
     private readonly IEffectiveMailgunProvider _mailgun;
     private readonly IEffectiveBusinessSettings _business;
     private readonly PosRulesOptions _posRules;
+    private readonly RollForItClient _rollForIt;
 
     public InvoiceService(
         HuntexDbContext db,
@@ -24,7 +25,8 @@ public class InvoiceService
         IOptions<AppOptions> app,
         IEffectiveMailgunProvider mailgun,
         IEffectiveBusinessSettings business,
-        IOptions<PosRulesOptions> posRules)
+        IOptions<PosRulesOptions> posRules,
+        RollForItClient rollForIt)
     {
         _db = db;
         _pdf = pdf;
@@ -33,6 +35,7 @@ public class InvoiceService
         _mailgun = mailgun;
         _business = business;
         _posRules = posRules.Value;
+        _rollForIt = rollForIt;
     }
 
     public Task<InvoiceDto> CreateAsync(CreateInvoiceRequest req, string userId, bool managerBypassPosRules, CancellationToken ct)
@@ -203,7 +206,30 @@ public class InvoiceService
                     $"Cart discount exceeds allowed {_posRules.MaxCartDiscountPercent}% of the sale subtotal for sales staff.");
         }
 
-        var afterDiscount = Math.Max(0, subTotal - req.DiscountTotal);
+        // Roll for It wins are server-decided; the till just carries the rollId back here.
+        // We consume the held win from the client's in-memory cache (which only exists if
+        // Roll for It actually said "won"), then stack the payout on top of the operator discount.
+        // The cart-discount cap above does not apply to this amount — the whole point of the
+        // integration is to let Sales staff apply a win they couldn't otherwise authorise.
+        var rollForItPayout = 0m;
+        if (req.RollForItRollId.HasValue)
+        {
+            if (req.RollForItPayout <= 0)
+                throw new InvalidOperationException("Roll for It payout must be positive when a roll id is supplied.");
+
+            var claimedCents = (long) Math.Round(req.RollForItPayout * 100m, 0, MidpointRounding.AwayFromZero);
+            var cents = _rollForIt.ConsumeHeldWin(req.RollForItRollId.Value, claimedCents);
+            rollForItPayout = PricingCalculator.Round2(cents / 100m);
+
+            // The win can never take the sale below zero. If the cart shrinks before Pay, cap it.
+            var maxWinnable = Math.Max(0, subTotal - req.DiscountTotal);
+            if (rollForItPayout > maxWinnable)
+            {
+                rollForItPayout = PricingCalculator.Round2(maxWinnable);
+            }
+        }
+
+        var afterDiscount = Math.Max(0, subTotal - req.DiscountTotal - rollForItPayout);
         // Prices are VAT-inclusive; extract the VAT portion
         var taxAmount = PricingCalculator.Round2(afterDiscount - afterDiscount / (1 + taxRate / 100m));
         var grandTotal = afterDiscount;
@@ -238,6 +264,8 @@ public class InvoiceService
             DiscountTotal = req.DiscountTotal,
             GrandTotal = grandTotal,
             PromotionName = req.PromotionName,
+            RollForItRollId = req.RollForItRollId,
+            RollForItPayout = rollForItPayout,
             CreatedByUserId = userId,
             SalespersonId = salesperson?.Id,
             SalespersonName = salesperson?.Name,
@@ -361,6 +389,8 @@ public class InvoiceService
             DiscountTotal = inv.DiscountTotal,
             GrandTotal = inv.GrandTotal,
             PromotionName = inv.PromotionName,
+            RollForItRollId = inv.RollForItRollId,
+            RollForItPayout = inv.RollForItPayout,
             PublicToken = inv.PublicToken,
             PdfUrl = pdfUrl,
             CreatedAt = inv.CreatedAt,
