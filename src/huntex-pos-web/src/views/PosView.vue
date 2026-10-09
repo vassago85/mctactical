@@ -230,7 +230,7 @@ function onRollForItApplied(payload: { rollId: number; payout: number; payoutFor
   rollForItPayout.value = payload.payout
   rollForItPayoutFormatted.value = payload.payoutFormatted
   rollForItDisplayedNumber.value = payload.displayedNumber
-  toast.success('Roll for It win applied: ' + payload.payoutFormatted)
+  toast.success('Roll4It win applied: ' + payload.payoutFormatted)
 }
 
 function clearRollForIt() {
@@ -1154,7 +1154,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
               </div>
               <div v-if="rollForItPayout > 0" class="pos-totals__row pos-totals__row--rfi">
                 <span>
-                  Roll for It <McBadge tone="success">won</McBadge>
+                  Roll4It <McBadge tone="success">won</McBadge>
                   <button type="button" class="btn-link-toggle pos-rfi-remove" @click="clearRollForIt">remove</button>
                 </span>
                 <strong>− {{ rollForItPayoutFormatted }}</strong>
@@ -1180,7 +1180,7 @@ const searchNoHits = computed(() => !searchLoading.value && q.value.trim() && !r
                 class="pos-rfi-btn"
                 @click="rollForItDialogOpen = true"
               >
-                🎲 Roll for It
+                🎲 Roll4It
               </McButton>
               <McButton
                 variant="primary"

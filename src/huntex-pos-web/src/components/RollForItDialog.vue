@@ -91,7 +91,7 @@ async function fetchStatus() {
   try {
     const { data } = await http.get('/api/rollforit/status')
     if (!data.enabled) {
-      statusError.value = 'Roll for It is not configured on this till. Ask a manager to set it up.'
+      statusError.value = 'Roll4It is not configured on this till. Ask a manager to set it up.'
       return
     }
     // Server wraps the real status under `.status` when enabled is true.
@@ -99,7 +99,7 @@ async function fetchStatus() {
     status.value = { enabled: true, ...s }
   } catch (e) {
     const err = e as { response?: { data?: { message?: string } } }
-    statusError.value = err.response?.data?.message ?? 'Could not reach Roll for It right now.'
+    statusError.value = err.response?.data?.message ?? 'Could not reach Roll4It right now.'
   }
 }
 
@@ -191,7 +191,7 @@ function close() {
 </script>
 
 <template>
-  <McModal :model-value="modelValue" title="Roll for It" @update:model-value="close">
+  <McModal :model-value="modelValue" title="Roll4It" @update:model-value="close">
     <div class="rfi-pos">
       <div v-if="statusError" class="rfi-pos__banner rfi-pos__banner--error">{{ statusError }}</div>
 

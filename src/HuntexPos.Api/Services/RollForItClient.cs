@@ -78,13 +78,13 @@ public class RollForItClient
     {
         if (!_cache.TryGetValue(CacheKey(rollId), out HeldWin? win) || win is null)
         {
-            throw new InvalidOperationException("Roll for It win has expired or is unknown. Roll again.");
+            throw new InvalidOperationException("Roll4It win has expired or is unknown. Roll again.");
         }
         if (win.Payout != claimedPayout)
         {
             _logger.LogWarning("Roll for It payout mismatch for roll {RollId}: cached {Cached}, claimed {Claimed}",
                 rollId, win.Payout, claimedPayout);
-            throw new InvalidOperationException("Roll for It payout does not match the recorded win.");
+            throw new InvalidOperationException("Roll4It payout does not match the recorded win.");
         }
 
         _cache.Remove(CacheKey(rollId));
@@ -97,7 +97,7 @@ public class RollForItClient
     {
         if (!IsConfigured)
         {
-            throw new InvalidOperationException("Roll for It is not configured on this till.");
+            throw new InvalidOperationException("Roll4It is not configured on this till.");
         }
 
         var body = JsonSerializer.Serialize(payload, JsonOptions);

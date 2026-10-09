@@ -52,7 +52,7 @@ public class RollForItController : ControllerBase
     {
         if (!_rfi.IsConfigured)
         {
-            return StatusCode(503, new { message = "Roll for It is not configured on this till." });
+            return StatusCode(503, new { message = "Roll4It is not configured on this till." });
         }
         if (string.IsNullOrWhiteSpace(body.Email) && string.IsNullOrWhiteSpace(body.Phone))
         {
@@ -87,12 +87,12 @@ public class RollForItController : ControllerBase
         catch (RollForItRemoteException ex)
         {
             // Pass the structured Roll for It error through to the UI.
-            return StatusCode(ex.Status, new { message = "Roll for It refused this roll.", detail = ex.Body });
+            return StatusCode(ex.Status, new { message = "Roll4It refused this roll.", detail = ex.Body });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Roll for It roll failed");
-            return StatusCode(503, new { message = "Roll for It is unreachable right now. Please try again." });
+            return StatusCode(503, new { message = "Roll4It is unreachable right now. Please try again." });
         }
     }
 }

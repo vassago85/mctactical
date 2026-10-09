@@ -305,7 +305,7 @@ public class InvoicePdfService
                             }
                             if (invoice.RollForItPayout > 0)
                             {
-                                totals.Item().Text($"Roll for It — won (ROLL-{invoice.RollForItRollId}):  -R{invoice.RollForItPayout:N2}")
+                                totals.Item().Text($"Roll4It — won (ROLL-{invoice.RollForItRollId}):  -R{invoice.RollForItPayout:N2}")
                                     .FontSize(10).FontColor("#CC0000");
                             }
                         }
