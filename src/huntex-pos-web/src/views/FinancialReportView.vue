@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { http } from '@/api/http'
 import { useBranding } from '@/composables/useBranding'
 import { formatZAR, formatNumber } from '@/utils/format'
@@ -392,7 +392,7 @@ function renderTopProductsChart() {
         sold in this period {{ missingCosts.count === 1 ? 'has' : 'have' }} no cost, so
         <span class="sensitive-value">{{ formatZAR(missingCosts.revenue) }}</span> is counted as 100% profit.
       </span>
-      <RouterLink class="fr-missing-costs__link" to="/reports/missing-costs">Fix costs</RouterLink>
+      <RouterLink class="fr-missing-costs__link" to="/reports/costs">Fix costs</RouterLink>
     </div>
 
     <div v-if="busy" class="fr-loading"><McSpinner /> Loading report…</div>

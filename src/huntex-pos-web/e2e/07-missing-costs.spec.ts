@@ -82,7 +82,7 @@ test.describe('missing costs — list', () => {
 test.describe('missing costs — fixing them', () => {
   test('UI: enter costs for a POS product and an online item; past sales are back-filled', async ({ page }) => {
     await signIn(page, api.token)
-    await page.goto('/#/reports/missing-costs')
+    await page.goto('/#/reports/costs')
     await expect(page.locator('.rep-tab--active')).toHaveText('Missing costs')
 
     const torchRow = page.locator('.mcost-row', { hasText: 'Online torch' })
@@ -172,13 +172,13 @@ test.describe('missing costs — fixing them', () => {
 test.describe('missing costs — elsewhere in reports', () => {
   test('Financial Report warns and links to the fixer', async ({ page }) => {
     await signIn(page, api.token)
-    await page.goto('/#/reports/financial')
+    await page.goto('/#/reports')
     const banner = page.locator('.fr-missing-costs')
     await expect(banner).toBeVisible()
     await expect(banner).toContainText('sold in this period')
     await expect(banner).toContainText('counted as 100% profit')
     await banner.getByRole('link', { name: 'Fix costs' }).click()
-    await expect(page).toHaveURL(/#\/reports\/missing-costs$/)
+    await expect(page).toHaveURL(/#\/reports\/costs$/)
     await expect(page.locator('.rep-tab--active')).toHaveText('Missing costs')
     await expect(page.locator('.mcost-row', { hasText: 'Online knife' })).toBeVisible()
   })

@@ -59,12 +59,6 @@ public class UpdateQuoteStatusRequest
     public string Status { get; set; } = string.Empty;
 }
 
-public class SendQuoteEmailRequest
-{
-    public string? Email { get; set; }
-    public string? Message { get; set; }
-}
-
 public class QuoteLineDto
 {
     public Guid Id { get; set; }

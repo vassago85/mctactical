@@ -795,7 +795,7 @@ onUnmounted(() => {
     <McPageHeader title="Products" description="Full inventory. Use Receiving → Import to load items from your Huntex workbook or CSV. Tick products to print labels in bulk.">
       <template v-if="canManage" #actions>
         <McButton variant="primary" type="button" @click="openAdd">Add product</McButton>
-        <RouterLink :to="{ path: '/receiving/batches', query: { type: 'OwnedReceive' } }" custom v-slot="{ navigate }">
+        <RouterLink :to="{ path: '/receiving', query: { type: 'OwnedReceive' } }" custom v-slot="{ navigate }">
           <McButton variant="secondary" type="button" @click="navigate">Receive stock</McButton>
         </RouterLink>
         <McButton v-if="canExport" variant="secondary" type="button" @click="exportCsv">Export CSV</McButton>

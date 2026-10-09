@@ -78,26 +78,26 @@ function logout() {
         <div class="mc-nav-group">
           <p class="mc-nav-group__label">Sell</p>
           <RouterLink class="mc-nav-link" to="/pos" @click="sidebarOpen = false"><ShoppingCart :size="16" />POS</RouterLink>
-          <RouterLink class="mc-nav-link" :class="{ 'router-link-active': isUnder('/sales') }" to="/sales/invoices" @click="sidebarOpen = false"><Receipt :size="16" />Sales</RouterLink>
+          <RouterLink class="mc-nav-link" :class="{ 'router-link-active': isUnder('/sales') }" to="/sales" @click="sidebarOpen = false"><Receipt :size="16" />Sales</RouterLink>
         </div>
         <div class="mc-nav-group">
           <p class="mc-nav-group__label">Stock</p>
           <RouterLink class="mc-nav-link" to="/stock" @click="sidebarOpen = false"><Package :size="16" />Products</RouterLink>
-          <RouterLink v-if="isManager" class="mc-nav-link" :class="{ 'router-link-active': isUnder('/receiving') }" to="/receiving/batches" @click="sidebarOpen = false"><Truck :size="16" />Receiving</RouterLink>
+          <RouterLink v-if="isManager" class="mc-nav-link" :class="{ 'router-link-active': isUnder('/receiving') }" to="/receiving" @click="sidebarOpen = false"><Truck :size="16" />Receiving</RouterLink>
           <RouterLink class="mc-nav-link" to="/stocktake" @click="sidebarOpen = false"><ClipboardList :size="16" />Stocktake</RouterLink>
         </div>
         <div v-if="auth.hasVendorScope" class="mc-nav-group">
           <p class="mc-nav-group__label">Vendor</p>
-          <RouterLink class="mc-nav-link" to="/vendor-report" @click="sidebarOpen = false"><Store :size="16" />My vendor report</RouterLink>
+          <RouterLink class="mc-nav-link" to="/vendor" @click="sidebarOpen = false"><Store :size="16" />My vendor report</RouterLink>
         </div>
         <div v-if="isManager" class="mc-nav-group">
           <p class="mc-nav-group__label">Manage</p>
           <RouterLink class="mc-nav-link" to="/suppliers" @click="sidebarOpen = false"><Building2 :size="16" />Suppliers</RouterLink>
-          <RouterLink class="mc-nav-link" :class="{ 'router-link-active': isUnder('/reports') }" to="/reports/financial" @click="sidebarOpen = false"><BarChart3 :size="16" />Reports</RouterLink>
+          <RouterLink class="mc-nav-link" :class="{ 'router-link-active': isUnder('/reports') }" to="/reports" @click="sidebarOpen = false"><BarChart3 :size="16" />Reports</RouterLink>
         </div>
         <div v-if="isManager" class="mc-nav-group">
           <p class="mc-nav-group__label">Settings</p>
-          <RouterLink class="mc-nav-link" :class="{ 'router-link-active': isUnder('/settings') }" to="/settings/business" @click="sidebarOpen = false"><SettingsIcon :size="16" />Settings</RouterLink>
+          <RouterLink class="mc-nav-link" :class="{ 'router-link-active': isUnder('/settings') }" to="/settings" @click="sidebarOpen = false"><SettingsIcon :size="16" />Settings</RouterLink>
         </div>
       </nav>
       <div class="mc-sidebar__foot">

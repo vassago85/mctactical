@@ -33,7 +33,4 @@ public static class PricingCalculator
     /// <summary>True if sell price is below the distributor cost (cost + 15% VAT).</summary>
     public static bool IsBelowDistributorCost(decimal sellPrice, decimal cost) =>
         sellPrice > 0 && cost > 0 && sellPrice < DistributorFloor(cost);
-
-    public static bool IsHuntex(PricingSettings settings) =>
-        string.Equals(settings.PricingMode, "huntex", StringComparison.OrdinalIgnoreCase);
 }

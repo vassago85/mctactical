@@ -26,7 +26,7 @@ const activeTab = computed<SettingsTab>(() => {
 const canSeeShopify = computed(() => auth.hasRole('Owner', 'Dev'))
 
 const tabs: McTab[] = [
-  { to: '/settings/business', label: 'Business' },
+  { to: '/settings', label: 'Business' },
   { to: '/settings/pricing', label: 'Pricing' },
   { to: '/settings/team', label: 'Team & salespeople' },
   { to: '/settings/integrations', label: 'Integrations' }

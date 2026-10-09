@@ -145,8 +145,8 @@ async function confirmReverse() {
 const stockReport = ref<StockReport | null>(null)
 const stockErr = ref<string | null>(null)
 const stockBusy = ref(false)
-type ReportTab = 'financial' | 'stock' | 'consignment' | 'sales' | 'salespeople' | 'shopify' | 'missing-costs'
-const REPORT_TABS: readonly ReportTab[] = ['financial', 'stock', 'consignment', 'sales', 'salespeople', 'shopify', 'missing-costs']
+type ReportTab = 'financial' | 'stock' | 'consignment' | 'sales' | 'salespeople' | 'shopify' | 'costs'
+const REPORT_TABS: readonly ReportTab[] = ['financial', 'stock', 'consignment', 'sales', 'salespeople', 'shopify', 'costs']
 const route = useRoute()
 const activeTab = computed<ReportTab>(() => {
   const segment = route.path.split('/')[2]
@@ -155,14 +155,14 @@ const activeTab = computed<ReportTab>(() => {
 const canSeeShopify = computed(() => auth.hasRole('Owner', 'Dev'))
 const tabs = computed<McTab[]>(() => {
   const list: McTab[] = [
-    { to: '/reports/financial', label: 'Financial overview' },
+    { to: '/reports', label: 'Financial overview' },
     { to: '/reports/stock', label: 'Stock' },
     { to: '/reports/consignment', label: 'Consignment' },
     { to: '/reports/sales', label: 'Sales' },
     { to: '/reports/salespeople', label: 'Salespeople' }
   ]
   if (canSeeShopify.value) list.push({ to: '/reports/shopify', label: 'Shopify sales' })
-  list.push({ to: '/reports/missing-costs', label: 'Missing costs' })
+  list.push({ to: '/reports/costs', label: 'Missing costs' })
   return list
 })
 const hasOwnToolbar = computed(() => activeTab.value === 'stock' || activeTab.value === 'consignment' || activeTab.value === 'sales')
@@ -175,7 +175,7 @@ function refreshActive() {
     case 'financial':
     case 'salespeople':
     case 'shopify':
-    case 'missing-costs':
+    case 'costs':
       return
     default: {
       const exhaustive: never = activeTab.value
@@ -553,7 +553,7 @@ function exportConsignmentCsv() {
     </McTabPanel>
     <SalespersonReportPanel v-if="activeTab === 'salespeople'" />
     <ShopifySalesPanel v-if="activeTab === 'shopify'" />
-    <MissingCostsPanel v-if="activeTab === 'missing-costs'" />
+    <MissingCostsPanel v-if="activeTab === 'costs'" />
 
     <!-- ── STOCK REPORT TAB ── -->
     <template v-if="activeTab === 'stock'">

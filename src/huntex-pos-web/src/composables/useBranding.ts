@@ -167,7 +167,7 @@ export async function initBranding(): Promise<void> {
   }
 }
 
-export async function refreshBranding(): Promise<void> {
+async function refreshBranding(): Promise<void> {
   try {
     const b = await fetchRemote()
     state.value = b

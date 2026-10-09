@@ -15,7 +15,7 @@ const auth = useAuthStore()
 const { features, terminology } = useBranding()
 
 const tabs = computed<McTab[]>(() => {
-  const list: McTab[] = [{ to: '/sales/invoices', label: 'Invoices' }]
+  const list: McTab[] = [{ to: '/sales', label: 'Invoices' }]
   if (features.value.quotes) list.push({ to: '/sales/quotes', label: `${terminology.value.quote}s` })
   if (auth.hasRole('Admin', 'Owner', 'Dev')) list.push({ to: '/sales/deliveries', label: 'Deliveries' })
   return list

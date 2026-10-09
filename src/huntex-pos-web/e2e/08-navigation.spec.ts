@@ -69,14 +69,14 @@ test.describe('Owner click-through', () => {
     await page.goto('/#/pos')
 
     await navLinks(page).filter({ hasText: 'Sales' }).click()
-    await expect(page).toHaveURL(/#\/sales\/invoices$/)
+    await expect(page).toHaveURL(/#\/sales$/)
     await clickThroughTabs(page, ['Invoices', 'Quotes', 'Deliveries'])
 
     await navLinks(page).filter({ hasText: 'Products' }).click()
     await expect(page.getByRole('heading', { name: 'Products', level: 1 })).toBeVisible()
 
     await navLinks(page).filter({ hasText: 'Receiving' }).click()
-    await expect(page).toHaveURL(/#\/receiving\/batches$/)
+    await expect(page).toHaveURL(/#\/receiving$/)
     await clickThroughTabs(page, ['Batches', 'Import'])
     await expect(page.getByText('Huntex workbook or CSV', { exact: true })).toBeVisible()
 
@@ -88,14 +88,14 @@ test.describe('Owner click-through', () => {
     await expect(page.getByRole('heading', { name: 'Suppliers', level: 1 })).toBeVisible()
 
     await navLinks(page).filter({ hasText: 'Reports' }).click()
-    await expect(page).toHaveURL(/#\/reports\/financial$/)
+    await expect(page).toHaveURL(/#\/reports$/)
     await expect(page.getByText('Financial Overview', { exact: true })).toBeVisible()
     await clickThroughTabs(page, ['Financial overview', 'Stock', 'Consignment', 'Sales', 'Salespeople', 'Shopify sales', 'Missing costs'])
     await page.locator('.rep-tab', { hasText: /^Shopify sales$/ }).click()
     await expect(page.getByText('Shopify revenue (incl VAT)')).toBeVisible()
 
     await navLinks(page).filter({ hasText: 'Settings' }).click()
-    await expect(page).toHaveURL(/#\/settings\/business$/)
+    await expect(page).toHaveURL(/#\/settings$/)
     await clickThroughTabs(page, ['Business', 'Pricing', 'Team & salespeople', 'Integrations'])
     await expect(page.getByRole('heading', { name: 'Shopify', level: 2, exact: true })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Email (Mailgun)', level: 2, exact: true })).toBeVisible()
@@ -109,7 +109,7 @@ test.describe('Owner click-through', () => {
   test('Find sale lists recent invoices and no longer has its own Shopify sync button', async ({ page }) => {
     const sale = await owner.sale(product, 1, seller.id)
     await signIn(page, owner.token)
-    await page.goto('/#/sales/invoices')
+    await page.goto('/#/sales')
     await expect(page.locator('.hist-recent__row', { hasText: sale.invoiceNumber })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Sync Shopify sales' })).toHaveCount(0)
   })
@@ -118,7 +118,7 @@ test.describe('Owner click-through', () => {
 test.describe('Admin', () => {
   test('sees every page but not the Owner-only Shopify parts', async ({ page }) => {
     await signIn(page, admin.token)
-    await page.goto('/#/reports/financial')
+    await page.goto('/#/reports')
     await expect(page.locator('.rep-tab')).toHaveText(['Financial overview', 'Stock', 'Consignment', 'Sales', 'Salespeople', 'Missing costs'])
     await page.goto('/#/settings/integrations')
     await expect(page.getByRole('heading', { name: 'Email (Mailgun)', level: 2, exact: true })).toBeVisible()
@@ -132,7 +132,7 @@ test.describe('Sales role', () => {
   test('pages and tabs match what Sales could reach before', async ({ page }) => {
     const errors = trackPageErrors(page)
     await signIn(page, till.token)
-    await page.goto('/#/sales/invoices')
+    await page.goto('/#/sales')
     await clickThroughTabs(page, ['Invoices', 'Quotes'])
 
     await page.goto('/#/stock')
@@ -151,8 +151,9 @@ test.describe('Sales role', () => {
   })
 
   for (const path of [
-    '/sales/deliveries', '/receiving/batches', '/receiving/import', '/suppliers',
-    '/reports/financial', '/reports/salespeople', '/settings/business', '/settings/team', '/settings/integrations',
+    '/sales/deliveries', '/receiving', '/receiving/import', '/suppliers',
+    '/reports', '/reports/salespeople', '/reports/costs', '/settings', '/settings/team', '/settings/integrations',
+    '/receiving/batches', '/reports/financial', '/settings/business',
     '/consignment', '/import', '/wholesalers', '/admin/team', '/setup', '/financial-report'
   ]) {
     test(`cannot open ${path}`, async ({ page }) => {
@@ -166,23 +167,28 @@ test.describe('Sales role', () => {
 test.describe('old routes redirect', () => {
   const redirects: [string, RegExp][] = [
     ['/price-lookup', /#\/pos\?check=1$/],
-    ['/find-sale', /#\/sales\/invoices$/],
-    ['/find-sale?q=ABC', /#\/sales\/invoices\?q=ABC$/],
-    ['/sales-history', /#\/sales\/invoices$/],
-    ['/sales', /#\/sales\/invoices$/],
+    ['/find-sale', /#\/sales$/],
+    ['/find-sale?q=ABC', /#\/sales\?q=ABC$/],
+    ['/sales-history', /#\/sales$/],
+    ['/sales/invoices', /#\/sales$/],
+    ['/sales/invoices?q=ABC', /#\/sales\?q=ABC$/],
     ['/quotes', /#\/sales\/quotes$/],
     ['/deliveries', /#\/sales\/deliveries$/],
     ['/stock/labels', /#\/stock$/],
-    ['/consignment', /#\/receiving\/batches$/],
-    ['/receiving', /#\/receiving\/batches$/],
+    ['/consignment', /#\/receiving$/],
+    ['/receiving/batches', /#\/receiving$/],
     ['/import', /#\/receiving\/import$/],
     ['/wholesalers', /#\/suppliers$/],
     ['/salespeople', /#\/settings\/team$/],
-    ['/financial-report', /#\/reports\/financial$/],
-    ['/reports', /#\/reports\/financial$/],
-    ['/reports?tab=missing-costs', /#\/reports\/missing-costs$/],
-    ['/settings', /#\/settings\/business$/],
-    ['/settings/business', /#\/settings\/business$/],
+    ['/financial-report', /#\/reports$/],
+    ['/reports/financial', /#\/reports$/],
+    ['/reports?tab=financial', /#\/reports$/],
+    ['/reports?tab=stock', /#\/reports\/stock$/],
+    ['/reports?tab=missing-costs', /#\/reports\/costs$/],
+    ['/reports/missing-costs', /#\/reports\/costs$/],
+    // Owner has no vendor scope, so /vendor itself bounces on to /pos.
+    ['/vendor-report', /#\/pos$/],
+    ['/settings/business', /#\/settings$/],
     ['/settings/shopify', /#\/settings\/integrations$/],
     ['/settings/email', /#\/settings\/integrations$/],
     ['/settings/pricing-rules', /#\/settings\/pricing$/],
@@ -196,6 +202,13 @@ test.describe('old routes redirect', () => {
       await expect(page).toHaveURL(to)
     })
   }
+
+  test('/receiving/batches?type=OwnedReceive still opens the new-batch dialog', async ({ page }) => {
+    await signIn(page, owner.token)
+    await page.goto('/#/receiving/batches?type=OwnedReceive')
+    await expect(page.getByRole('dialog', { name: 'New stock batch' }).locator('#cb-type')).toHaveValue('OwnedReceive')
+    await expect(page).toHaveURL(/#\/receiving$/)
+  })
 })
 
 test.describe('POS price check', () => {

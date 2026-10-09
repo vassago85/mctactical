@@ -6,12 +6,11 @@ namespace HuntexPos.Api.Services;
 public interface IBrandingAssetProvider
 {
     byte[]? GetLogoBytes();
-    byte[]? GetFaviconBytes();
 }
 
 /// <summary>
-/// Serves the current branded logo/favicon from the branding storage directory.
-/// Falls back to null when no asset has been uploaded, so PDF services can use
+/// Serves the current branded logo from the branding storage directory.
+/// Falls back to null when no logo has been uploaded, so PDF services can use
 /// their embedded defaults.
 /// </summary>
 public sealed class BrandingAssetProvider : IBrandingAssetProvider
@@ -25,13 +24,10 @@ public sealed class BrandingAssetProvider : IBrandingAssetProvider
         _app = app.Value;
     }
 
-    public byte[]? GetLogoBytes() => ReadAsset(isLogo: true);
-    public byte[]? GetFaviconBytes() => ReadAsset(isLogo: false);
-
-    private byte[]? ReadAsset(bool isLogo)
+    public byte[]? GetLogoBytes()
     {
         var eff = _business.GetAsync().GetAwaiter().GetResult();
-        var key = isLogo ? eff.LogoStorageKey : eff.FaviconStorageKey;
+        var key = eff.LogoStorageKey;
         if (string.IsNullOrWhiteSpace(key)) return null;
 
         var root = _app.BrandingStoragePath;

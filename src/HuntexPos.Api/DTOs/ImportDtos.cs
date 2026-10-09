@@ -31,24 +31,6 @@ public class ImportPreviewRowDto
     public string? Warning { get; set; }
 }
 
-public class HuntexSheetImportRequest
-{
-    [Required]
-    public IFormFile File { get; set; } = null!;
-    public string SheetName { get; set; } = "huntex 2026";
-    public Guid? SupplierId { get; set; }
-    public bool Commit { get; set; }
-}
-
-public class WholesalerImportRequest
-{
-    [Required]
-    public IFormFile File { get; set; } = null!;
-    public Guid? SupplierId { get; set; }
-    public ColumnMappingDto Mapping { get; set; } = new();
-    public bool Commit { get; set; }
-}
-
 public class SaveImportPresetRequest
 {
     public Guid? SupplierId { get; set; }

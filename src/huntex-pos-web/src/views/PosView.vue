@@ -329,8 +329,8 @@ const scanToFindSale = ref(false)
 const findSaleRoute = computed(() => {
   const term = q.value.trim()
   return term.length >= 2
-    ? { path: '/sales/invoices', query: { q: term } }
-    : { path: '/sales/invoices' }
+    ? { path: '/sales', query: { q: term } }
+    : { path: '/sales' }
 })
 
 function goFindSale(code?: string) {
@@ -338,9 +338,9 @@ function goFindSale(code?: string) {
   scanToFindSale.value = false
   scanOpen.value = false
   if (term.length >= 2) {
-    void router.push({ path: '/sales/invoices', query: { q: term } })
+    void router.push({ path: '/sales', query: { q: term } })
   } else {
-    void router.push('/sales/invoices')
+    void router.push('/sales')
   }
 }
 

@@ -1,4 +1,4 @@
-import { createRouter, createWebHashHistory } from 'vue-router'
+import { createRouter, createWebHashHistory, type RouteLocation } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useBranding } from '@/composables/useBranding'
 import { useToast } from '@/composables/useToast'
@@ -12,7 +12,18 @@ const ReceivingView = () => import('@/views/ReceivingView.vue')
 const ReportsView = () => import('@/views/ReportsView.vue')
 const SettingsShellView = () => import('@/views/SettingsShellView.vue')
 
-const LEGACY_REPORT_TABS = ['financial', 'stock', 'consignment', 'sales', 'salespeople', 'shopify', 'missing-costs']
+/** Old /reports?tab=… links, mapped to the path each tab lives at now. */
+const LEGACY_REPORT_TABS: Record<string, string> = {
+  financial: '/reports',
+  stock: '/reports/stock',
+  consignment: '/reports/consignment',
+  sales: '/reports/sales',
+  salespeople: '/reports/salespeople',
+  shopify: '/reports/shopify',
+  'missing-costs': '/reports/costs'
+}
+
+const keepQuery = (path: string) => (to: RouteLocation) => ({ path, query: to.query })
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -26,8 +37,7 @@ const router = createRouter({
 
     // Sell
     { path: '/pos', component: () => import('@/views/PosView.vue'), meta: { layout: 'app' } },
-    { path: '/sales', redirect: '/sales/invoices' },
-    { path: '/sales/invoices', component: SalesView, meta: { layout: 'app' } },
+    { path: '/sales', component: SalesView, meta: { layout: 'app' } },
     { path: '/sales/quotes', component: SalesView, meta: { layout: 'app', feature: 'quotes' } },
     { path: '/sales/deliveries', component: SalesView, meta: { layout: 'app', roles: MANAGER_ROLES } },
     { path: '/quotes/new', component: () => import('@/views/QuoteEditView.vue'), meta: { layout: 'app', feature: 'quotes' } },
@@ -36,52 +46,48 @@ const router = createRouter({
 
     // Stock
     { path: '/stock', component: () => import('@/views/StockListView.vue'), meta: { layout: 'app' } },
-    { path: '/receiving', redirect: (to) => ({ path: '/receiving/batches', query: to.query }) },
-    { path: '/receiving/batches', component: ReceivingView, meta: { layout: 'app', roles: MANAGER_ROLES } },
-    { path: '/receiving/import', component: ReceivingView, meta: { layout: 'app', roles: MANAGER_ROLES } },
+    { path: '/receiving/:tab(import)?', component: ReceivingView, meta: { layout: 'app', roles: MANAGER_ROLES } },
     { path: '/stocktake', component: () => import('@/views/StocktakeView.vue'), meta: { layout: 'app' } },
 
     // Manage
     { path: '/suppliers', component: () => import('@/views/WholesalersView.vue'), meta: { layout: 'app', roles: MANAGER_ROLES } },
     {
-      path: '/reports',
-      redirect: (to) => {
-        const tab = typeof to.query.tab === 'string' && LEGACY_REPORT_TABS.includes(to.query.tab) ? to.query.tab : 'financial'
-        return { path: `/reports/${tab}`, query: {} }
+      path: '/reports/:tab(stock|consignment|sales|salespeople|costs)?',
+      component: ReportsView,
+      meta: { layout: 'app', roles: MANAGER_ROLES },
+      beforeEnter: (to) => {
+        const legacy = typeof to.query.tab === 'string' ? LEGACY_REPORT_TABS[to.query.tab] : undefined
+        return legacy ? { path: legacy } : true
       }
     },
-    { path: '/reports/financial', component: ReportsView, meta: { layout: 'app', roles: MANAGER_ROLES } },
-    { path: '/reports/stock', component: ReportsView, meta: { layout: 'app', roles: MANAGER_ROLES } },
-    { path: '/reports/consignment', component: ReportsView, meta: { layout: 'app', roles: MANAGER_ROLES } },
-    { path: '/reports/sales', component: ReportsView, meta: { layout: 'app', roles: MANAGER_ROLES } },
-    { path: '/reports/salespeople', component: ReportsView, meta: { layout: 'app', roles: MANAGER_ROLES } },
     { path: '/reports/shopify', component: ReportsView, meta: { layout: 'app', roles: SHOPIFY_ROLES } },
-    { path: '/reports/missing-costs', component: ReportsView, meta: { layout: 'app', roles: MANAGER_ROLES } },
-    { path: '/vendor-report', component: () => import('@/views/VendorReportView.vue'), meta: { layout: 'app', vendorScope: true } },
+    { path: '/vendor', component: () => import('@/views/VendorReportView.vue'), meta: { layout: 'app', vendorScope: true } },
 
     // Settings
-    { path: '/settings', redirect: '/settings/business' },
-    { path: '/settings/business', component: SettingsShellView, meta: { layout: 'app', roles: MANAGER_ROLES } },
-    { path: '/settings/pricing', component: SettingsShellView, meta: { layout: 'app', roles: MANAGER_ROLES } },
-    { path: '/settings/team', component: SettingsShellView, meta: { layout: 'app', roles: MANAGER_ROLES } },
-    { path: '/settings/integrations', component: SettingsShellView, meta: { layout: 'app', roles: MANAGER_ROLES } },
+    { path: '/settings/:tab(pricing|team|integrations)?', component: SettingsShellView, meta: { layout: 'app', roles: MANAGER_ROLES } },
 
     // Old paths, kept so bookmarks, PWA caches and printed links still land somewhere sensible.
     { path: '/price-lookup', redirect: { path: '/pos', query: { check: '1' } } },
-    { path: '/find-sale', redirect: (to) => ({ path: '/sales/invoices', query: to.query }) },
-    { path: '/sales-history', redirect: (to) => ({ path: '/sales/invoices', query: to.query }) },
+    { path: '/sales/invoices', redirect: keepQuery('/sales') },
+    { path: '/find-sale', redirect: keepQuery('/sales') },
+    { path: '/sales-history', redirect: keepQuery('/sales') },
     { path: '/quotes', redirect: '/sales/quotes' },
     { path: '/deliveries', redirect: '/sales/deliveries' },
     { path: '/stock/labels', redirect: '/stock' },
-    { path: '/consignment', redirect: (to) => ({ path: '/receiving/batches', query: to.query }) },
+    { path: '/receiving/batches', redirect: keepQuery('/receiving') },
+    { path: '/consignment', redirect: keepQuery('/receiving') },
     { path: '/import', redirect: '/receiving/import' },
     { path: '/wholesalers', redirect: '/suppliers' },
-    { path: '/salespeople', redirect: '/settings/team' },
-    { path: '/financial-report', redirect: '/reports/financial' },
+    { path: '/reports/financial', redirect: '/reports' },
+    { path: '/financial-report', redirect: '/reports' },
+    { path: '/reports/missing-costs', redirect: '/reports/costs' },
+    { path: '/vendor-report', redirect: '/vendor' },
+    { path: '/settings/business', redirect: '/settings' },
     { path: '/settings/shopify', redirect: '/settings/integrations' },
     { path: '/settings/email', redirect: '/settings/integrations' },
     { path: '/settings/pricing-rules', redirect: '/settings/pricing' },
     { path: '/setup', redirect: '/settings/integrations' },
+    { path: '/salespeople', redirect: '/settings/team' },
     { path: '/admin/team', redirect: '/settings/team' },
 
     {

@@ -271,7 +271,7 @@ async function onScan(code: string) {
       inlineCost.value = null
       inlineQty.value = 1
       showInlineCreate.value = true
-      toast.warning('Product not found — fill in details to create it.')
+      toast.info('Product not found — fill in details to create it.')
     } else {
       handleErr(e)
       lastScanResult.value = 'Not found'
@@ -289,7 +289,7 @@ async function importCsv() {
     const { data } = await http.post(`/api/consignment-batches/${activeBatch.value.id}/import`, form)
     activeBatch.value = (data as { batch: Batch }).batch
     const nf = (data as { notFound?: string[] }).notFound ?? []
-    if (nf.length) toast.warning(`${nf.length} SKUs not found: ${nf.slice(0, 5).join(', ')}${nf.length > 5 ? '…' : ''}`)
+    if (nf.length) toast.info(`${nf.length} SKUs not found: ${nf.slice(0, 5).join(', ')}${nf.length > 5 ? '…' : ''}`)
     else toast.success(`${(data as { added?: number }).added ?? 0} lines imported`)
     showImport.value = false
     importFile.value = null

@@ -9,7 +9,7 @@ import ImportView from '@/views/ImportView.vue'
 const route = useRoute()
 
 const tabs: McTab[] = [
-  { to: '/receiving/batches', label: 'Batches' },
+  { to: '/receiving', label: 'Batches' },
   { to: '/receiving/import', label: 'Import' }
 ]
 </script>
