@@ -401,15 +401,20 @@ public class InvoiceService
     public async Task<byte[]?> GetPdfBytesAsync(Guid id, CancellationToken ct)
     {
         var inv = await _db.Invoices.Include(i => i.Lines).FirstOrDefaultAsync(i => i.Id == id, ct);
-        if (inv?.PdfStorageKey == null) return null;
-        var path = Path.Combine(Directory.GetCurrentDirectory(), _app.PdfStoragePath, inv.PdfStorageKey);
-        if (!File.Exists(path))
+        if (inv == null) return null;
+
+        if (inv.PdfStorageKey != null)
         {
-            var bytes = _pdf.BuildPdf(inv);
-            await _pdf.SavePdfAsync(inv, bytes, ct);
-            return bytes;
+            var path = Path.Combine(Directory.GetCurrentDirectory(), _app.PdfStoragePath, inv.PdfStorageKey);
+            if (File.Exists(path))
+                return await File.ReadAllBytesAsync(path, ct);
         }
-        return await File.ReadAllBytesAsync(path, ct);
+
+        // Invoices imported from Shopify (and any whose file was lost) have no stored PDF yet.
+        var bytes = _pdf.BuildPdf(inv);
+        inv.PdfStorageKey = await _pdf.SavePdfAsync(inv, bytes, ct);
+        await _db.SaveChangesAsync(ct);
+        return bytes;
     }
 
     public async Task<InvoiceDto?> GetByPublicTokenAsync(Guid token, CancellationToken ct)
