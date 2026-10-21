@@ -235,11 +235,11 @@ onMounted(load)
               <span v-else class="bs-brand__empty">No logo uploaded</span>
             </div>
             <div class="bs-brand__actions">
-              <input ref="logoInput" type="file" accept=".png,.jpg,.jpeg,.webp,.svg" hidden @change="uploadLogo" />
+              <input ref="logoInput" type="file" accept=".png,.jpg,.jpeg,.webp" hidden @change="uploadLogo" />
               <McButton variant="primary" type="button" :disabled="busy" @click="logoInput?.click()">Upload logo</McButton>
               <McButton v-if="form.logoUrl" variant="ghost" type="button" :disabled="busy" @click="deleteLogo">Remove</McButton>
             </div>
-            <p class="bs-brand__hint">PNG, JPG, WebP, or SVG. Shown on the app shell, login screen, invoices and labels.</p>
+            <p class="bs-brand__hint">PNG, JPG, or WebP. Shown on the app shell, login screen, invoices and labels.</p>
           </div>
 
           <div class="bs-brand__block">
@@ -249,11 +249,11 @@ onMounted(load)
               <span v-else class="bs-brand__empty">Default</span>
             </div>
             <div class="bs-brand__actions">
-              <input ref="faviconInput" type="file" accept=".png,.ico,.svg" hidden @change="uploadFavicon" />
+              <input ref="faviconInput" type="file" accept=".png,.ico" hidden @change="uploadFavicon" />
               <McButton variant="primary" type="button" :disabled="busy" @click="faviconInput?.click()">Upload favicon</McButton>
               <McButton v-if="form.faviconUrl" variant="ghost" type="button" :disabled="busy" @click="deleteFavicon">Remove</McButton>
             </div>
-            <p class="bs-brand__hint">Small icon used in browser tabs, bookmarks, and the installed app.</p>
+            <p class="bs-brand__hint">PNG or ICO. Used in browser tabs, bookmarks, and the installed app.</p>
           </div>
         </div>
 

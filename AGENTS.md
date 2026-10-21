@@ -49,3 +49,6 @@ WEB_PORT=8095
 - Role hierarchy: Dev > Owner > Admin > Sales
 - MC Tactical is VAT registered — invoices must show VAT (15%) breakdown
 - Currency: ZAR (South African Rand)
+- New screens use `McAlert`, `McEmptyState`, and `McSpinner` or `McSkeleton`, plus a narrow breakpoint (`max-width` around 640–900px) like the existing views
+- API bugfixes start from a failing test in `tests/HuntexPos.Api.Tests` before the fix
+- Auth, upload, and public-token changes name the stranger failure and the check that stops it (role, validation, query binding, file visibility, or token lookup)

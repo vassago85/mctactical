@@ -21,9 +21,9 @@ public static class ReceiptCompanyContact
                 ? DeriveWebsiteLabel(site)
                 : eff.WebsiteLabel.Trim(),
             VatNumber = TrimOrNull(eff.VatNumber),
-            LogoUrl = string.IsNullOrWhiteSpace(eff.LogoStorageKey)
-                ? null
-                : "/api/settings/branding/logo"
+            LogoUrl = BrandingImageRules.IsPublicRaster(eff.LogoStorageKey)
+                ? "/api/settings/branding/logo"
+                : null
         };
     }
 

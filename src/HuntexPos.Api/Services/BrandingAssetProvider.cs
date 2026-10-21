@@ -3,6 +3,23 @@ using Microsoft.Extensions.Options;
 
 namespace HuntexPos.Api.Services;
 
+/// <summary>
+/// Anonymous <c>GET /api/settings/branding/logo</c> and favicon serve the stored file on this origin.
+/// An SVG opened directly would run as a script, so only raster extensions are accepted or served.
+/// </summary>
+public static class BrandingImageRules
+{
+    public static readonly string[] LogoExtensions = [".png", ".jpg", ".jpeg", ".webp"];
+    public static readonly string[] FaviconExtensions = [".png", ".ico"];
+
+    public static bool IsPublicRaster(string? storageKey)
+    {
+        var ext = Path.GetExtension(storageKey ?? "");
+        return LogoExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase)
+            || FaviconExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase);
+    }
+}
+
 public interface IBrandingAssetProvider
 {
     byte[]? GetLogoBytes();
@@ -28,7 +45,7 @@ public sealed class BrandingAssetProvider : IBrandingAssetProvider
     {
         var eff = _business.GetAsync().GetAwaiter().GetResult();
         var key = eff.LogoStorageKey;
-        if (string.IsNullOrWhiteSpace(key)) return null;
+        if (key == null || !BrandingImageRules.IsPublicRaster(key)) return null;
 
         var root = _app.BrandingStoragePath;
         var dir = Path.IsPathRooted(root) ? root : Path.Combine(Directory.GetCurrentDirectory(), root);

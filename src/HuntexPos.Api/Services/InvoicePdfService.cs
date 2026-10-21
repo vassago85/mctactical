@@ -47,8 +47,7 @@ public class InvoicePdfService
             : Path.Combine(Directory.GetCurrentDirectory(), _app.BrandingStoragePath);
         var path = Path.Combine(dir, eff.LogoStorageKey);
         if (!System.IO.File.Exists(path)) return null;
-        // SVG can't be rendered by QuestPDF image — skip and fall back to bundled default.
-        if (path.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)) return null;
+        if (!BrandingImageRules.IsPublicRaster(path)) return null;
         try { return System.IO.File.ReadAllBytes(path); } catch { return null; }
     }
 
